@@ -2,11 +2,11 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:3bacc3e87c2ec857",
+    "sourceFingerprint": "sha256:b2930cf547094e71",
     "stats": {
-      "targetFiles": 251,
-      "targetFilesWithDirectTests": 146,
-      "targetFilesWithTransitiveTests": 167,
+      "targetFiles": 254,
+      "targetFilesWithDirectTests": 147,
+      "targetFilesWithTransitiveTests": 168,
       "testFilesScanned": 216
     }
   },
@@ -116,6 +116,14 @@
       ]
     },
     "functions/lib/caisse/champsAnalytiques.js": {
+      "directTests": [
+        "functions/lib/caisse/__tests__/caisse.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/caisse/__tests__/caisse.test.js"
+      ]
+    },
+    "functions/lib/caisse/parametres.js": {
       "directTests": [
         "functions/lib/caisse/__tests__/caisse.test.js"
       ],
@@ -1406,6 +1414,14 @@
       "transitiveTests": []
     },
     "public/components/BugReportsAdmin.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/CaisseParametresSub.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/CaisseParametresSub.jsx": {
       "directTests": [],
       "transitiveTests": []
     },

@@ -759,3 +759,69 @@ test('searchTransactions — un bon sans axes analytiques ne plante pas', () => 
   assert.deepStrictEqual(U.searchTransactions(txs, 'gasoil').map((t) => t.reference), ['R3']);
   assert.deepStrictEqual(U.searchTransactions(txs, 'F5'), []);
 });
+
+// --- filterByAxes / distinctAxeValues ---------------------------------------
+
+const AXES_TXS = [
+  { reference: 'R1', ferme: 'F5', culture: 'Myrtille',  parcelle: 'F5 CORINA myrtille S8-3', code_analytique: 'IRRIG' },
+  { reference: 'R2', ferme: 'F5', culture: 'Myrtille',  parcelle: 'BREEZE MYRTILLE S8-2',    code_analytique: 'IRRIG' },
+  { reference: 'R3', ferme: 'F1', culture: 'Framboise', parcelle: 'GENERAL',                 code_analytique: 'CARB'  },
+  { reference: 'R4', ferme: '',   culture: '',          parcelle: '',                        code_analytique: ''      },
+  { reference: 'R5' },
+];
+const axesRefs = (f) => U.filterByAxes(AXES_TXS, f).map((t) => t.reference);
+
+test('filterByAxes — aucun filtre actif → tout passe', () => {
+  assert.deepStrictEqual(axesRefs({}).length, 5);
+  assert.deepStrictEqual(axesRefs(null).length, 5);
+  assert.deepStrictEqual(axesRefs({ ferme: '', culture: null, parcelle: undefined }).length, 5);
+});
+
+test('filterByAxes — un critère', () => {
+  assert.deepStrictEqual(axesRefs({ ferme: 'F5' }), ['R1', 'R2']);
+  assert.deepStrictEqual(axesRefs({ culture: 'Framboise' }), ['R3']);
+  assert.deepStrictEqual(axesRefs({ parcelle: 'GENERAL' }), ['R3']);
+  assert.deepStrictEqual(axesRefs({ code_analytique: 'IRRIG' }), ['R1', 'R2']);
+});
+
+test('filterByAxes — critères cumulés (ET logique)', () => {
+  assert.deepStrictEqual(axesRefs({ ferme: 'F5', parcelle: 'BREEZE MYRTILLE S8-2' }), ['R2']);
+  assert.deepStrictEqual(axesRefs({ ferme: 'F5', culture: 'Framboise' }), []);
+});
+
+test('filterByAxes — __VIDE__ isole les bons non affectés', () => {
+  assert.deepStrictEqual(axesRefs({ ferme: U.AXE_NON_RENSEIGNE }), ['R4', 'R5']);
+  assert.deepStrictEqual(axesRefs({ parcelle: U.AXE_NON_RENSEIGNE }), ['R4', 'R5']);
+  assert.deepStrictEqual(axesRefs({ ferme: U.AXE_NON_RENSEIGNE, culture: 'Myrtille' }), []);
+});
+
+test('filterByAxes — comparaison stricte, tolérante aux espaces', () => {
+  assert.deepStrictEqual(axesRefs({ ferme: ' F5 ' }), ['R1', 'R2']);
+  assert.deepStrictEqual(axesRefs({ ferme: 'f5' }), []);        // pas de casse implicite
+  assert.deepStrictEqual(axesRefs({ ferme: 'F' }), []);         // pas de correspondance partielle
+});
+
+test('filterByAxes — entrées invalides ne plantent pas', () => {
+  assert.deepStrictEqual(U.filterByAxes(null, { ferme: 'F5' }), []);
+  assert.deepStrictEqual(U.filterByAxes([null, undefined], { ferme: 'F5' }), []);
+});
+
+test('filterByAxes — retourne toujours un nouveau tableau', () => {
+  const out = U.filterByAxes(AXES_TXS, {});
+  assert.notStrictEqual(out, AXES_TXS);
+  assert.strictEqual(out.length, AXES_TXS.length);
+});
+
+test('distinctAxeValues — valeurs présentes, triées, sans les vides', () => {
+  assert.deepStrictEqual(U.distinctAxeValues(AXES_TXS, 'ferme'), ['F1', 'F5']);
+  assert.deepStrictEqual(U.distinctAxeValues(AXES_TXS, 'culture'), ['Framboise', 'Myrtille']);
+  assert.deepStrictEqual(U.distinctAxeValues(AXES_TXS, 'parcelle'),
+    ['BREEZE MYRTILLE S8-2', 'F5 CORINA myrtille S8-3', 'GENERAL']);
+  assert.deepStrictEqual(U.distinctAxeValues(AXES_TXS, 'code_analytique'), ['CARB', 'IRRIG']);
+});
+
+test('distinctAxeValues — entrées invalides → tableau vide', () => {
+  assert.deepStrictEqual(U.distinctAxeValues(null, 'ferme'), []);
+  assert.deepStrictEqual(U.distinctAxeValues(AXES_TXS, ''), []);
+  assert.deepStrictEqual(U.distinctAxeValues([{ ferme: '   ' }], 'ferme'), []);
+});

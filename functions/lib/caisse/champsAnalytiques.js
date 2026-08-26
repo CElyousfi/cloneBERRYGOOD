@@ -51,13 +51,19 @@ function campagneOf(dateStr) {
 /**
  * Valide les 4 axes analytiques d'un patch (champs absents = non validés).
  *
+ * La liste des fermes est CONFIGURABLE (écran Paramètres de la caisse) : elle
+ * est donc injectée. Sans injection, on retombe sur `FERMES` — la liste par
+ * défaut — plutôt que de tout accepter, pour ne pas perdre le garde-fou.
+ *
  * @param {{ferme?: string, culture?: string, campagne?: string, parcelle?: string}} patch
+ * @param {{fermes?: string[]}} [opts] Listes autorisées, issues des paramètres.
  * @returns {string|null} Message d'erreur, ou `null` si tout est valide.
  */
-function validateAxes(patch) {
+function validateAxes(patch, opts) {
   const p = patch || {};
-  if (p.ferme !== undefined && p.ferme !== '' && FERMES.indexOf(String(p.ferme)) === -1) {
-    return `Ferme invalide (attendu : ${FERMES.join(', ')})`;
+  const fermesOk = (opts && Array.isArray(opts.fermes) && opts.fermes.length) ? opts.fermes : FERMES;
+  if (p.ferme !== undefined && p.ferme !== '' && fermesOk.indexOf(String(p.ferme)) === -1) {
+    return `Ferme invalide (attendu : ${fermesOk.join(', ')})`;
   }
   if (p.culture !== undefined && p.culture !== '' && CULTURES.indexOf(String(p.culture)) === -1) {
     return `Culture invalide (attendu : ${CULTURES.join(', ')})`;

@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:3e1f61d453d6111f -->
-# Code Map — Modules lib (194)
+<!-- sourceFingerprint: sha256:67ab84d04bca6c1e -->
+# Code Map — Modules lib (195)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
 
@@ -20,6 +20,7 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/bugReports/validateBugReport.js | — | validateBugReport, MAX_DESCRIPTION, MAX_PHOTO_BASE64_CHARS |
 | functions/lib/caisse/batchValidation.js | — | planBatchValidation, applyDelta |
 | functions/lib/caisse/champsAnalytiques.js | — | FERMES, CULTURES, PARCELLE_GENERAL, campagneOf, validateAxes |
+| functions/lib/caisse/parametres.js | — | DEFAULT_FERMES, DEFAULT_CODES_ANALYTIQUES, DEFAULT_PARCELLES, MAX_LEN, MAX_ITEMS, MAX_PARCELLES, normalizeListe, normalizeParcelles, validateListe, withDefaults, estAutorisee |
 | functions/lib/caisse/rapprochementLock.js | — | periodeFromDate, rapprochementDocId, periodesAVerifier, MOIS_FR |
 | functions/lib/caisse/soldeDelta.js | — | computeSoldeDelta, isTypeEditable, TYPES_ENTREE, TYPES_SORTIE, TYPES_EDITABLES |
 | functions/lib/caisse/txDiff.js | — | computeChanges, CHAMPS_SUIVIS |
@@ -163,7 +164,7 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | public/lib/bcScanMatch.js | BcScanMatch | VARIETY_ALIASES, CULTURE_TOKENS, normalizeLabel, extractSecteurs, extractVariete, extractCulture, et, aliasMatch, matchParcelle |
 | public/lib/bdcReceptionUtils.js | BdcReceptionUtils | computeDeliveryData, resolveDeliveryDataOrError, filterReceptionsForBdc, computeReceptionRowsWithReliquat, computeReceptionEcart, clampReceivedQty |
 | public/lib/bdcWorkflow.js | BdcWorkflow | DIRECT_DG_FARMS, requiresChefValidation, nextStatusOnSubmit, bypassReason, chefProfileForFerme |
-| public/lib/caisseUtils.js | CaisseUtils | EXPENSE_TYPES, INCOME_TYPES, OP_EXPENSE_TYPES, OP_INCOME_TYPES, TRANSFER_TYPES, QUICK_PERIODS, QUICK_TYPES, ANOMALY_CODES, MONTANT_ANOMALY_THRESHOLD, DESCRIPTION_MIN_LENGTH, ANALYTIQUE_PLACEHOLDER, MONTANT_ATYPIQUE_FACTOR, MONTANT_ATYPIQUE_WINDOW_DAYS, MONTANT_ATYPIQUE_MIN_SAMPLE, DOUBLON_MAX_DATE_DELTA_DAYS, DOUBLON_LEVENSHTEIN_THRESHOLD, DOUBLON_DESC_PREFIX_LEN, DESCRIPTION_GENERIC_REGEX, BAHIA_MARKER, AVANCE_KEYWORD_REGEX, detectCaisseAnomalies, computeTotals, quickPeriodToDateRange, searchTransactions, filterByQuickType, detectAnomaliesBatch, extractBeneficiaire, aggregateAvances, COMPTE_CLIENT_PREFIX, isCompteClientCaisse, computeCompteClientTotals |
+| public/lib/caisseUtils.js | CaisseUtils | EXPENSE_TYPES, INCOME_TYPES, OP_EXPENSE_TYPES, OP_INCOME_TYPES, TRANSFER_TYPES, QUICK_PERIODS, QUICK_TYPES, ANOMALY_CODES, MONTANT_ANOMALY_THRESHOLD, DESCRIPTION_MIN_LENGTH, ANALYTIQUE_PLACEHOLDER, MONTANT_ATYPIQUE_FACTOR, MONTANT_ATYPIQUE_WINDOW_DAYS, MONTANT_ATYPIQUE_MIN_SAMPLE, DOUBLON_MAX_DATE_DELTA_DAYS, DOUBLON_LEVENSHTEIN_THRESHOLD, DOUBLON_DESC_PREFIX_LEN, DESCRIPTION_GENERIC_REGEX, BAHIA_MARKER, AVANCE_KEYWORD_REGEX, detectCaisseAnomalies, computeTotals, quickPeriodToDateRange, searchTransactions, filterByQuickType, AXE_NON_RENSEIGNE, filterByAxes, distinctAxeValues, detectAnomaliesBatch, extractBeneficiaire, aggregateAvances, COMPTE_CLIENT_PREFIX, isCompteClientCaisse, computeCompteClientTotals |
 | public/lib/campagneBudgetPivot.js | CampagneBudgetPivot | indexBudgets, buildBudgetPivot, ecartCell |
 | public/lib/campagneBudgetQuinzaine.js | CampagneBudgetQuinzaine | quinzaineKey, quinzaineNum, optionsFromPeriodes, quinzaineCourante, quinzainePrecedente, quinzainesByLabel, trancheQuinzaine, realiseQuinzaine, decoreQuinzaine, pctPartsCellule, resteQuinzaineCellule, noteQuinzaine |
 | public/lib/campagneExportUtils.js | CampagneExportUtils | SHEET_MAX, ROW_KIND, PERCENT_HEADER, BUDGET_HEADER, scopeNote, perHa, buildParcelleBudgetIndex, haLabel, numFmtFor, percentFmtFor, percentColumns, sumBudget, budgetScope, budgetCells, safeSheetName, buildSyntheseRows, buildSyntheseAoA, syntheseSheetCols, buildParcelleSheetRows, buildParcelleSheetAoA, parcelleSheetCols |

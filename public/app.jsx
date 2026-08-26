@@ -59912,6 +59912,11 @@ ${rejetHtml}
                 (isSaisie || isControle) ? { id: 'caisse_import_encaissements', label: 'Import Encaissements', icon: 'fa-file-invoice-dollar' } : null,
                 { id: 'caisse_comptes_clients', label: 'Comptes Clients', icon: 'fa-users' },
                 isControle ? { id: 'caisse_config', label: 'Configuration', icon: 'fa-gear' } : null,
+                // Distinct de « Configuration » (qui gère les caisses elles-mêmes) :
+                // ici on configure les référentiels de SAISIE — fermes et codes
+                // analytiques proposés sur un bon. Visible par tous (le service
+                // Achats doit pouvoir consulter la liste), éditable DG/Finance.
+                { id: 'caisse_parametres', label: 'Paramètres', icon: 'fa-sliders' },
             ].filter(Boolean);
 
             const loadDashboard = () => {
@@ -59959,7 +59964,7 @@ ${rejetHtml}
                     </div>
                     {subTab === 'caisse_dashboard' && <CaisseDashboardSub dashData={dashData} caisses={caisses} isControle={isControle} onNavigate={setSubTab} />}
                     {subTab === 'caisse_transactions' && <CaisseTransactionsSub caisses={caisses} isSaisie={isSaisie} isControle={isControle} onRefresh={refresh} />}
-                    {subTab === 'caisse_saisie' && window.CaisseSaisieSub && <window.CaisseSaisieSub caisses={caisses} onDone={() => { refresh(); setSubTab('caisse_transactions'); }} />}
+                    {subTab === 'caisse_saisie' && window.CaisseSaisieSub && <window.CaisseSaisieSub caisses={caisses} onDone={() => { refresh(); setSubTab('caisse_transactions'); }} onCancel={() => setSubTab('caisse_transactions')} />}
                     {subTab === 'caisse_alimentations' && <CaisseFilteredTypeSub caisses={caisses} typeFilter="alimentation" title="Alimentations" icon="fa-arrow-down" isSaisie={isSaisie} onDone={refresh} />}
                     {subTab === 'caisse_paie' && <CaisseFilteredTypeSub caisses={caisses} typeFilter="paie" title="Paie" icon="fa-money-check-dollar" isSaisie={isSaisie} onDone={refresh} hasEmployee />}
                     {subTab === 'caisse_transport' && <CaisseFilteredTypeSub caisses={caisses} typeFilter="transport" title="Transport" icon="fa-truck" isSaisie={isSaisie} onDone={refresh} hasEmployee />}
@@ -59972,6 +59977,9 @@ ${rejetHtml}
                     {subTab === 'caisse_import_encaissements' && <CaisseImportEncaissementsSub isControle={isControle} onApplied={refresh} />}
                     {subTab === 'caisse_comptes_clients' && <CaisseComptesClientsSub caisses={caisses} />}
                     {subTab === 'caisse_config' && <CaisseConfigSub caisses={caisses} onDone={refresh} />}
+                    {subTab === 'caisse_parametres' && window.CaisseParametresSub && (
+                        <window.CaisseParametresSub canEdit={isControle || (userProfile && userProfile.role === 'admin')} onSaved={refresh} />
+                    )}
                 </div>
             );
         }
@@ -60187,6 +60195,8 @@ ${rejetHtml}
             const [loading, setLoading] = useState(true);
             const [filterCaisse, setFilterCaisse] = useState('');
             const [filterStatus, setFilterStatus] = useState('');
+            // Filtres par axes analytiques — client-side (les bons sont déjà chargés).
+            const [filterAxes, setFilterAxes] = useState({ ferme: '', culture: '', parcelle: '', code_analytique: '' });
             const [filterDateFrom, setFilterDateFrom] = useState('');
             const [filterDateTo, setFilterDateTo] = useState('');
             const [selectedTx, setSelectedTx] = useState(null);
@@ -60232,10 +60242,33 @@ ${rejetHtml}
                 [transactions, searchQuery]
             );
 
-            const filteredByType = useMemo(
+            const filteredByQuickType = useMemo(
                 () => (window.CaisseUtils ? window.CaisseUtils.filterByQuickType(searchedTransactions, quickType) : searchedTransactions),
                 [searchedTransactions, quickType]
             );
+
+            // Filtres ferme / culture / parcelle / analytique. Placés AVANT la
+            // détection d'anomalies pour que le compteur « À contrôler » suive
+            // la vue affichée, comme le fait déjà le filtre de type.
+            const filteredByType = useMemo(
+                () => (window.CaisseUtils && window.CaisseUtils.filterByAxes
+                    ? window.CaisseUtils.filterByAxes(filteredByQuickType, filterAxes)
+                    : filteredByQuickType),
+                [filteredByQuickType, filterAxes]
+            );
+
+            // Options des listes déroulantes : dérivées de TOUS les bons chargés,
+            // pas de la vue filtrée — sinon choisir une ferme viderait les autres
+            // listes et on ne pourrait plus revenir en arrière.
+            const axeOptions = useMemo(() => {
+                const CU = window.CaisseUtils;
+                const d = (champ) => (CU && CU.distinctAxeValues ? CU.distinctAxeValues(transactions, champ) : []);
+                return { ferme: d('ferme'), culture: d('culture'), parcelle: d('parcelle'), code_analytique: d('code_analytique') };
+            }, [transactions]);
+
+            const axesActifs = Object.keys(filterAxes).filter((k) => filterAxes[k] !== '').length;
+            const setAxe = (champ, valeur) => setFilterAxes((cur) => ({ ...cur, [champ]: valeur }));
+            const resetAxes = () => setFilterAxes({ ferme: '', culture: '', parcelle: '', code_analytique: '' });
 
             // detectAnomaliesBatch (Sprint 2) — combine Sprint 1 per-tx rules + 5 cross-dataset rules
             const anomaliesByTx = useMemo(() => {
@@ -60681,11 +60714,62 @@ ${rejetHtml}
                             <option value="valide">Validé</option>
                             <option value="rejete">Rejeté</option>
                         </select>
-                        <input type="date" value={filterDateFrom} onChange={e=>onManualDateChange('from', e.target.value)} style={{padding:'8px 12px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:12}} placeholder="Du" />
-                        <input type="date" value={filterDateTo} onChange={e=>onManualDateChange('to', e.target.value)} style={{padding:'8px 12px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:12}} placeholder="Au" />
+                        {/* Libellés VISIBLES : un input[type=date] n'affiche jamais son
+                            placeholder, les deux champs passaient donc pour des dates
+                            déjà saisies au lieu d'un filtre à remplir. */}
+                        <label style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:'var(--gray-600)'}}>
+                            Du
+                            <input type="date" value={filterDateFrom} onChange={e=>onManualDateChange('from', e.target.value)} aria-label="Filtrer à partir du"
+                                style={{padding:'8px 12px',borderRadius:8,fontSize:12,
+                                    border: filterDateFrom ? '1px solid var(--berry)' : '1px solid var(--gray-200)'}} />
+                        </label>
+                        <label style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:'var(--gray-600)'}}>
+                            Au
+                            <input type="date" value={filterDateTo} onChange={e=>onManualDateChange('to', e.target.value)} aria-label="Filtrer jusqu'au"
+                                style={{padding:'8px 12px',borderRadius:8,fontSize:12,
+                                    border: filterDateTo ? '1px solid var(--berry)' : '1px solid var(--gray-200)'}} />
+                        </label>
+                        {(filterDateFrom || filterDateTo) && (
+                            <button onClick={()=>{ onManualDateChange('from',''); onManualDateChange('to',''); }}
+                                aria-label="Effacer le filtre de dates"
+                                style={{padding:'7px 10px',borderRadius:8,border:'1px solid var(--gray-200)',background:'white',cursor:'pointer',fontSize:12,color:'var(--gray-600)'}}>
+                                <i className="fa-solid fa-xmark"></i>
+                            </button>
+                        )}
                         <button onClick={exportExcel} style={{padding:'8px 14px',borderRadius:8,background:'var(--green)',color:'white',border:'none',cursor:'pointer',fontSize:12,fontWeight:600,marginLeft:'auto'}}>
                             <i className="fa-solid fa-file-excel" style={{marginRight:4}}></i>Exporter
                         </button>
+                    </div>
+
+                    {/* Filtres par axes analytiques — ferme / culture / parcelle / analytique.
+                        Client-side : les bons sont déjà chargés, aucun aller-retour serveur. */}
+                    <div data-testid="caisse-axes-filters"
+                        style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center',marginBottom:12}}>
+                        <span style={{fontSize:11,fontWeight:700,color:'var(--gray-400)',letterSpacing:0.4}}>AFFECTATION</span>
+                        {[
+                            { champ: 'ferme',           label: 'Toutes les fermes' },
+                            { champ: 'culture',         label: 'Toutes les cultures' },
+                            { champ: 'parcelle',        label: 'Toutes les parcelles' },
+                            { champ: 'code_analytique', label: 'Tous les analytiques' },
+                        ].map(({ champ, label }) => (
+                            <select key={champ} value={filterAxes[champ]} onChange={e=>setAxe(champ, e.target.value)}
+                                aria-label={label}
+                                style={{padding:'8px 12px',borderRadius:8,fontSize:12,maxWidth:230,
+                                    border: filterAxes[champ] ? '1px solid var(--berry)' : '1px solid var(--gray-200)',
+                                    background: filterAxes[champ] ? 'var(--berry-pale)' : 'white',
+                                    fontWeight: filterAxes[champ] ? 600 : 400}}>
+                                <option value="">{label}</option>
+                                <option value={(window.CaisseUtils && window.CaisseUtils.AXE_NON_RENSEIGNE) || '__VIDE__'}>— Non renseigné —</option>
+                                {axeOptions[champ].map(v => <option key={v} value={v}>{v}</option>)}
+                            </select>
+                        ))}
+                        {axesActifs > 0 && (
+                            <button onClick={resetAxes}
+                                style={{padding:'7px 12px',borderRadius:8,border:'1px solid var(--gray-200)',background:'white',cursor:'pointer',fontSize:12,color:'var(--gray-600)'}}>
+                                <i className="fa-solid fa-xmark" style={{marginRight:4}}></i>
+                                Réinitialiser ({axesActifs})
+                            </button>
+                        )}
                     </div>
 
                     {/* Sprint 2 — Sticky bulk actions bar (visible when selection > 0) */}
@@ -60835,7 +60919,9 @@ ${rejetHtml}
                                                 </th>
                                             ));
                                         })()}
-                                        <th style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'var(--gray-600)'}}>Saisi par</th>
+                                        {/* « Saisi par » retirée du tableau pour que tout tienne
+                                            en un seul écran. L'info reste dans la pop-up de
+                                            détail et dans les deux exports Excel. */}
                                         <th style={{padding:'10px 6px',textAlign:'center',fontWeight:600,color:'var(--gray-600)',width:44}} title="Modifier le bon">✎</th>
                                     </tr></thead>
                                     <tbody>
@@ -60897,7 +60983,6 @@ ${rejetHtml}
                                                     <td style={{padding:'10px 12px',textAlign:'center'}}>
                                                         <span style={{padding:'3px 8px',borderRadius:12,background:ss.bg||'#eee',color:ss.color||'#333',fontSize:10,fontWeight:600}}>{ss.label||tx.status}</span>
                                                     </td>
-                                                    <td style={{padding:'10px 12px',fontSize:11}}>{tx.saisie_by?.name||''}</td>
                                                     {/* Action Modifier directement dans la ligne — la pop-up de
                                                         détail garde le même bouton, mais l'action ne doit pas
                                                         dépendre d'un clic préalable pour être découverte. */}
@@ -60921,8 +61006,8 @@ ${rejetHtml}
                                     {/* Sticky footer — totaux suivent les filtres */}
                                     <tfoot>
                                         <tr style={{position:'sticky',bottom:0,background:'var(--gray-100)',borderTop:'2px solid var(--berry)',boxShadow:'0 -2px 6px rgba(0,0,0,0.04)'}}>
-                                            {/* 15 = ⚠ + case à cocher + 11 colonnes triables + « Saisi par » + action ✎ */}
-                                            <td colSpan={15} style={{padding:'12px 14px',fontSize:12}}>
+                                            {/* 14 = ⚠ + case à cocher + 11 colonnes triables + action ✎ */}
+                                            <td colSpan={14} style={{padding:'12px 14px',fontSize:12}}>
                                                 <div style={{display:'flex',flexWrap:'wrap',gap:'4px 18px',alignItems:'center',fontWeight:500,color:'var(--gray-800)'}}>
                                                     <span><strong style={{color:'var(--berry)'}}>{totals.count}</strong> transactions</span>
                                                     <span style={{color:'var(--gray-400)'}}>·</span>

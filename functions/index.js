@@ -19,6 +19,7 @@ const { periodesAVerifier } = require("./lib/caisse/rapprochementLock");
 const { computeChanges } = require("./lib/caisse/txDiff");
 const caisseAxes = require("./lib/caisse/champsAnalytiques");
 const { planBatchValidation, applyDelta } = require("./lib/caisse/batchValidation");
+const caisseParametres = require("./lib/caisse/parametres");
 const { validateSupplier } = require("./lib/suppliers/supplierValidation");
 const stockCaneva = require("./lib/stockCaneva");
 const articleMerge = require("./lib/stockMerge/articleMerge");
@@ -15450,7 +15451,10 @@ exports.caisseManagement = functions
         // Axes analytiques (facultatifs) : ferme / campagne / culture / parcelle.
         // La campagne n'est jamais reçue du client : elle est DÉRIVÉE de la date,
         // pour qu'un bon dont on corrige la date change de campagne tout seul.
-        const axesErr = caisseAxes.validateAxes({ ferme, culture });
+        // Fermes autorisées = celles configurées dans Paramètres de la caisse.
+                const _paramsDoc = await db_firestore.collection("caisse_parametres").doc("default").get();
+                const _params = caisseParametres.withDefaults(_paramsDoc.exists ? _paramsDoc.data() : null);
+                const axesErr = caisseAxes.validateAxes({ ferme, culture }, { fermes: _params.fermes });
         if (axesErr) return res.status(400).json({ success: false, error: axesErr });
         if (!["alimentation", "depense", "sortie", "paie", "transport"].includes(type)) return res.status(400).json({ success: false, error: "Type invalide" });
         if (montant <= 0) return res.status(400).json({ success: false, error: "Le montant doit être positif" });
@@ -15626,7 +15630,10 @@ exports.caisseManagement = functions
         const { id, caisse_id, type, montant, description, code_analytique, date, files,
           matricule, beneficiaire_nom, ferme, culture, parcelle } = req.body;
         if (!id) return res.status(400).json({ success: false, error: "ID requis" });
-        const axesErr = caisseAxes.validateAxes({ ferme, culture });
+        // Fermes autorisées = celles configurées dans Paramètres de la caisse.
+                const _paramsDoc = await db_firestore.collection("caisse_parametres").doc("default").get();
+                const _params = caisseParametres.withDefaults(_paramsDoc.exists ? _paramsDoc.data() : null);
+                const axesErr = caisseAxes.validateAxes({ ferme, culture }, { fermes: _params.fermes });
         if (axesErr) return res.status(400).json({ success: false, error: axesErr });
 
         const txRef = db_firestore.collection("caisse_transactions").doc(id);
@@ -16104,6 +16111,49 @@ exports.caisseManagement = functions
           })),
           warnings, ignored_sheets: ignoredSheets,
         });
+      }
+
+      // ========== PARAMÈTRES DE LA CAISSE (fermes + codes analytiques) ==========
+      // Doc unique caisse_parametres/default. Alimente les listes déroulantes
+      // Ferme et Code analytique du bon de caisse : ce qui est configuré ici est
+      // exactement ce qui est proposé à la saisie.
+      //
+      // Lecture ouverte à tout profil ayant accès à la caisse (le formulaire de
+      // saisie en a besoin) ; écriture réservée à DG/Finance.
+      if (action === "caisse-parametres-get") {
+        const doc = await db_firestore.collection("caisse_parametres").doc("default").get();
+        const params = caisseParametres.withDefaults(doc.exists ? doc.data() : null);
+        // `seeded: false` = aucun doc en base, les valeurs renvoyées sont les
+        // défauts. On n'écrit PAS ici : une lecture ne doit rien créer, et le
+        // premier enregistrement depuis l'écran Paramètres fera foi.
+        return res.json({ success: true, ...params, seeded: doc.exists });
+      }
+
+      if (action === "caisse-parametres-save" && req.method === "POST") {
+        if (!isControle && !isAdmin) return res.status(403).json({ success: false, error: "Seul DG/Finance peut modifier les paramètres de la caisse" });
+        const fermes = caisseParametres.normalizeListe(req.body.fermes);
+        const codes = caisseParametres.normalizeListe(req.body.codes_analytiques);
+        const errFermes = caisseParametres.validateListe("fermes", fermes);
+        if (errFermes) return res.status(400).json({ success: false, error: errFermes });
+        const errCodes = caisseParametres.validateListe("codes analytiques", codes);
+        if (errCodes) return res.status(400).json({ success: false, error: errCodes });
+
+        const now = admin.firestore.FieldValue.serverTimestamp();
+        const payload = { fermes, codes_analytiques: codes, updated_at: now, updated_by: userInfo };
+
+        // Parcelles FIGÉES : envoyées uniquement par le bouton « Rafraîchir » de
+        // l'écran Paramètres. Absentes du corps = on ne touche pas à l'existant
+        // (un simple enregistrement des fermes ne doit pas les effacer).
+        if (req.body.parcelles !== undefined) {
+          const parcelles = caisseParametres.normalizeParcelles(req.body.parcelles);
+          if (parcelles.length === 0) return res.status(400).json({ success: false, error: "Aucune parcelle exploitable reçue — rafraîchissement annulé." });
+          payload.parcelles = parcelles;
+          payload.parcelles_maj_at = Date.now();
+        }
+
+        await db_firestore.collection("caisse_parametres").doc("default").set(payload, { merge: true });
+        const doc = await db_firestore.collection("caisse_parametres").doc("default").get();
+        return res.json({ success: true, ...caisseParametres.withDefaults(doc.data()) });
       }
 
       // ========== SEED DEFAULT CAISSES ==========

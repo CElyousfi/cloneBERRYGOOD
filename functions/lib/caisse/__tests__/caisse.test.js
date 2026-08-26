@@ -332,3 +332,145 @@ test('applyDelta — scénario complet : 3 dépenses validées en masse', () => 
   ]);
   assert.strictEqual(applyDelta(10000, plan.deltaParCaisse.C1), 9808);
 });
+
+// ---------------------------------------------------------------- parametres
+
+const params = require('../parametres');
+
+test('parametres — les 16 codes analytiques par défaut, dans l\'ordre fourni', () => {
+  assert.strictEqual(params.DEFAULT_CODES_ANALYTIQUES.length, 16);
+  assert.strictEqual(params.DEFAULT_CODES_ANALYTIQUES[0], 'Plants');
+  assert.strictEqual(params.DEFAULT_CODES_ANALYTIQUES[15], 'Administration & Frais Généraux');
+  // L'ordre de saisie est l'ordre d'affichage : surtout PAS trié.
+  const trie = params.DEFAULT_CODES_ANALYTIQUES.slice().sort((a, b) => a.localeCompare(b, 'fr'));
+  assert.notDeepStrictEqual(params.DEFAULT_CODES_ANALYTIQUES.slice(), trie);
+});
+
+test('parametres — fermes par défaut, GENERAL inclus', () => {
+  assert.deepStrictEqual(params.DEFAULT_FERMES.slice(),
+    ['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'BAHIA', 'BGF', 'GENERAL']);
+});
+
+test('normalizeListe — trim, vides retirés, ordre préservé', () => {
+  assert.deepStrictEqual(params.normalizeListe(['  F1 ', '', '   ', 'F5']), ['F1', 'F5']);
+  assert.deepStrictEqual(params.normalizeListe(['Engrais', 'Plants']), ['Engrais', 'Plants']);
+});
+
+test('normalizeListe — déduplication insensible à la casse, 1re graphie gardée', () => {
+  assert.deepStrictEqual(params.normalizeListe(['Engrais', 'ENGRAIS', 'engrais', 'Plants']), ['Engrais', 'Plants']);
+});
+
+test('normalizeListe — entrées non-chaînes ignorées, entrée invalide tolérée', () => {
+  assert.deepStrictEqual(params.normalizeListe(['F1', 42, null, undefined, {}, 'F5']), ['F1', 'F5']);
+  assert.deepStrictEqual(params.normalizeListe(null), []);
+  assert.deepStrictEqual(params.normalizeListe('F1'), []);
+});
+
+test('normalizeListe — plafonnée à MAX_ITEMS', () => {
+  const grande = Array.from({ length: params.MAX_ITEMS + 50 }, (_, i) => 'C' + i);
+  assert.strictEqual(params.normalizeListe(grande).length, params.MAX_ITEMS);
+});
+
+test('validateListe — liste vide refusée', () => {
+  assert.match(params.validateListe('fermes', []), /ne peut pas être vide/);
+  assert.match(params.validateListe('fermes', null), /ne peut pas être vide/);
+});
+
+test('validateListe — entrée trop longue refusée', () => {
+  const long = 'x'.repeat(params.MAX_LEN + 1);
+  assert.match(params.validateListe('codes analytiques', ['OK', long]), /trop longue/);
+  assert.strictEqual(params.validateListe('codes analytiques', ['OK', 'x'.repeat(params.MAX_LEN)]), null);
+});
+
+test('withDefaults — doc absent ou vide → valeurs par défaut', () => {
+  const p1 = params.withDefaults(null);
+  assert.deepStrictEqual(p1.fermes, params.DEFAULT_FERMES.slice());
+  assert.deepStrictEqual(p1.codes_analytiques, params.DEFAULT_CODES_ANALYTIQUES.slice());
+  const p2 = params.withDefaults({ fermes: [], codes_analytiques: [] });
+  assert.strictEqual(p2.fermes.length, 9);
+  assert.strictEqual(p2.codes_analytiques.length, 16);
+});
+
+test('withDefaults — doc partiel : seule la liste vide retombe au défaut', () => {
+  const p = params.withDefaults({ fermes: ['F1', 'BAHIA'] });
+  assert.deepStrictEqual(p.fermes, ['F1', 'BAHIA']);
+  assert.strictEqual(p.codes_analytiques.length, 16);
+});
+
+test('withDefaults — ne renvoie jamais une référence aux constantes', () => {
+  const p = params.withDefaults(null);
+  p.fermes.push('PIRATE');
+  assert.strictEqual(params.DEFAULT_FERMES.indexOf('PIRATE'), -1);
+});
+
+test('estAutorisee — vide toujours accepté (axes facultatifs)', () => {
+  assert.strictEqual(params.estAutorisee('', ['F1']), true);
+  assert.strictEqual(params.estAutorisee(null, ['F1']), true);
+  assert.strictEqual(params.estAutorisee('  ', ['F1']), true);
+});
+
+test('estAutorisee — appartenance stricte à la liste', () => {
+  assert.strictEqual(params.estAutorisee('F1', ['F1', 'F5']), true);
+  assert.strictEqual(params.estAutorisee('F9', ['F1', 'F5']), false);
+  assert.strictEqual(params.estAutorisee('f1', ['F1', 'F5']), false);
+  // Liste absente ou vide = pas de contrainte
+  assert.strictEqual(params.estAutorisee('F9', []), true);
+  assert.strictEqual(params.estAutorisee('F9', undefined), true);
+});
+
+test('validateAxes — accepte une ferme configurée hors liste par défaut', () => {
+  assert.match(axes.validateAxes({ ferme: 'SERRE NORD' }), /Ferme invalide/);
+  assert.strictEqual(axes.validateAxes({ ferme: 'SERRE NORD' }, { fermes: ['SERRE NORD', 'F1'] }), null);
+});
+
+test('validateAxes — refuse une ferme absente de la liste configurée', () => {
+  assert.match(axes.validateAxes({ ferme: 'F5' }, { fermes: ['F1', 'BAHIA'] }), /Ferme invalide/);
+});
+
+test('validateAxes — liste injectée vide → repli sur les fermes par défaut', () => {
+  assert.strictEqual(axes.validateAxes({ ferme: 'F5' }, { fermes: [] }), null);
+  assert.match(axes.validateAxes({ ferme: 'INCONNUE' }, { fermes: [] }), /Ferme invalide/);
+});
+
+test('normalizeParcelles — champs retenus, label obligatoire', () => {
+  const out = params.normalizeParcelles([
+    { label: '  F5 CORINA  ', nom: ' CORINA ', culture: 'Myrtille', ferme: 'F5', campagne: '2026-2027' },
+    { label: '', culture: 'Myrtille' },
+    { culture: 'Myrtille' },
+    null, 'F1', 42,
+  ]);
+  assert.deepStrictEqual(out, [{ label: 'F5 CORINA', nom: 'CORINA', culture: 'Myrtille', ferme: 'F5', campagne: '2026-2027' }]);
+});
+
+test('normalizeParcelles — nom absent → repli sur le label', () => {
+  const out = params.normalizeParcelles([{ label: 'F1 ADELITA S2' }]);
+  assert.deepStrictEqual(out, [{ label: 'F1 ADELITA S2', nom: 'F1 ADELITA S2', culture: '', ferme: '', campagne: '' }]);
+});
+
+test('normalizeParcelles — doublons de label écartés, ordre préservé', () => {
+  const out = params.normalizeParcelles([
+    { label: 'P2' }, { label: 'P1' }, { label: 'p2' }, { label: 'P3' },
+  ]);
+  assert.deepStrictEqual(out.map(p => p.label), ['P2', 'P1', 'P3']);
+});
+
+test('normalizeParcelles — entrées invalides → tableau vide', () => {
+  assert.deepStrictEqual(params.normalizeParcelles(null), []);
+  assert.deepStrictEqual(params.normalizeParcelles('P1'), []);
+  assert.deepStrictEqual(params.normalizeParcelles([]), []);
+});
+
+test('withDefaults — parcelles SANS repli : vide reste vide', () => {
+  // Contrairement aux fermes et aux codes, aucune valeur par défaut n'est
+  // possible : une liste vide signifie « jamais rafraîchie ».
+  assert.deepStrictEqual(params.withDefaults(null).parcelles, []);
+  assert.deepStrictEqual(params.withDefaults({ parcelles: [] }).parcelles, []);
+  assert.strictEqual(params.withDefaults(null).parcelles_maj_at, null);
+});
+
+test('withDefaults — parcelles conservées et normalisées', () => {
+  const p = params.withDefaults({ parcelles: [{ label: 'P1', culture: 'Myrtille' }], parcelles_maj_at: 1234 });
+  assert.strictEqual(p.parcelles.length, 1);
+  assert.strictEqual(p.parcelles[0].culture, 'Myrtille');
+  assert.strictEqual(p.parcelles_maj_at, 1234);
+});

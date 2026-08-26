@@ -72,8 +72,13 @@
   // La parcelle est filtrée par CULTURE + CAMPAGNE, exactement comme dans les
   // Bons de Consommation (MagBCTab). La FERME n'alimente PAS cette liste : elle
   // est déduite de la parcelle choisie.
-  const CSAI_FERMES = ['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'BAHIA', 'BGF'];
+  // Repli tant que les Paramètres n'ont pas répondu. DOIT rester aligné sur
+  // DEFAULT_FERMES (functions/lib/caisse/parametres.js).
+  const CSAI_FERMES = ['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'BAHIA', 'BGF', 'GENERAL'];
   const CSAI_CULTURES_FALLBACK = ['Framboise', 'Myrtille', 'Avocatier'];
+  // Repli si les Paramètres sont injoignables. DOIT rester aligné sur
+  // DEFAULT_CODES_ANALYTIQUES (functions/lib/caisse/parametres.js).
+  const CSAI_CODES_FALLBACK = ['Plants', 'Loyer terrains', 'Engrais', 'Pesticides', 'Eau ORMVA', 'Électricité', 'Combustibles', 'Fumier & Taille', 'Salaires & Encadrement', 'Quinzaines', 'CNSS & IR', 'Irrigation & Brumisation', 'Entretien & Réparations', 'Matériels & Équipements', 'Logistique & Transport', 'Administration & Frais Généraux'];
   const CSAI_GENERAL = 'GENERAL';
 
   /** Campagne agricole d'une date (bascule au 1er juillet). */
@@ -89,11 +94,42 @@
     return start + '-' + (start + 1);
   }
 
-  /** Prédicat de filtre culture — lib absente ou filtre vide → on ne filtre pas. */
-  function CSAI_cultureOk(parcelle, filtre, sbMap) {
-    const CU = window.CultureUtils;
-    if (!CU || !filtre) return true;
-    return CU.matchesCulture(parcelle, filtre, sbMap);
+  // En régime normal, la culture est déjà résolue et figée dans les Paramètres :
+  // la saisie se contente d'une égalité de chaînes. Ce qui suit ne sert QUE au
+  // repli ci-dessous, quand les parcelles n'ont pas encore été figées.
+  //
+  // Repli : charge les parcelles directement depuis le référentiel de campagne.
+  // C'est LENT (agrégation BEE ONE), donc réservé au cas où les Paramètres ne
+  // répondent pas ou n'ont jamais été rafraîchis — sans lui, le champ Parcelle
+  // ne proposerait que GENERAL, ce qui est pire que lent.
+  function CSAI_chargerParcellesDirect() {
+    return Promise.all([fetch('/api/pointage-rh?action=parcelles-campagne-list').then(r => r.json()), fetch('/api/pointage-rh?action=sb-referentiel-list').then(r => r.json()).catch(() => ({
+      success: false
+    }))]).then(([ref, sb]) => {
+      if (!ref || !ref.success) return [];
+      const sbMap = {};
+      if (sb && sb.success) (sb.parcelles || []).forEach(p => {
+        sbMap[(p.label_bee_one || p.id || '').toUpperCase().trim()] = p;
+      });
+      const CU = window.CultureUtils;
+      const campCourante = CSAI_campagneOf(new Date().toISOString().slice(0, 10));
+      const an = parseInt(String(campCourante).slice(0, 4), 10) - 1;
+      const campPrec = Number.isFinite(an) ? `${an}-${an + 1}` : '';
+      const build = (liste, campagne) => (liste || []).map(p => {
+        const e = sbMap[(p.label || '').toUpperCase().trim()];
+        return {
+          label: p.label,
+          nom: e && e.nom_sb ? e.nom_sb : p.label,
+          culture: CU ? CU.resolveCulture({
+            label: p.label,
+            culture: p.culture
+          }, sbMap) : p.culture || '',
+          ferme: p.ferme || '',
+          campagne
+        };
+      });
+      return [...build(ref.campagne_courante, campCourante), ...build(ref.campagne_precedente, campPrec)];
+    }).catch(() => []);
   }
   function CaisseSaisieSub({
     caisses,
@@ -136,37 +172,51 @@
     });
     const [saving, setSaving] = useState(false);
     const [codesAnalytiques, setCodesAnalytiques] = useState([]);
-    // Parcelles de la campagne courante / précédente (même source que les Bons
-    // de Consommation : action parcelles-campagne-list).
-    const [refParcelles, setRefParcelles] = useState({
-      courante: [],
-      precedente: []
-    });
-    // Référentiel Smart Berry (culture_sb fait autorité sur la culture BEE ONE).
-    const [sbRefMap, setSbRefMap] = useState(() => window.SB_PARCELLE_REF || {});
+    // Repli sur la liste par défaut tant que les paramètres n'ont pas répondu :
+    // le champ Ferme ne doit jamais être un menu vide.
+    const [fermesDispo, setFermesDispo] = useState(CSAI_FERMES);
+    // Parcelles figées dans les Paramètres de la caisse : culture et ferme y sont
+    // déjà résolues, donc aucun calcul ni aucune requête lente à la saisie.
+    const [parcellesRef, setParcellesRef] = useState([]);
+    const [parcellesLoading, setParcellesLoading] = useState(true);
+
+    // Fermes et codes analytiques viennent des PARAMÈTRES de la caisse
+    // (onglet Paramètres) — source unique. On n'utilise PAS
+    // /api/stock?action=list-codes-analytiques : celui-là sert le plan
+    // analytique des Achats et renvoie des objets {id, code, libelle, …},
+    // que ce formulaire rendait en « [object Object] ».
     React.useEffect(() => {
-      fetch('/api/stock?action=list-codes-analytiques').then(r => r.json()).then(json => {
-        if (json.success && json.codes) setCodesAnalytiques(json.codes);
-      }).catch(() => {});
-    }, []);
-    React.useEffect(() => {
-      fetch('/api/pointage-rh?action=parcelles-campagne-list').then(r => r.json()).then(j => {
-        if (j.success) setRefParcelles({
-          courante: j.campagne_courante || [],
-          precedente: j.campagne_precedente || []
-        });
-      }).catch(() => {});
-    }, []);
-    React.useEffect(() => {
-      fetch('/api/pointage-rh?action=sb-referentiel-list').then(r => r.json()).then(j => {
-        if (!j.success) return;
-        const map = {};
-        (j.parcelles || []).forEach(p => {
-          map[(p.label_bee_one || p.id || '').toUpperCase().trim()] = p;
-        });
-        window.SB_PARCELLE_REF = map;
-        setSbRefMap(map);
-      }).catch(() => {});
+      let annule = false;
+      fetch('/api/caisse?action=caisse-parametres-get').then(r => r.json()).then(json => {
+        if (!json || !json.success) throw new Error(json && json.error);
+        if (Array.isArray(json.codes_analytiques) && json.codes_analytiques.length) setCodesAnalytiques(json.codes_analytiques);
+        if (Array.isArray(json.fermes) && json.fermes.length) setFermesDispo(json.fermes);
+        // Cas nominal : parcelles FIGÉES → instantané, aucune agrégation.
+        if (Array.isArray(json.parcelles) && json.parcelles.length) {
+          if (!annule) {
+            setParcellesRef(json.parcelles);
+            setParcellesLoading(false);
+          }
+          return null;
+        }
+        // Paramètres OK mais parcelles jamais rafraîchies → repli lent.
+        return CSAI_chargerParcellesDirect();
+      }).catch(() => {
+        // Paramètres injoignables (backend pas encore déployé, réseau) : listes
+        // par défaut plutôt qu'un menu VIDE, qui empêcherait de saisir.
+        if (!annule) {
+          setCodesAnalytiques(CSAI_CODES_FALLBACK);
+          setFermesDispo(CSAI_FERMES);
+        }
+        return CSAI_chargerParcellesDirect();
+      }).then(directes => {
+        if (annule || directes === null) return;
+        setParcellesRef(directes || []);
+        setParcellesLoading(false);
+      });
+      return () => {
+        annule = true;
+      };
     }, []);
 
     // --- Dérivations des axes analytiques ---
@@ -174,14 +224,19 @@
     const campagneToday = CSAI_campagneOf(new Date().toISOString().slice(0, 10));
     // Le bon appartient à la campagne de SA date : on propose donc les parcelles
     // de cette campagne-là, pas celles d'aujourd'hui.
-    const refForCampagne = campagne && campagne !== campagneToday && refParcelles.precedente.length > 0 ? refParcelles.precedente : refParcelles.courante;
+    // Parcelles de la campagne du bon (celle de SA date, pas celle d'aujourd'hui).
+    // Si aucune n'est enregistrée pour cette campagne, on retombe sur toutes les
+    // parcelles connues plutôt que de n'en proposer aucune.
+    const _parcCampagne = parcellesRef.filter(p => p.campagne === campagne);
+    const refForCampagne = _parcCampagne.length ? _parcCampagne : parcellesRef;
     const cultures = window.CultureUtils && window.CultureUtils.CULTURES || CSAI_CULTURES_FALLBACK;
-    const parcellesDispo = refForCampagne.filter(p => CSAI_cultureOk(p, form.culture, sbRefMap));
+    // Culture déjà résolue au rafraîchissement : simple égalité, pas d'heuristique.
+    const parcellesDispo = refForCampagne.filter(p => !form.culture || p.culture === form.culture);
     // Nom affiché = nom_sb du référentiel s'il existe ; la VALEUR stockée reste
     // toujours le libellé BEE ONE (clé de jointure analytique).
     const parcelleNom = label => {
-      const e = sbRefMap[(label || '').toUpperCase().trim()];
-      return e && e.nom_sb ? e.nom_sb : label || '';
+      const e = parcellesRef.find(p => p.label === label);
+      return e && e.nom ? e.nom : label || '';
     };
     const parcelleReelle = !!form.parcelle && form.parcelle !== CSAI_GENERAL;
 
@@ -208,7 +263,7 @@
           ...f,
           culture: val
         };
-        const encoreDispo = refForCampagne.some(p => p.label === f.parcelle && CSAI_cultureOk(p, val, sbRefMap));
+        const encoreDispo = refForCampagne.some(p => p.label === f.parcelle && (!val || p.culture === val));
         return encoreDispo ? {
           ...f,
           culture: val
@@ -312,6 +367,17 @@
         if (!json.changes || json.changes.length === 0) alert('Aucune modification à enregistrer');else if (json.devalidated) alert('Modifications enregistrées — le bon repasse en « Saisi » et doit être re-validé par la DG.');else alert('Modifications enregistrées');
         onDone();
       }).catch(err => alert('Erreur: ' + err.message)).finally(() => setSaving(false));
+    };
+
+    // Le formulaire a-t-il été touché ? Sert à ne demander confirmation à
+    // l'annulation que si l'utilisateur a réellement quelque chose à perdre.
+    const CSAI_dirty = () => {
+      if (CSAI_isEdit) return true; // en édition, on ne sait pas ce qui a bougé : on confirme
+      return !!(form.montant || form.reference || form.description || form.code_analytique || form.matricule || form.beneficiaire_nom || form.ferme || form.culture || form.parcelle || form.files && form.files.length > 0);
+    };
+    const cancel = () => {
+      if (CSAI_dirty() && !window.confirm('Abandonner ce bon ? Les informations saisies seront perdues.')) return;
+      if (onCancel) onCancel();
     };
     const inputStyle = {
       width: '100%',
@@ -591,7 +657,18 @@
       value: p.label
     }, parcelleNom(p.label))), form.parcelle && form.parcelle !== CSAI_GENERAL && !parcellesDispo.some(p => p.label === form.parcelle) && /*#__PURE__*/React.createElement("option", {
       value: form.parcelle
-    }, parcelleNom(form.parcelle), " (hors campagne/culture)")), form.culture && parcellesDispo.length === 0 && /*#__PURE__*/React.createElement("div", {
+    }, parcelleNom(form.parcelle), " (hors campagne/culture)")), parcellesLoading && /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 11,
+        color: 'var(--gray-400)',
+        marginTop: 4
+      }
+    }, /*#__PURE__*/React.createElement("i", {
+      className: "fa-solid fa-spinner fa-spin",
+      style: {
+        marginRight: 4
+      }
+    }), "Chargement des parcelles\u2026"), !parcellesLoading && form.culture && parcellesDispo.length === 0 && /*#__PURE__*/React.createElement("div", {
       style: {
         fontSize: 11,
         color: 'var(--orange)',
@@ -635,7 +712,7 @@
       style: inputStyle
     }, /*#__PURE__*/React.createElement("option", {
       value: ""
-    }, "\u2014 Aucune \u2014"), CSAI_FERMES.map(f => /*#__PURE__*/React.createElement("option", {
+    }, "\u2014 Aucune \u2014"), fermesDispo.map(f => /*#__PURE__*/React.createElement("option", {
       key: f,
       value: f
     }, f)))), /*#__PURE__*/React.createElement("div", null), (form.type === 'paie' || form.type === 'transport') && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
@@ -781,7 +858,7 @@
         justifyContent: 'flex-end'
       }
     }, CSAI_isEdit ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
-      onClick: () => onCancel && onCancel(),
+      onClick: cancel,
       disabled: saving,
       style: {
         padding: '10px 20px',
@@ -817,7 +894,27 @@
       style: {
         marginRight: 6
       }
-    }), "Enregistrer les modifications")) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
+    }), "Enregistrer les modifications")) : /*#__PURE__*/React.createElement(React.Fragment, null, onCancel && /*#__PURE__*/React.createElement("button", {
+      onClick: cancel,
+      disabled: saving,
+      style: {
+        padding: '10px 20px',
+        borderRadius: 10,
+        border: '1px solid var(--gray-200)',
+        background: 'white',
+        cursor: 'pointer',
+        fontSize: 13,
+        fontWeight: 500,
+        color: 'var(--gray-600)',
+        marginRight: 'auto',
+        opacity: saving ? 0.5 : 1
+      }
+    }, /*#__PURE__*/React.createElement("i", {
+      className: "fa-solid fa-xmark",
+      style: {
+        marginRight: 6
+      }
+    }), "Annuler"), /*#__PURE__*/React.createElement("button", {
       onClick: () => submit(true),
       disabled: saving,
       style: {
