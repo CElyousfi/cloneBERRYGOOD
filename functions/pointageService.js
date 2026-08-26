@@ -4444,20 +4444,28 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
         const campagne = { label: campagneLabel.replace('-', '/') };
 
         const cached = await withCache(
-          // Clé versionnée v2 : la source a changé, l'ancien cache v1 (miroir)
-          // ne doit jamais être resservi.
-          pointageCacheKey(`campagne_conso_parcelle_v2_${campagneLabel}`, _fermeFilter, _cultureFilter),
+          // Clé versionnée v3 : la FORME de la réponse change (seau à classer +
+          // `articles_a_classer`). Sans ce bump, un cache chaud resservirait
+          // l'ancienne forme pendant 30 min et le bandeau paraîtrait cassé.
+          // (v1 = miroir BEE ONE, v2 = bascule vers les bons Smart Berry.)
+          pointageCacheKey(`campagne_conso_parcelle_v3_${campagneLabel}`, _fermeFilter, _cultureFilter),
           30 * 60 * 1000,
           async () => {
-            const [bons, referentiel] = await Promise.all([
+            const [bons, referentiel, catByArticle] = await Promise.all([
               consoBons.fetchBonsConsommation(db_firestore),
               consoBons.fetchReferentielParcelles(db_firestore),
+              // La catégorie engrais/pesticide vient de l'ARTICLE, jamais du
+              // type declaré sur le bon (48 bons /48 en `engrais` en prod).
+              // Lecture de plus, mise en cache 30 min avec le reste : coût
+              // négligeable à 1125 fiches.
+              consoBons.fetchArticleCategories(db_firestore),
             ]);
 
             const rows = consoBons.adaptBonsToConsoRows(bons, {
               campagne: campagneLabel,
               haByLabel: referentiel.haByLabel,
               sbMap: referentiel.sbMap,
+              catByArticle,
             });
 
             // Cloisonnement chef appliqué DANS l'agrégation, fail-closed :
@@ -4494,6 +4502,12 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
               parcelles_ferme_indeterminee: consoBons.resolveFermeInconnue(
                 rows.map((r) => r.Parcelle_Culturale)
               ),
+              // Articles dont la catégorie catalogue n'est ni engrais ni
+              // pesticide (ou qui n'ont pas de fiche) : ils ne sont plus
+              // ignorés en silence, l'écran les nomme. Même précaution que
+              // ci-dessus : calculé sur les lignes AVANT filtrage de périmètre,
+              // sinon un chef ne verrait jamais ce qui manque au catalogue.
+              articles_a_classer: consoBons.articlesAClasser(rows),
               parcelles,
             };
           }

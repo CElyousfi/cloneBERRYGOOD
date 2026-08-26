@@ -7783,9 +7783,17 @@ exports.stockManagement = functions
       }
 
       if (action === "create-bc" && req.method === "POST") {
-        const { type, date, authorized_by, items, scan_url, created_by } = req.body;
-        if (!type || !items?.length) {
-          return res.status(400).json({ success: false, error: "Champs requis: type, items[]" });
+        const { date, authorized_by, items, scan_url, created_by } = req.body;
+        // `type` est une DÉCLARATION D'INTENTION du magasinier : il ne pilote
+        // PLUS la classification analytique, qui vient désormais de la fiche
+        // catalogue de chaque ARTICLE (functions/lib/consoBons). L'onglet
+        // « Tous » n'a pas de type ; plutôt qu'un repli MUET côté client
+        // (`type || 'engrais'`, qui a produit 48 bons /48 en engrais et un
+        // onglet Pesticides structurellement vide), le défaut est posé ICI,
+        // explicitement et en un seul endroit.
+        const type = String(req.body.type || "").trim() || "engrais";
+        if (!items?.length) {
+          return res.status(400).json({ success: false, error: "Champs requis: items[]" });
         }
         if (!["engrais", "pesticide"].includes(type)) {
           return res.status(400).json({ success: false, error: "Type invalide (engrais|pesticide)" });
@@ -8579,14 +8587,28 @@ exports.stockManagement = functions
         //    agroSummary, exports campagne).
         //    L'adaptateur produit exactement la forme de ligne mirror consommée
         //    par `aggregateConsoValorisee` — aucun changement en aval.
-        const [bonsConso, refParcelles] = await Promise.all([
+        const [bonsConso, refParcelles, catalogueDocs] = await Promise.all([
           consoBons.fetchBonsConsommation(db_firestore),
           consoBons.fetchReferentielParcelles(db_firestore),
+          // UNE SEULE lecture d'`articles_catalog`, pour DEUX usages : le PMP
+          // (§3 ci-dessous) et la catégorie par article. Cette lecture existait
+          // déjà plus bas ; elle est simplement remontée ici. Ne pas la
+          // dédoubler en appelant `consoBons.fetchArticleCategories`.
+          db_firestore.collection("articles_catalog").get().then((snap) => {
+            const out = [];
+            snap.forEach((doc) => out.push(doc.data() || {}));
+            return out;
+          }),
         ]);
+        // Index « nom d'article → catégorie ». La catégorie était jusqu'ici
+        // JETÉE à la construction de la map PMP, et `Article_Categorie` valait
+        // la catégorie du BON ENTIER — d'où BENEVIA compté en engrais.
+        const catByArticle = consoBons.buildArticleCategoryIndex(catalogueDocs);
         let consoRows = consoBons.adaptBonsToConsoRows(bonsConso, {
           since,
           haByLabel: refParcelles.haByLabel,
           sbMap: refParcelles.sbMap,
+          catByArticle,
         });
         // Filtre culture optionnel (param client), à l'identique de l'ancien
         // filtre `getConsommationRows({culture})` — mais sur la culture RÉSOLUE
@@ -8634,12 +8656,10 @@ exports.stockManagement = functions
         if (perim.culture_filtre) {
           consoRows = consoRows.filter((r) => r.Culture === perim.culture_filtre);
         }
-        // 3) Map de PMP par canon(nom) depuis articles_catalog (active).
+        // 3) Map de PMP par canon(nom) depuis articles_catalog, déjà lu ci-dessus.
         const canon = consoValorisationLib.canon;
-        const catSnap = await db_firestore.collection("articles_catalog").get();
         const pmpMap = {};
-        catSnap.forEach((doc) => {
-          const a = doc.data() || {};
+        catalogueDocs.forEach((a) => {
           if (!a.nom) return;
           const p = parseFloat(a.prix_pmp);
           if (!isFinite(p)) return;

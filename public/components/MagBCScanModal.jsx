@@ -339,7 +339,12 @@
           // (retrait mesuré — 29/73 parcelles pré-remplies avec la liste comme
           // sans, cf. le commentaire de l'action scan-bc). Le rapprochement des
           // parcelles reste ici, contre les options réellement affichées.
-          body: JSON.stringify({ scan_base64: base64, filename, type: type || 'engrais' }),
+          // `type` est envoyé TEL QUEL, vide compris. Depuis l'onglet « Tous »
+          // (type ''), un repli `|| 'engrais'` restreignait le vocabulaire
+          // proposé au modèle vision aux seuls engrais (index.js,
+          // `selectVocabArticles`) : la lecture des pesticides en restait
+          // dégradée. Vide = les deux familles sont offertes.
+          body: JSON.stringify({ scan_base64: base64, filename, type: type || '' }),
         });
       } catch (netErr) {
         // Coupure réseau / timeout : transitoire par nature.
@@ -619,7 +624,9 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            type: type || 'engrais',
+            // Envoyé tel quel, vide compris : le défaut est posé côté serveur
+            // (create-bc), explicitement, plutôt que muet ici.
+            type: type || '',
             date: entry.header.date,
             lieu_source: { type: entry.header.lieu_source_type, id: entry.header.lieu_source_id },
             items: validItems.map(i => ({

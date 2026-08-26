@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 
-const { aggregateConsoParcelle } = require('../aggregateParcelle');
+const { aggregateConsoParcelle, articlesAClasser } = require('../aggregateParcelle');
 const { adaptBonsToConsoRows } = require('../bonsToConsoRows');
 
 // ---------------------------------------------------------------------------
@@ -51,6 +51,7 @@ test('agrège une parcelle avec un engrais', () => {
       ha: 2.5,
       engrais: [{ article: 'UREE 46', qty: 10, unite: 'kg', coutTotal: 0 }],
       pesticides: [],
+      aClasser: [],
       totalEngraisCout: 0,
       totalPesticidesCout: 0,
     },
@@ -91,9 +92,15 @@ test('Pesticides / pesticides / PHYTO-SANITAIRE sont classés en pesticide', () 
   }
 });
 
-test('une catégorie hors engrais/pesticide est IGNORÉE (pas de 3e colonne)', () => {
+test('une catégorie hors engrais/pesticide part dans le seau « à classer »', () => {
+  // Régression du défaut central du ticket : ces lignes faisaient `continue`
+  // et disparaissaient sans laisser de trace (36 lignes en production).
   for (const cat of ['Divers', '', null, undefined, 'EPI']) {
-    assert.deepStrictEqual(aggregateConsoParcelle([row({ Article_Categorie: cat })], OPTS), [], 'catégorie ' + String(cat));
+    const out = aggregateConsoParcelle([row({ Article_Categorie: cat })], OPTS);
+    assert.strictEqual(out.length, 1, 'catégorie ' + String(cat) + ' : parcelle attendue');
+    assert.deepStrictEqual(out[0].aClasser, [{ article: 'UREE 46', qty: 10, unite: 'kg', coutTotal: 0 }]);
+    assert.deepStrictEqual(out[0].engrais, [], 'jamais rangée en engrais par défaut');
+    assert.deepStrictEqual(out[0].pesticides, []);
   }
 });
 
@@ -178,12 +185,64 @@ test('parcelle vide : ligne ignorée', () => {
   assert.deepStrictEqual(aggregateConsoParcelle([row({ Parcelle_Culturale: null })], OPTS), []);
 });
 
-test('une parcelle sans aucun article ne ressort pas', () => {
+test('une parcelle dont TOUTES les lignes sont à classer ressort quand même', () => {
+  // Changement assumé : avant, cette parcelle disparaissait de l'écran avec ses
+  // lignes. Elle ressort désormais, colonnes engrais/pesticides vides, et ses
+  // lignes sont comptées dans `aClasser`.
   const out = aggregateConsoParcelle(
     [row({ Parcelle_Culturale: 'F1 S1' }), row({ Parcelle_Culturale: 'F1 S2', Article_Categorie: 'Divers' })],
     OPTS
   );
-  assert.deepStrictEqual(out.map((p) => p.parcelle), ['F1 S1']);
+  assert.deepStrictEqual(out.map((p) => p.parcelle), ['F1 S1', 'F1 S2']);
+  assert.strictEqual(out[1].engrais.length, 0);
+  assert.strictEqual(out[1].pesticides.length, 0);
+  assert.strictEqual(out[1].aClasser.length, 1);
+});
+
+// ---------------------------------------------------------------------------
+// INVARIANTE DE CONSERVATION — rien ne disparaît en silence
+// ---------------------------------------------------------------------------
+
+test('conservation : Σ entrée == Σ engrais + Σ pesticides + Σ à classer', () => {
+  const rows = [
+    row({ Article: 'UREE 46', Article_Categorie: 'Engrais', Quantite: 10 }),
+    row({ Article: 'MAP', Article_Categorie: 'engrais', Quantite: 5 }),
+    row({ Article: 'DECIS', Article_Categorie: 'PHYTO-SANITAIRE', Quantite: 2 }),
+    row({ Article: 'EXTREME', Article_Categorie: 'autre', Quantite: 17.5 }),
+    row({ Article: 'GENAKTIS', Article_Categorie: '', Quantite: 8 }),
+    row({ Article: 'JOKER', Article_Categorie: 'Divers', Quantite: 1, Parcelle_Culturale: 'F5 S8-1' }),
+  ];
+  const out = aggregateConsoParcelle(rows, OPTS);
+
+  const nbSortie = out.reduce((n, p) => n + p.engrais.length + p.pesticides.length + p.aClasser.length, 0);
+  assert.strictEqual(nbSortie, rows.length, 'aucune ligne perdue');
+
+  const somme = (list) => list.reduce((s, a) => s + a.qty, 0);
+  const qteSortie = out.reduce(
+    (s, p) => s + somme(p.engrais) + somme(p.pesticides) + somme(p.aClasser),
+    0
+  );
+  const qteEntree = rows.reduce((s, r) => s + r.Quantite, 0);
+  assert.strictEqual(qteSortie, qteEntree, 'aucune quantité perdue');
+
+  // Et le détail : 3 lignes tombent bien dans le seau « à classer ».
+  const nbAClasser = out.reduce((n, p) => n + p.aClasser.length, 0);
+  assert.strictEqual(nbAClasser, 3);
+});
+
+test('conservation : le récapitulatif couvre EXACTEMENT le seau à classer', () => {
+  const rows = [
+    row({ Article: 'UREE 46', Article_Categorie: 'Engrais', Quantite: 10 }),
+    row({ Article: 'EXTREME', Article_Categorie: 'autre', Quantite: 10 }),
+    row({ Article: 'EXTREME', Article_Categorie: 'autre', Quantite: 7.5, Parcelle_Culturale: 'F5 S8-1' }),
+  ];
+  const out = aggregateConsoParcelle(rows, OPTS);
+  const recap = articlesAClasser(rows);
+
+  const lignesSeau = out.reduce((n, p) => n + p.aClasser.length, 0);
+  const lignesRecap = recap.reduce((n, a) => n + a.lignes, 0);
+  assert.strictEqual(lignesRecap, lignesSeau);
+  assert.strictEqual(recap[0].quantite, 17.5);
 });
 
 // ---------------------------------------------------------------------------

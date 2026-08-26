@@ -19,6 +19,8 @@
  * dépasse quelques milliers de documents.
  */
 
+const { buildArticleCategoryIndex } = require('./bonsToConsoRows');
+
 /**
  * Lit tous les bons de consommation.
  *
@@ -58,7 +60,33 @@ async function fetchReferentielParcelles(db) {
   return { haByLabel, sbMap };
 }
 
+/**
+ * Lit `articles_catalog` et en dérive l'index « nom d'article → catégorie »
+ * consommé par `adaptBonsToConsoRows` (option `catByArticle`).
+ *
+ * Seules les fiches ACTIVES sont retenues (`active !== false`). Toute
+ * l'arithmétique de l'index (normalisation, clé secondaire, ambiguïté) vit dans
+ * le module PUR `bonsToConsoRows.buildArticleCategoryIndex` : ce wrapper ne fait
+ * que la lecture Firestore. `conso-valorisee`, qui lit DÉJÀ cette collection
+ * pour le PMP, appelle directement le constructeur pur — aucune seconde lecture.
+ *
+ * VOLUME MESURÉ (prod, 2026-08-26) : 1125 fiches actives.
+ *
+ * @param {*} db instance Firestore injectée.
+ * @returns {Promise<import('./bonsToConsoRows').ArticleCategoryIndex>}
+ */
+async function fetchArticleCategories(db) {
+  const snap = await db.collection('articles_catalog').get();
+  const articles = [];
+  snap.forEach((doc) => {
+    const d = doc.data() || {};
+    articles.push({ nom: d.nom, categorie: d.categorie, active: d.active });
+  });
+  return buildArticleCategoryIndex(articles);
+}
+
 module.exports = {
   fetchBonsConsommation,
   fetchReferentielParcelles,
+  fetchArticleCategories,
 };

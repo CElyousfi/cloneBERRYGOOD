@@ -2812,6 +2812,19 @@
   /* ------------------------------------------------------------------ */
   /* Sous-composant : Vue Conso (Engrais / Pesticides)                   */
   /* ------------------------------------------------------------------ */
+
+  /**
+   * Seau de données par sous-onglet. LOOKUP, pas ternaire : le payload porte
+   * désormais un TROISIÈME seau (`aClasser`), et un
+   * `subTab === 'engrais' ? … : …` rangeait tout ce qui n'est pas 'engrais'
+   * dans les pesticides — exactement le genre de repli muet que ce ticket
+   * supprime. Une clé inconnue ne montre RIEN plutôt que n'importe quoi.
+   */
+  var CONSO_BUCKETS = {
+    engrais:    { items: 'engrais',    cout: 'totalEngraisCout' },
+    pesticides: { items: 'pesticides', cout: 'totalPesticidesCout' },
+  };
+
   function ConsoView(props) {
     var consoData = props.consoData;
     var subTab = props.subTab; // 'engrais' | 'pesticides'
@@ -2821,6 +2834,23 @@
 
     var _metric = useState('perha');
     var metric = _metric[0]; var setMetric = _metric[1];
+
+    var bucket = CONSO_BUCKETS[subTab] || { items: '', cout: '' };
+    /** Articles de la parcelle pour le sous-onglet courant. */
+    var itemsOf = function (p) {
+      if (!p || !bucket.items) return [];
+      return p[bucket.items] || [];
+    };
+    /** Coût total de la parcelle pour le sous-onglet courant. */
+    var coutOf = function (p) {
+      if (!p || !bucket.cout) return 0;
+      return p[bucket.cout] || 0;
+    };
+
+    // Articles que le catalogue ne classe ni en engrais ni en pesticide (ou
+    // qui n'ont pas de fiche). Ils ne sont dans AUCUN des deux onglets : sans
+    // ce bandeau, leurs quantités disparaîtraient de l'écran sans un mot.
+    var aClasser = (props.consoData && props.consoData.articles_a_classer) || [];
 
     // Parcelles filtrées
     var parcelles = useMemo(function () {
@@ -2837,7 +2867,7 @@
       var seen = {};
       var list = [];
       parcelles.forEach(function (p) {
-        var items = subTab === 'engrais' ? (p.engrais || []) : (p.pesticides || []);
+        var items = itemsOf(p);
         items.forEach(function (item) {
           if (!seen[item.article]) {
             seen[item.article] = { unite: item.unite };
@@ -2883,15 +2913,13 @@
       var byArticle = {};
       var totalDH = 0;
       parcelles.forEach(function (p) {
-        var items = subTab === 'engrais' ? (p.engrais || []) : (p.pesticides || []);
-        var ha = p.ha || 0;
+        var items = itemsOf(p);
         items.forEach(function (item) {
           if (!byArticle[item.article]) byArticle[item.article] = { qty: 0, cout: 0 };
           byArticle[item.article].qty += item.qty || 0;
           byArticle[item.article].cout += item.coutTotal || 0;
         });
-        var total = subTab === 'engrais' ? (p.totalEngraisCout || 0) : (p.totalPesticidesCout || 0);
-        totalDH += total;
+        totalDH += coutOf(p);
       });
       return { byArticle: byArticle, totalDH: totalDH };
     }, [parcelles, subTab]);
@@ -2902,6 +2930,43 @@
     }, [parcelles]);
 
     return React.createElement('div', null,
+      // Bandeau « à classer » — affiché UNIQUEMENT s'il y a quelque chose à
+      // dire. Ces articles ne sont ni dans l'onglet Engrais ni dans l'onglet
+      // Pesticides : la seule correction possible est au CATALOGUE, pas ici.
+      aClasser.length === 0 ? null : React.createElement('div', {
+        style: {
+          border: '1px solid ' + C.berry,
+          borderLeft: '4px solid ' + C.berry,
+          borderRadius: '6px',
+          background: C.surface2,
+          padding: '12px 14px',
+          marginBottom: '16px',
+          fontSize: '13px',
+          color: C.text,
+        }
+      },
+        React.createElement('div', { style: { fontWeight: 700, color: C.berry, marginBottom: '6px' } },
+          aClasser.length + (aClasser.length > 1 ? ' articles ne sont ni engrais ni pesticide au catalogue'
+                                                : ' article n\'est ni engrais ni pesticide au catalogue')
+        ),
+        React.createElement('div', { style: { color: C.textSec, marginBottom: '8px' } },
+          'Leurs quantités ne sont comptées dans AUCUN des deux onglets. '
+          + 'Corrigez la catégorie de ces articles dans le catalogue (Stock › Articles) : '
+          + 'la correction vaut pour tout l\'historique, sans ressaisir les bons.'
+        ),
+        React.createElement('ul', { style: { margin: 0, paddingLeft: '18px' } },
+          aClasser.map(function (a) {
+            return React.createElement('li', { key: a.article, style: { marginBottom: '2px' } },
+              React.createElement('strong', null, a.article),
+              ' — ' + a.lignes + (a.lignes > 1 ? ' lignes' : ' ligne')
+              + ', ' + fmtQty(a.quantite) + (a.unite ? ' ' + a.unite : ''),
+              React.createElement('span', { style: { color: C.textSec } },
+                ' (catégorie actuelle : ' + a.categorie_actuelle + ')'
+              )
+            );
+          })
+        )
+      ),
       // Barre de contrôle (métrique)
       React.createElement('div', {
         style: { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }
@@ -2942,7 +3007,7 @@
                     // Trouver l'unité dans les données
                     var unite = '';
                     for (var pi = 0; pi < parcelles.length; pi++) {
-                      var items = subTab === 'engrais' ? (parcelles[pi].engrais || []) : (parcelles[pi].pesticides || []);
+                      var items = itemsOf(parcelles[pi]);
                       for (var ii = 0; ii < items.length; ii++) {
                         if (items[ii].article === art) { unite = items[ii].unite || ''; break; }
                       }
@@ -2959,9 +3024,9 @@
               React.createElement('tbody', null,
                 parcelles.map(function (p, idx) {
                   var itemMap = {};
-                  var items = subTab === 'engrais' ? (p.engrais || []) : (p.pesticides || []);
+                  var items = itemsOf(p);
                   items.forEach(function (item) { itemMap[item.article] = item; });
-                  var totalParcelle = subTab === 'engrais' ? (p.totalEngraisCout || 0) : (p.totalPesticidesCout || 0);
+                  var totalParcelle = coutOf(p);
                   return React.createElement('tr', {
                     key: p.parcelle,
                     style: { background: idx % 2 === 0 ? C.surface : C.surface2 }

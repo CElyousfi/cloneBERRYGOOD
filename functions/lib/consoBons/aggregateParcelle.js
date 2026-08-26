@@ -27,6 +27,22 @@
  *     (cf. accessControl.CHEF_PROFILE_CULTURE) : sans lui, `chef_f1` verrait
  *     tout.
  *
+ *  3. PLUS RIEN NE DISPARAÎT EN SILENCE (2026-08-26, ticket
+ *     sb/conso-categorie-article). Cette fonction faisait `continue` sur toute
+ *     ligne de famille 'autre' : 36 lignes de production s'évaporaient sans
+ *     laisser de trace. Elles atterrissent désormais dans un TROISIÈME seau
+ *     `aClasser` par parcelle, et `articlesAClasser(rows)` en produit le
+ *     récapitulatif global affiché en bandeau.
+ *     Invariante de conservation : Σ lignes entrantes exploitables ==
+ *     Σ engrais + Σ pesticides + Σ à classer. Elle est ASSERTÉE dans les tests.
+ *     Conséquence assumée : une parcelle dont TOUTES les lignes sont à classer
+ *     ressort désormais, avec `engrais` et `pesticides` vides.
+ *
+ * ⚠️ `articlesAClasser` se calcule sur les lignes AVANT tout filtrage de
+ * périmètre — même piège que `parcelles_ferme_indeterminee`
+ * (pointageService.js:4494) : après filtrage, ce qu'on cherche à montrer a
+ * justement disparu, et un chef ne verrait jamais ce qui manque au catalogue.
+ *
  * Aucune lecture Firestore : Ha, dérivation de ferme et référentiel de culture
  * entrent par argument (DI).
  *
@@ -79,7 +95,7 @@ function __ap_str(v) {
  *   Article_Categorie, Quantite, Article_unite, Culture, Parcelle_sup}`.
  * @param {AggregateOptions} [options]
  * @returns {Array<Object>} parcelles `{parcelle, ferme, ha, engrais,
- *   pesticides, totalEngraisCout, totalPesticidesCout}`.
+ *   pesticides, aClasser, totalEngraisCout, totalPesticidesCout}`.
  */
 function aggregateConsoParcelle(rows, options) {
   const list = Array.isArray(rows) ? rows : [];
@@ -98,9 +114,8 @@ function aggregateConsoParcelle(rows, options) {
     const parcelle = __ap_str(row.Parcelle_Culturale);
     if (!parcelle) continue;
 
+    // 'autre' n'est plus ignoré : il part dans le seau `aClasser` (cf. en-tête).
     const famille = familleBucket(row.Article_Categorie);
-    // 'autre' n'a pas de colonne sur cet écran : la ligne est ignorée.
-    if (famille !== 'engrais' && famille !== 'pesticide') continue;
 
     const qty = parseFloat(String(row.Quantite));
     if (!isFinite(qty)) continue;
@@ -124,6 +139,7 @@ function aggregateConsoParcelle(rows, options) {
         ha: isFinite(ha) && ha > 0 ? ha : 0,
         engraisMap: {},
         pesticidesMap: {},
+        aClasserMap: {},
       };
     }
     const acc = byParcelle[parcelle];
@@ -131,7 +147,9 @@ function aggregateConsoParcelle(rows, options) {
 
     const article = __ap_str(row.Article);
     const unite = __ap_str(row.Article_unite);
-    const map = famille === 'engrais' ? acc.engraisMap : acc.pesticidesMap;
+    const map = famille === 'engrais'
+      ? acc.engraisMap
+      : (famille === 'pesticide' ? acc.pesticidesMap : acc.aClasserMap);
     if (!map[article]) {
       map[article] = { article, qty: 0, unite, coutTotal: 0 };
     }
@@ -147,6 +165,9 @@ function aggregateConsoParcelle(rows, options) {
       ha: p.ha,
       engrais: Object.values(p.engraisMap).sort((a, b) => a.article.localeCompare(b.article)),
       pesticides: Object.values(p.pesticidesMap).sort((a, b) => a.article.localeCompare(b.article)),
+      // Troisième seau : ni engrais ni pesticide au catalogue. Rendu visible
+      // plutôt que tu — c'est tout l'objet du ticket.
+      aClasser: Object.values(p.aClasserMap).sort((a, b) => a.article.localeCompare(b.article)),
       // Hors périmètre du ticket : la valorisation au PMP de cet écran est une
       // décision produit séparée.
       totalEngraisCout: 0,
@@ -161,6 +182,60 @@ function aggregateConsoParcelle(rows, options) {
     .sort((a, b) => a.parcelle.localeCompare(b.parcelle));
 }
 
+/**
+ * Récapitulatif GLOBAL des articles « à classer » : tout ce que `familleBucket`
+ * range en 'autre', regroupé par libellé d'article.
+ *
+ * ⚠️ À appeler sur les lignes BRUTES, AVANT le filtrage de périmètre
+ * ferme/culture — sinon un chef ne verrait jamais ce qui manque au catalogue
+ * (même raison que `parcelles_ferme_indeterminee`).
+ *
+ * Volontairement PLUS LARGE que `aggregateConsoParcelle` : une ligne sans
+ * parcelle ou de quantité non numérique est quand même comptée en `lignes` (sa
+ * quantité n'est simplement pas cumulée). Le récapitulatif sert à ne RIEN
+ * perdre de vue ; il ne pilote aucun calcul.
+ *
+ * @param {Array<Object>} rows lignes de conso.
+ * @returns {Array<{article: string, categorie_actuelle: string, lignes: number,
+ *   quantite: number, unite: string}>} trié par nombre de lignes décroissant,
+ *   puis par libellé.
+ */
+function articlesAClasser(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  /** @type {Record<string, {article: string, categorie_actuelle: string, lignes: number, quantite: number, unite: string}>} */
+  const byArticle = {};
+
+  for (const row of list) {
+    if (!row || typeof row !== 'object') continue;
+    if (familleBucket(row.Article_Categorie) !== 'autre') continue;
+
+    const article = __ap_str(row.Article);
+    const key = article.toUpperCase();
+    if (!byArticle[key]) {
+      const cat = __ap_str(row.Article_Categorie);
+      byArticle[key] = {
+        article,
+        // Distingue « fiche présente mais mal classée » de « pas de fiche » :
+        // les deux corrections ne sont pas les mêmes côté catalogue.
+        categorie_actuelle: cat || 'absent du catalogue',
+        lignes: 0,
+        quantite: 0,
+        unite: __ap_str(row.Article_unite),
+      };
+    }
+    const acc = byArticle[key];
+    acc.lignes += 1;
+    const qty = parseFloat(String(row.Quantite));
+    if (isFinite(qty)) acc.quantite += qty;
+    if (!acc.unite) acc.unite = __ap_str(row.Article_unite);
+  }
+
+  return Object.keys(byArticle)
+    .map((k) => byArticle[k])
+    .sort((a, b) => (b.lignes - a.lignes) || a.article.localeCompare(b.article));
+}
+
 module.exports = {
   aggregateConsoParcelle,
+  articlesAClasser,
 };

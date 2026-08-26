@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:211dadf24de072ca",
+    "sourceFingerprint": "sha256:de7bf33b68e97cdf",
     "stats": {
       "targetFiles": 266,
       "targetFilesWithDirectTests": 153,
       "targetFilesWithTransitiveTests": 174,
-      "testFilesScanned": 222
+      "testFilesScanned": 224
     }
   },
   "index": {
@@ -267,6 +267,7 @@
         "functions/lib/campagneExport/__tests__/buildWorkbook.test.js",
         "functions/lib/campagneExport/__tests__/renderXlsx.test.js",
         "functions/lib/consoBons/__tests__/aggregateParcelle.test.js",
+        "functions/lib/consoBons/__tests__/articleCategories.test.js",
         "functions/lib/consoBons/__tests__/bonsToConsoRows.test.js",
         "tests/unit/bcScan.test.js",
         "tests/unit/bcScanMatch.test.js",
@@ -330,19 +331,23 @@
     },
     "functions/lib/consoBons/aggregateParcelle.js": {
       "directTests": [
-        "functions/lib/consoBons/__tests__/aggregateParcelle.test.js"
+        "functions/lib/consoBons/__tests__/aggregateParcelle.test.js",
+        "functions/lib/consoBons/__tests__/articleCategories.test.js"
       ],
       "transitiveTests": [
-        "functions/lib/consoBons/__tests__/aggregateParcelle.test.js"
+        "functions/lib/consoBons/__tests__/aggregateParcelle.test.js",
+        "functions/lib/consoBons/__tests__/articleCategories.test.js"
       ]
     },
     "functions/lib/consoBons/bonsToConsoRows.js": {
       "directTests": [
         "functions/lib/consoBons/__tests__/aggregateParcelle.test.js",
+        "functions/lib/consoBons/__tests__/articleCategories.test.js",
         "functions/lib/consoBons/__tests__/bonsToConsoRows.test.js"
       ],
       "transitiveTests": [
         "functions/lib/consoBons/__tests__/aggregateParcelle.test.js",
+        "functions/lib/consoBons/__tests__/articleCategories.test.js",
         "functions/lib/consoBons/__tests__/bonsToConsoRows.test.js"
       ]
     },
@@ -352,6 +357,7 @@
       ],
       "transitiveTests": [
         "functions/lib/consoBons/__tests__/aggregateParcelle.test.js",
+        "functions/lib/consoBons/__tests__/articleCategories.test.js",
         "functions/lib/consoBons/__tests__/bonsToConsoRows.test.js",
         "functions/lib/consoBons/__tests__/fermeConso.test.js"
       ]
@@ -634,6 +640,7 @@
       ],
       "transitiveTests": [
         "functions/lib/consoBons/__tests__/aggregateParcelle.test.js",
+        "functions/lib/consoBons/__tests__/articleCategories.test.js",
         "functions/lib/consoBons/__tests__/bonsToConsoRows.test.js",
         "functions/lib/mappingConso/__tests__/resolver.test.js",
         "functions/lib/pointage/__tests__/campagnePeriodes.test.js",
@@ -1080,6 +1087,7 @@
       ],
       "transitiveTests": [
         "functions/lib/consoBons/__tests__/aggregateParcelle.test.js",
+        "functions/lib/consoBons/__tests__/articleCategories.test.js",
         "functions/lib/consoBons/__tests__/bonsToConsoRows.test.js",
         "functions/lib/consoBons/__tests__/fermeConso.test.js",
         "tests/unit/refParcelleFerme.test.js",
@@ -1380,6 +1388,9 @@
         "tests/unit/articleMerge.test.js"
       ],
       "transitiveTests": [
+        "functions/lib/consoBons/__tests__/aggregateParcelle.test.js",
+        "functions/lib/consoBons/__tests__/articleCategories.test.js",
+        "functions/lib/consoBons/__tests__/bonsToConsoRows.test.js",
         "tests/unit/articleMerge.test.js",
         "tests/unit/bcScan.test.js",
         "tests/unit/bcScanMatch.test.js"
@@ -1431,6 +1442,8 @@
       ],
       "transitiveTests": [
         "functions/lib/consoBons/__tests__/aggregateParcelle.test.js",
+        "functions/lib/consoBons/__tests__/articleCategories.test.js",
+        "functions/lib/consoBons/__tests__/bonsToConsoRows.test.js",
         "tests/unit/consoValorisation.test.js"
       ]
     },
@@ -1440,6 +1453,7 @@
       ],
       "transitiveTests": [
         "functions/lib/consoBons/__tests__/aggregateParcelle.test.js",
+        "functions/lib/consoBons/__tests__/articleCategories.test.js",
         "functions/lib/consoBons/__tests__/bonsToConsoRows.test.js",
         "functions/lib/consoBons/__tests__/fermeConso.test.js",
         "tests/unit/fermeParcelle.test.js"

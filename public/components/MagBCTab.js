@@ -580,13 +580,17 @@
       if (scanFileBC) {
         scanUrl = await uploadScanBC(scanFileBC);
       }
+      // `type` envoyé tel quel, vide compris : le défaut est posé
+      // côté serveur (create-bc). Un repli muet ici a produit
+      // 48 bons /48 en « engrais » et un onglet Pesticides vide ;
+      // la classification vient désormais de l'article, pas du bon.
       fetch('/api/stock?action=create-bc', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          type: type || 'engrais',
+          type: type || '',
           date: form.date,
           lieu_source: {
             type: form.lieu_source_type,

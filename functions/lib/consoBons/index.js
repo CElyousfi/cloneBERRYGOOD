@@ -7,18 +7,34 @@
  * `consumption_vouchers` (ticket sb/conso-campagne-bons).
  */
 
-const { adaptBonsToConsoRows, categorieOf, quantiteOf } = require('./bonsToConsoRows');
-const { aggregateConsoParcelle } = require('./aggregateParcelle');
+const {
+  adaptBonsToConsoRows,
+  categorieOf,
+  quantiteOf,
+  alnumArticleKey,
+  buildArticleCategoryIndex,
+  lookupArticleCategorie,
+} = require('./bonsToConsoRows');
+const { aggregateConsoParcelle, articlesAClasser } = require('./aggregateParcelle');
 const { fermeDeParcelle, resolveFermeInconnue } = require('./fermeConso');
-const { fetchBonsConsommation, fetchReferentielParcelles } = require('./fetchBons');
+const {
+  fetchBonsConsommation,
+  fetchReferentielParcelles,
+  fetchArticleCategories,
+} = require('./fetchBons');
 
 module.exports = {
   adaptBonsToConsoRows,
   categorieOf,
   quantiteOf,
+  alnumArticleKey,
+  buildArticleCategoryIndex,
+  lookupArticleCategorie,
   aggregateConsoParcelle,
+  articlesAClasser,
   fermeDeParcelle,
   resolveFermeInconnue,
   fetchBonsConsommation,
   fetchReferentielParcelles,
+  fetchArticleCategories,
 };

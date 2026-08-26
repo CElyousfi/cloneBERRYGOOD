@@ -353,8 +353,12 @@
                 }
                 let scanUrl = null;
                 if (scanFileBC) { scanUrl = await uploadScanBC(scanFileBC); }
+                // `type` envoyé tel quel, vide compris : le défaut est posé
+                // côté serveur (create-bc). Un repli muet ici a produit
+                // 48 bons /48 en « engrais » et un onglet Pesticides vide ;
+                // la classification vient désormais de l'article, pas du bon.
                 fetch('/api/stock?action=create-bc', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ type: type || 'engrais', date: form.date, lieu_source: { type: form.lieu_source_type, id: form.lieu_source_id }, items: validItems.map(i => ({ article: i.article, quantite: i.quantite, unite: i.unite, parcelle: i.parcelle, parcelle_ref: i.parcelle_ref || '', culture: i.culture, ferme: i.ferme, groupe_id: i.groupe_id || '' })), scan_url: scanUrl, authorized_by: { profileId: currentProfile, name: profileData?.name || currentProfile }, created_by: { profileId: currentProfile, name: profileData?.name || currentProfile } }),
+                    body: JSON.stringify({ type: type || '', date: form.date, lieu_source: { type: form.lieu_source_type, id: form.lieu_source_id }, items: validItems.map(i => ({ article: i.article, quantite: i.quantite, unite: i.unite, parcelle: i.parcelle, parcelle_ref: i.parcelle_ref || '', culture: i.culture, ferme: i.ferme, groupe_id: i.groupe_id || '' })), scan_url: scanUrl, authorized_by: { profileId: currentProfile, name: profileData?.name || currentProfile }, created_by: { profileId: currentProfile, name: profileData?.name || currentProfile } }),
                 }).then(r => r.json()).then(json => {
                     if (json.success) { alert('Bon de consommation ' + json.numero + ' cree'); clearBcDraft(); setShowForm(false); loadBcs(); }
                     else alert('Erreur: ' + (json.error || 'Echec'));

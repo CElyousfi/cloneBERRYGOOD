@@ -49,9 +49,28 @@
  *    RÉEL : `create-bc` éclate les groupes de parcelles au prorata des Ha à
  *    l'écriture (functions/index.js) et ne persiste JAMAIS un libellé de groupe.
  *
- *  - `Article_Categorie` = `bon.cpc_categorie`, qui vaut littéralement
- *    « Engrais » / « Pesticides » — le vocabulaire BEE ONE. Repli sur `bon.type`
- *    ('engrais' → 'Engrais', 'pesticide' → 'Pesticides') si le champ manque.
+ *  - `Article_Categorie` = la catégorie DE L'ARTICLE, résolue au catalogue
+ *    (`articles_catalog`) via l'index injecté `catByArticle`.
+ *    ⚠️ CORRECTION 2026-08-26 (ticket sb/conso-categorie-article). Jusqu'ici ce
+ *    champ valait `bon.cpc_categorie` — donc une catégorie posée sur le BON
+ *    ENTIER, dérivée du type d'onglet du magasinier. Mesuré en prod : 48 bons
+ *    sur 48 en `type: engrais` (le front repliait `type || 'engrais'`), l'onglet
+ *    Pesticides structurellement vide, et BENEVIA — un pesticide — compté en
+ *    engrais. Un même bon papier mélange légitimement les deux familles
+ *    (BC-2026-0048 : BENEVIA + DEPTIL + Ammonitrate + MAP) : une catégorie par
+ *    bon ne PEUT pas être juste.
+ *    La catégorie n'est pas dénormalisée à l'écriture, elle est dérivée à la
+ *    LECTURE : aucune migration Firestore, et une fiche catalogue corrigée
+ *    reperfuse tout l'historique.
+ *    `bon.type` et `bon.cpc_categorie` restent écrits et INTACTS — ils gardent
+ *    la trace de ce que le magasinier a déclaré, ils ne pilotent simplement plus
+ *    la classification analytique.
+ *    FAIL-CLOSED : un article absent du catalogue, ou dont la clé est ambiguë,
+ *    reçoit '' — il partira « à classer » (cf. aggregateParcelle.js), JAMAIS
+ *    dans une famille par défaut. Le repli sur `categorieOf(bon)` ne subsiste
+ *    que lorsque AUCUN index n'est injecté (appelant historique / test) : sans
+ *    catalogue, on ne peut rien résoudre et l'ancien comportement vaut mieux
+ *    qu'un écran vide.
  *    ⚠️ Les consommateurs doivent classer avec `familleBucket` (tolérant à la
  *    casse), JAMAIS avec une égalité stricte.
  *
@@ -71,6 +90,8 @@
 const { campagneOf } = require('../mappingConso/campagneUtils');
 const { resolveCulture } = require('../campagneExport/cultureUtils');
 const { fermeDeParcelle } = require('./fermeConso');
+const { normalizeArticleName } = require('../stockMerge/articleMerge');
+const { familleBucket } = require('../valorisation/consoValorisation');
 
 /** Regex stricte d'une date ISO 'YYYY-MM-DD'. */
 const __cb_ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -108,6 +129,118 @@ function categorieOf(bon) {
 }
 
 /**
+ * @typedef {Object} CatEntry
+ * @property {string} categorie catégorie catalogue telle qu'écrite ('Engrais').
+ * @property {('engrais'|'pesticide'|'autre')} famille bucket de `familleBucket`.
+ * @property {boolean} ambigu deux fiches actives, DEUX FAMILLES différentes sur
+ *   la même clé : la clé ne tranche plus jamais.
+ */
+
+/**
+ * @typedef {Object} ArticleCategoryIndex
+ * @property {Record<string, CatEntry>} byName clé = nom NORMALISÉ
+ *   (`normalizeArticleName` : NFD + diacritiques + minuscules + espaces réduits).
+ * @property {Record<string, CatEntry>} byAlnum clé « alphanumérique seule »
+ *   (ponctuation retirée), consultée en SECOND recours uniquement.
+ */
+
+/**
+ * Clé secondaire « alphanumérique seule » : nom normalisé dont toute la
+ * ponctuation est retirée.
+ *
+ * Justifiée par la mesure (prod, 2026-08-26) : `M.K.P` est absent du catalogue
+ * mais `M-K-P` / `MKP` y sont, en `Engrais`. Sur 1125 fiches actives, cette clé
+ * produit 1003 clés dont 2 seulement sont ambiguës (`bioenergy`, `prioritop`).
+ *
+ * @param {*} nom
+ * @returns {string}
+ */
+function alnumArticleKey(nom) {
+  return normalizeArticleName(nom).replace(/[^a-z0-9]/g, '');
+}
+
+/**
+ * Ajoute une fiche à un index, en marquant la clé AMBIGUË si elle porte déjà
+ * une autre famille. Une clé ambiguë ne tranche plus jamais (fail-closed).
+ *
+ * @param {Record<string, CatEntry>} index
+ * @param {string} key
+ * @param {string} categorie
+ * @param {('engrais'|'pesticide'|'autre')} famille
+ * @returns {void}
+ */
+function __cb_addCat(index, key, categorie, famille) {
+  if (!key) return;
+  const prev = index[key];
+  if (!prev) {
+    index[key] = { categorie, famille, ambigu: false };
+    return;
+  }
+  if (prev.famille !== famille) prev.ambigu = true;
+}
+
+/**
+ * Construit l'index catalogue « nom d'article → catégorie ». PUR : c'est la
+ * forme injectable de `fetchArticleCategories` (fetchBons.js), pour que
+ * `conso-valorisee` — qui lit DÉJÀ `articles_catalog` pour le PMP — le
+ * réutilise sans une seconde lecture Firestore.
+ *
+ * Seules les fiches ACTIVES comptent (`active !== false`) : une fiche
+ * désactivée n'est pas une source de vérité.
+ *
+ * @param {Array<{nom?: string, categorie?: string, active?: boolean}>} articles
+ * @returns {ArticleCategoryIndex}
+ */
+function buildArticleCategoryIndex(articles) {
+  const list = Array.isArray(articles) ? articles : [];
+  /** @type {Record<string, CatEntry>} */
+  const byName = {};
+  /** @type {Record<string, CatEntry>} */
+  const byAlnum = {};
+  for (const a of list) {
+    if (!a || typeof a !== 'object') continue;
+    if (a.active === false) continue;
+    const nom = __cb_str(a.nom);
+    if (!nom) continue;
+    const categorie = __cb_str(a.categorie);
+    const famille = familleBucket(categorie);
+    __cb_addCat(byName, normalizeArticleName(nom), categorie, famille);
+    __cb_addCat(byAlnum, alnumArticleKey(nom), categorie, famille);
+  }
+  return { byName, byAlnum };
+}
+
+/**
+ * Résout la catégorie catalogue d'un libellé d'article.
+ *
+ * Ordre : clé normalisée, puis clé alphanumérique. Une clé AMBIGUË (deux
+ * familles) est traitée comme non résolue — jamais de devinette.
+ *
+ * @param {*} article libellé lu sur le bon.
+ * @param {ArticleCategoryIndex} [index]
+ * @returns {{categorie: string, statut: ('exact'|'alnum'|'ambigu'|'absent')}}
+ */
+function lookupArticleCategorie(article, index) {
+  const idx = index || {};
+  const byName = idx.byName || {};
+  const byAlnum = idx.byAlnum || {};
+  const nom = __cb_str(article);
+  if (!nom) return { categorie: '', statut: 'absent' };
+
+  const exact = byName[normalizeArticleName(nom)];
+  if (exact) {
+    if (exact.ambigu) return { categorie: '', statut: 'ambigu' };
+    return { categorie: exact.categorie, statut: 'exact' };
+  }
+  const alnum = byAlnum[alnumArticleKey(nom)];
+  if (alnum) {
+    if (alnum.ambigu) return { categorie: '', statut: 'ambigu' };
+    return { categorie: alnum.categorie, statut: 'alnum' };
+  }
+  return { categorie: '', statut: 'absent' };
+}
+
+/**
  * Quantité exploitable d'un item : nombre fini strictement positif, sinon null.
  * Accepte les quantités saisies en CHAÎNE ('12.5').
  *
@@ -130,6 +263,11 @@ function quantiteOf(v) {
  *   vaut ce libellé ('2026-2027').
  * @property {string} [since] borne basse inclusive 'YYYY-MM-DD'.
  * @property {string} [until] borne haute inclusive 'YYYY-MM-DD'.
+ * @property {ArticleCategoryIndex} [catByArticle] index catalogue
+ *   « nom d'article → catégorie » (`buildArticleCategoryIndex` /
+ *   `fetchArticleCategories`). ABSENT → l'ancien comportement s'applique
+ *   (catégorie du BON) ; PRÉSENT → la catégorie vient de l'ARTICLE, et un
+ *   article non résolu reçoit '' (il partira « à classer »).
  */
 
 /**
@@ -149,6 +287,7 @@ function adaptBonsToConsoRows(bons, options) {
   const campagne = __cb_str(opts.campagne);
   const since = __cb_str(opts.since);
   const until = __cb_str(opts.until);
+  const catByArticle = opts.catByArticle || null;
 
   const rows = [];
 
@@ -162,7 +301,9 @@ function adaptBonsToConsoRows(bons, options) {
     if (since && date < since) continue;
     if (until && date > until) continue;
 
-    const categorie = categorieOf(bon);
+    // Catégorie DU BON : ne sert plus que de repli quand aucun index catalogue
+    // n'est injecté (cf. en-tête).
+    const categorieBon = categorieOf(bon);
     const items = Array.isArray(bon.items) ? bon.items : [];
 
     for (const item of items) {
@@ -177,10 +318,18 @@ function adaptBonsToConsoRows(bons, options) {
       const key = parcelle.toUpperCase();
       const ha = parseFloat(String(haByLabel[key]));
 
+      const article = __cb_str(item.article);
+      // La catégorie vient de l'ARTICLE dès qu'un catalogue est disponible.
+      // Non résolu (absent / clé ambiguë) → '' : la ligne partira « à classer »,
+      // jamais rangée d'office dans la famille déclarée sur le bon.
+      const categorie = catByArticle
+        ? lookupArticleCategorie(article, catByArticle).categorie
+        : categorieBon;
+
       rows.push({
         Date: date,
         Parcelle_Culturale: parcelle,
-        Article: __cb_str(item.article),
+        Article: article,
         Article_Categorie: categorie,
         Quantite: quantite,
         Article_unite: __cb_str(item.unite),
@@ -203,4 +352,7 @@ module.exports = {
   adaptBonsToConsoRows,
   categorieOf,
   quantiteOf,
+  alnumArticleKey,
+  buildArticleCategoryIndex,
+  lookupArticleCategorie,
 };

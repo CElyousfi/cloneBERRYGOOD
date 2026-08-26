@@ -23,27 +23,27 @@
     },
     "heatmap": [
       {
-        "commits": 47,
+        "commits": 48,
         "file": "public/components/CampagneAnalytiqueTab.js"
       },
       {
-        "commits": 46,
-        "file": "public/app.jsx"
+        "commits": 47,
+        "file": "public/components/CampagneAnalytiqueTab.jsx"
       },
       {
-        "commits": 46,
-        "file": "public/components/CampagneAnalytiqueTab.jsx"
+        "commits": 43,
+        "file": "public/app.jsx"
       },
       {
         "commits": 27,
         "file": "tests/unit/campagneAnalytiquePivot.test.js"
       },
       {
-        "commits": 24,
+        "commits": 25,
         "file": "functions/pointageService.js"
       },
       {
-        "commits": 22,
+        "commits": 23,
         "file": "functions/index.js"
       },
       {
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:2dca877fcaea8ffa",
+    "sourceFingerprint": "sha256:c243e939ebd38d15",
     "stats": {
       "backendModules": 96,
       "cloudFunctions": 91,
@@ -144,7 +144,7 @@
       },
       "gitCoupling": [
         {
-          "coCommits": 4,
+          "coCommits": 5,
           "domain": null,
           "file": "public/components/MagBCScanModal.js",
           "note": "probabilistic",
@@ -473,13 +473,6 @@
           "coCommits": 3,
           "domain": null,
           "file": "functions/lib/paie/coutOuvrierCampagne.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 3,
-          "domain": null,
-          "file": "public/components/CaisseParametresSub.js",
           "note": "probabilistic",
           "windowDays": 90
         }
@@ -868,7 +861,7 @@
       },
       "gitCoupling": [
         {
-          "coCommits": 45,
+          "coCommits": 46,
           "domain": null,
           "file": "public/components/CampagneAnalytiqueTab.js",
           "note": "probabilistic",

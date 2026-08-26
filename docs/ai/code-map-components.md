@@ -1,5 +1,5 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:396b644cbfe316aa -->
+<!-- sourceFingerprint: sha256:dad5094bdc9afa72 -->
 # Code Map — Composants frontend (353)
 
 Chaque composant React de public/app.jsx et public/components/, avec son emplacement exact et le tab qui le monte — à consulter AVANT toute recherche dans app.jsx.
@@ -69,7 +69,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | CaisseTransfertsSub | public/app.jsx:61493 | — |
 | CaisseValidationSub | public/app.jsx:61583 | — |
 | CaisseWarnings | public/app.jsx:62212 | — |
-| CampagneAnalytiqueTab | public/components/CampagneAnalytiqueTab.jsx:3021 | campagne |
+| CampagneAnalytiqueTab | public/components/CampagneAnalytiqueTab.jsx:3086 | campagne |
 | CampagneBudgetTab | public/components/CampagneBudgetTab.jsx:1411 | — |
 | CampagneSegmentTable | public/app.jsx:10943 | — |
 | CampagneTab | public/app.jsx:11044 | — |
@@ -139,7 +139,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | ComingSoonTab | public/app.jsx:63158 | coming_soon |
 | ConditionnementSub | public/app.jsx:25133 | — |
 | ConsoValoriseeTab | public/components/ConsoValoriseeTab.jsx:335 | — |
-| ConsoView | public/components/CampagneAnalytiqueTab.jsx:2815 | — |
+| ConsoView | public/components/CampagneAnalytiqueTab.jsx:2828 | — |
 | CoutRecolteTab | public/app.jsx:8678 | cout_recolte |
 | CPAR_entiteDefaut | public/components/CaisseParametresSub.jsx:31 | — |
 | CPAR_ListeEditable | public/components/CaisseParametresSub.jsx:36 | — |
