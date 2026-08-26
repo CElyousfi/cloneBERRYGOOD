@@ -1,3 +1,7 @@
+
+// Global helper fallbacks
+const cachedFetch = (typeof window !== 'undefined' && window.cachedFetch) ? window.cachedFetch : (url => fetch(url).then(r => r.json()).catch(() => ({ success: false })));
+const loadBonsFromFirestore = (typeof window !== 'undefined' && window.loadBonsFromFirestore) ? window.loadBonsFromFirestore : (() => Promise.resolve([]));
 // @ts-check
 /**
  * Extracted feature module
