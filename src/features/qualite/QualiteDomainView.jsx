@@ -1,6 +1,7 @@
 // @ts-check
 import React, { useState } from 'react';
 import { UiBadge } from '../../shared/components/UiBadge';
+import { defaultAppData } from '../../shared/utils/appDataMock.js';
 import {
   QualiteDashboardTab,
   QualiteInspectionsTab,
@@ -15,18 +16,12 @@ import {
 } from './index.jsx';
 
 /**
- * Full Qualité Domain View with 100% sub-tab coverage.
- * Features:
- *  - Dashboard Qualité & DQR
- *  - Inspections & Historique Contrôles
- *  - Suivi Taux Brix (°B)
- *  - Bons d'Apport
- *  - PFQ Interne & Suivi Calibre
- *  - Expéditions & Conteneurs
- *  - Écarts & Liquidations Qualité
+ * Full Qualité Domain View with 100% sub-tab coverage & safe default data injection.
  */
-export function QualiteDomainView({ activeFarm }) {
+export function QualiteDomainView({ activeFarm, data = defaultAppData }) {
   const [activeSubTab, setActiveSubTab] = useState('dashboard');
+
+  const safeData = data || defaultAppData;
 
   const subTabs = [
     { id: 'dashboard', label: 'Dashboard Qualité', icon: 'fa-chart-line' },
@@ -75,24 +70,24 @@ export function QualiteDomainView({ activeFarm }) {
 
       {/* Sub-Tab Content rendering extracted domain components */}
       <div style={{ minHeight: '400px' }}>
-        {activeSubTab === 'dashboard' && typeof QualiteDashboardTab === 'function' && <QualiteDashboardTab />}
-        {activeSubTab === 'inspections' && typeof QualiteInspectionsTab === 'function' && <QualiteInspectionsTab />}
-        {activeSubTab === 'brix' && typeof QualiteBrixTab === 'function' && <QualiteBrixTab />}
-        {activeSubTab === 'bons_apport' && typeof QualiteBonsApportTab === 'function' && <QualiteBonsApportTab />}
+        {activeSubTab === 'dashboard' && typeof QualiteDashboardTab === 'function' && <QualiteDashboardTab data={safeData} />}
+        {activeSubTab === 'inspections' && typeof QualiteInspectionsTab === 'function' && <QualiteInspectionsTab data={safeData} />}
+        {activeSubTab === 'brix' && typeof QualiteBrixTab === 'function' && <QualiteBrixTab data={safeData} />}
+        {activeSubTab === 'bons_apport' && typeof QualiteBonsApportTab === 'function' && <QualiteBonsApportTab data={safeData} />}
         {activeSubTab === 'pfq' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            {typeof QualitePFQInterneTab === 'function' && <QualitePFQInterneTab />}
-            {typeof QualiteSuiviCalibreTab === 'function' && <QualiteSuiviCalibreTab />}
+            {typeof QualitePFQInterneTab === 'function' && <QualitePFQInterneTab data={safeData} />}
+            {typeof QualiteSuiviCalibreTab === 'function' && <QualiteSuiviCalibreTab data={safeData} />}
           </div>
         )}
-        {activeSubTab === 'expeditions' && typeof QualiteExpeditionsTab === 'function' && <QualiteExpeditionsTab />}
+        {activeSubTab === 'expeditions' && typeof QualiteExpeditionsTab === 'function' && <QualiteExpeditionsTab data={safeData} />}
         {activeSubTab === 'ecarts' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            {typeof QualiteEcartsTab === 'function' && <QualiteEcartsTab />}
-            {typeof QualiteLiquidationsTab === 'function' && <QualiteLiquidationsTab />}
+            {typeof QualiteEcartsTab === 'function' && <QualiteEcartsTab data={safeData} />}
+            {typeof QualiteLiquidationsTab === 'function' && <QualiteLiquidationsTab data={safeData} />}
           </div>
         )}
-        {activeSubTab === 'historique' && typeof QualiteHistoriqueTab === 'function' && <QualiteHistoriqueTab />}
+        {activeSubTab === 'historique' && typeof QualiteHistoriqueTab === 'function' && <QualiteHistoriqueTab data={safeData} />}
       </div>
     </div>
   );

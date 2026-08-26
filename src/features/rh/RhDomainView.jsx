@@ -1,6 +1,7 @@
 // @ts-check
 import React, { useState } from 'react';
 import { UiBadge } from '../../shared/components/UiBadge';
+import { defaultAppData } from '../../shared/utils/appDataMock.js';
 import {
   PointageTab,
   PaieTab,
@@ -13,18 +14,12 @@ import {
 } from './index.jsx';
 
 /**
- * Full RH Domain View with 100% sub-tab coverage.
- * Features:
- *  - Pointage Ouvriers & Validation Chefs
- *  - Calcul Bulletin Paie OJRA
- *  - Primes de Récolte & Barèmes SMAG
- *  - Heures Supplémentaires & Majoration
- *  - Coût Récolte / kg
- *  - Transporteurs & Prestataires
- *  - Jours Fériés & Paramètres RH
+ * Full RH Domain View with 100% sub-tab coverage & safe default data injection.
  */
-export function RhDomainView({ activeFarm }) {
+export function RhDomainView({ activeFarm, data = defaultAppData }) {
   const [activeSubTab, setActiveSubTab] = useState('pointage');
+
+  const safeData = data || defaultAppData;
 
   const subTabs = [
     { id: 'pointage', label: 'Pointage Ouvriers', icon: 'fa-user-check' },
@@ -72,16 +67,16 @@ export function RhDomainView({ activeFarm }) {
 
       {/* Sub-Tab Content rendering extracted domain components */}
       <div style={{ minHeight: '400px' }}>
-        {activeSubTab === 'pointage' && typeof PointageTab === 'function' && <PointageTab />}
-        {activeSubTab === 'paie' && typeof PaieTab === 'function' && <PaieTab />}
-        {activeSubTab === 'primes' && typeof PrimesRecolteTab === 'function' && <PrimesRecolteTab />}
-        {activeSubTab === 'heures_sup' && typeof HeuresSupSub === 'function' && <HeuresSupSub />}
-        {activeSubTab === 'cout_recolte' && typeof CoutRecolteTab === 'function' && <CoutRecolteTab />}
-        {activeSubTab === 'transport' && typeof SousTraitantsConfigPanel === 'function' && <SousTraitantsConfigPanel />}
+        {activeSubTab === 'pointage' && typeof PointageTab === 'function' && <PointageTab data={safeData} />}
+        {activeSubTab === 'paie' && typeof PaieTab === 'function' && <PaieTab data={safeData} />}
+        {activeSubTab === 'primes' && typeof PrimesRecolteTab === 'function' && <PrimesRecolteTab data={safeData} />}
+        {activeSubTab === 'heures_sup' && typeof HeuresSupSub === 'function' && <HeuresSupSub data={safeData} />}
+        {activeSubTab === 'cout_recolte' && typeof CoutRecolteTab === 'function' && <CoutRecolteTab data={safeData} />}
+        {activeSubTab === 'transport' && typeof SousTraitantsConfigPanel === 'function' && <SousTraitantsConfigPanel data={safeData} />}
         {activeSubTab === 'parametres' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            {typeof JoursFeriesConfigPanel === 'function' && <JoursFeriesConfigPanel />}
-            {typeof ParametresTab === 'function' && <ParametresTab />}
+            {typeof JoursFeriesConfigPanel === 'function' && <JoursFeriesConfigPanel data={safeData} />}
+            {typeof ParametresTab === 'function' && <ParametresTab data={safeData} />}
           </div>
         )}
       </div>

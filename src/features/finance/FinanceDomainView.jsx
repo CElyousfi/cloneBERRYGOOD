@@ -1,6 +1,7 @@
 // @ts-check
 import React, { useState } from 'react';
 import { UiBadge } from '../../shared/components/UiBadge';
+import { defaultAppData } from '../../shared/utils/appDataMock.js';
 import {
   FinDashboardTab,
   FinCATab,
@@ -13,18 +14,12 @@ import {
 } from './index.jsx';
 
 /**
- * Full Finance Domain View with 100% sub-tab coverage.
- * Features:
- *  - Workflow Factures & Validation Pipeline
- *  - Gestion Caisse & Trésorerie
- *  - Paie & Charges Sociales (OJRA)
- *  - Liquidations Finance
- *  - Codes Analytiques
- *  - Virements Bancaires
- *  - Sécurité & Registre BSNL
+ * Full Finance Domain View with 100% sub-tab coverage & safe default data injection.
  */
-export function FinanceDomainView({ activeFarm }) {
+export function FinanceDomainView({ activeFarm, data = defaultAppData }) {
   const [activeSubTab, setActiveSubTab] = useState('workflow');
+
+  const safeData = data || defaultAppData;
 
   const subTabs = [
     { id: 'workflow', label: 'Workflow Factures', icon: 'fa-file-invoice-dollar' },
@@ -83,16 +78,16 @@ export function FinanceDomainView({ activeFarm }) {
                 <UiBadge variant="emerald">Postgres Dual-Write Connecté</UiBadge>
               </div>
             </div>
-            {typeof FinDashboardTab === 'function' && <FinDashboardTab />}
+            {typeof FinDashboardTab === 'function' && <FinDashboardTab data={safeData} />}
           </div>
         )}
 
-        {activeSubTab === 'caisse' && typeof FinTresorerieTab === 'function' && <FinTresorerieTab />}
-        {activeSubTab === 'ojra' && typeof FinOjraTab === 'function' && <FinOjraTab />}
-        {activeSubTab === 'liquidations' && typeof FinLiquidationsTab === 'function' && <FinLiquidationsTab />}
-        {activeSubTab === 'virements' && typeof FinVirementsTab === 'function' && <FinVirementsTab />}
-        {activeSubTab === 'codes_analytiques' && typeof FinCodesAnalytiquesTab === 'function' && <FinCodesAnalytiquesTab />}
-        {activeSubTab === 'security' && typeof SecurityRegistreTab === 'function' && <SecurityRegistreTab />}
+        {activeSubTab === 'caisse' && typeof FinTresorerieTab === 'function' && <FinTresorerieTab data={safeData} />}
+        {activeSubTab === 'ojra' && typeof FinOjraTab === 'function' && <FinOjraTab data={safeData} />}
+        {activeSubTab === 'liquidations' && typeof FinLiquidationsTab === 'function' && <FinLiquidationsTab data={safeData} />}
+        {activeSubTab === 'virements' && typeof FinVirementsTab === 'function' && <FinVirementsTab data={safeData} />}
+        {activeSubTab === 'codes_analytiques' && typeof FinCodesAnalytiquesTab === 'function' && <FinCodesAnalytiquesTab data={safeData} />}
+        {activeSubTab === 'security' && typeof SecurityRegistreTab === 'function' && <SecurityRegistreTab data={safeData} />}
       </div>
     </div>
   );
