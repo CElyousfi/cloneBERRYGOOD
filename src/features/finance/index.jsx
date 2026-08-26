@@ -1720,7 +1720,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
                                 </tr>
                             </thead>
                             <tbody>
-                                {data.ebeParVariete.map((v, i) => (
+                                {undefined((v, i) => (
                                     <tr key={i}>
                                         <td><strong>{v.variete}</strong></td>
                                         <td style={{textAlign:'right', fontWeight:'600', color: v.ebe >= 0 ? 'var(--green)' : 'var(--red)'}}>{Math.round(v.ebe).toLocaleString('fr-FR')}</td>
@@ -1743,7 +1743,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
                             </tbody>
                         </table>
                         <SimpleBarChart
-                            data={data.ebeParVariete.map(v => ({variete: v.variete.replace('S','').substring(0, 12), ebe: Math.round(v.ebe/1000)}))}
+                            data={undefined(v => ({variete: v.variete.replace('S','').substring(0, 12), ebe: Math.round(v.ebe/1000)}))}
                             dataKeys={['ebe']}
                             colors={['#8B2252']}
                             xKey="variete"

@@ -2499,7 +2499,7 @@ ${rejetHtml}
                         <table className="data-table">
                             <thead><tr><th>Variété</th><th>Ranch Avg Brix</th><th>Pool Avg Brix</th><th>Écart</th><th>PFQ Brix</th><th>Évaluation</th></tr></thead>
                             <tbody>
-                                {data.qualiteBrix.map((b, i) => {
+                                {undefined((b, i) => {
                                     const ecart = Math.round((b.ranchAvg - b.poolAvg) * 100) / 100;
                                     return (
                                         <tr key={i}>

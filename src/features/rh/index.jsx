@@ -4988,7 +4988,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                 Object.keys(data.parcelleConfig).forEach(f => { copy[f] = data.parcelleConfig[f].map(p => ({...p})); });
                 return copy;
             });
-            const [normes, setNormes] = useState(() => data.normesProductivite.map(n => ({...n})));
+            const [normes, setNormes] = useState(() => undefined(n => ({...n})));
             const [editingCell, setEditingCell] = useState(null); // {farm, idx, field}
             const [editVal, setEditVal] = useState('');
             const [showAddTache, setShowAddTache] = useState(false);
@@ -5323,7 +5323,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                         </p>
                         {(() => {
                             const [blocsConf, setBlocsConf] = useState(() => {
-                                try { const s = localStorage.getItem('blocIdsConfig'); return s ? JSON.parse(s) : data.blocIds.map(b => ({...b})); } catch(e) { return data.blocIds.map(b => ({...b})); }
+                                try { const s = localStorage.getItem('blocIdsConfig'); return s ? JSON.parse(s) : undefined(b => ({...b})); } catch(e) { return undefined(b => ({...b})); }
                             });
                             const [editBlocCell, setEditBlocCell] = useState(null);
                             const [blocEditVal, setBlocEditVal] = useState('');
