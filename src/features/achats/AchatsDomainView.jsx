@@ -3,29 +3,45 @@ import React, { useState } from 'react';
 import { UiBadge } from '../../shared/components/UiBadge';
 import { UiStatCard } from '../../shared/components/UiStatCard';
 import { createLiveRecord } from '../../shared/api/liveDataProvider.js';
+import { DocumentViewerModal } from '../../shared/components/DocumentViewerModal';
 
 export function AchatsDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
   const [activeTab, setActiveTab] = useState('bdc');
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddBDCModal, setShowAddBDCModal] = useState(false);
+  const [selectedDoc, setSelectedDoc] = useState(null);
 
   // Form state
   const [bdcSupplier, setBdcSupplier] = useState('');
   const [bdcArticle, setBdcArticle] = useState('');
   const [bdcAmount, setBdcAmount] = useState('');
+  const [bdcFileUrl, setBdcFileUrl] = useState('');
 
-  // Clean Production State Array (0 Fake Data)
+  // Clean Production State Array
   const [bdcList, setBdcList] = useState([]);
 
   // REAL-TIME DYNAMIC ACHATS RECALCULATION ENGINE
   const totalEngagedSum = bdcList.reduce((acc, b) => acc + (b.rawAmount || 0), 0);
   const pendingDGCount = bdcList.filter(b => b.status === 'En Attente Validation DG').length;
 
+  const handleFileUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setBdcFileUrl(event.target?.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleAddBDC = async (e) => {
     e.preventDefault();
     if (!bdcSupplier || !bdcAmount) return;
 
     const amt = parseFloat(bdcAmount) || 0;
+    const docUrl = bdcFileUrl || 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf';
+
     const newBdc = {
       id: `BDC-${Date.now().toString().slice(-4)}`,
       fournisseur: bdcSupplier,
@@ -34,7 +50,8 @@ export function AchatsDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
       rawAmount: amt,
       date: new Date().toISOString().split('T')[0],
       status: 'Validé Achats',
-      variant: 'indigo'
+      variant: 'indigo',
+      documentUrl: docUrl
     };
 
     setBdcList([newBdc, ...bdcList]);
@@ -46,11 +63,12 @@ export function AchatsDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
       payment_status: 'validee_achats',
       ferme: activeFarm,
       date_facture: newBdc.date,
+      justificatif_url: docUrl,
       created_by: 'live-user'
     });
 
     setShowAddBDCModal(false);
-    setBdcSupplier(''); setBdcArticle(''); setBdcAmount('');
+    setBdcSupplier(''); setBdcArticle(''); setBdcAmount(''); setBdcFileUrl('');
   };
 
   const handleAdvanceBDCStatus = (id) => {
@@ -134,7 +152,7 @@ export function AchatsDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
         <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', padding: '20px 24px', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
           <div>
             <h4 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-main)' }}>Registre des Bons de Commande — {activeFarm}</h4>
-            <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Base de données active (0 données factices) | Supabase PostgreSQL synchronisé</p>
+            <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Workflow validation & consultation des devis numérisés</p>
           </div>
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
             <input
@@ -158,7 +176,7 @@ export function AchatsDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
             <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
               <i className="fa-solid fa-file-contract" style={{ fontSize: '32px', marginBottom: '12px', opacity: 0.4 }}></i>
               <p style={{ fontSize: '14px', fontWeight: '600' }}>Aucun bon de commande dans la base</p>
-              <p style={{ fontSize: '12px' }}>Cliquez sur <strong>"Nouveau BDC"</strong> pour émettre votre premier bon de commande réel.</p>
+              <p style={{ fontSize: '12px' }}>Cliquez sur <strong>"Nouveau BDC"</strong> pour émettre et joindre votre premier devis/BDC réel.</p>
             </div>
           ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
@@ -170,6 +188,7 @@ export function AchatsDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
                   <th style={{ padding: '12px 20px', fontWeight: '600' }}>Montant Engagement</th>
                   <th style={{ padding: '12px 20px', fontWeight: '600' }}>Date Émission</th>
                   <th style={{ padding: '12px 20px', fontWeight: '600' }}>Statut Validation</th>
+                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Document</th>
                   <th style={{ padding: '12px 20px', fontWeight: '600' }}>Actions</th>
                 </tr>
               </thead>
@@ -184,6 +203,14 @@ export function AchatsDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
                     <td style={{ padding: '14px 20px' }}>
                       <button onClick={() => handleAdvanceBDCStatus(b.id)} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0 }}>
                         <UiBadge variant={b.variant}>{b.status} ➔</UiBadge>
+                      </button>
+                    </td>
+                    <td style={{ padding: '14px 20px' }}>
+                      <button
+                        onClick={() => setSelectedDoc({ title: `BDC ${b.id} — ${b.fournisseur}`, url: b.documentUrl })}
+                        style={{ padding: '5px 10px', borderRadius: '4px', border: '1px solid var(--emerald-600)', backgroundColor: 'var(--emerald-50)', color: 'var(--emerald-700)', fontSize: '11px', fontWeight: '600', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                      >
+                        <i className="fa-solid fa-eye"></i> Voir BDC / Devis
                       </button>
                     </td>
                     <td style={{ padding: '14px 20px', display: 'flex', gap: '8px' }}>
@@ -202,21 +229,35 @@ export function AchatsDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
         </div>
       </div>
 
-      {/* Modal Add BDC */}
+      {/* Modal Add BDC with File Upload */}
       {showAddBDCModal && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <form onSubmit={handleAddBDC} style={{ backgroundColor: 'var(--bg-card)', padding: '28px', borderRadius: 'var(--radius-xl)', width: '420px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <form onSubmit={handleAddBDC} style={{ backgroundColor: 'var(--bg-card)', padding: '28px', borderRadius: 'var(--radius-xl)', width: '440px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <h3 style={{ fontSize: '18px', fontWeight: '700' }}>Émission Nouveau Bon de Commande</h3>
             <input type="text" placeholder="Fournisseur *" required value={bdcSupplier} onChange={e => setBdcSupplier(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)' }} />
             <input type="text" placeholder="Désignation des Articles (ex: Engrais NPK)" value={bdcArticle} onChange={e => setBdcArticle(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)' }} />
             <input type="number" placeholder="Montant TTC (MAD) *" required value={bdcAmount} onChange={e => setBdcAmount(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)' }} />
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)' }}>Joindre le Devis / Bon de Commande Numérisé *</label>
+              <input type="file" accept="image/*,.pdf" onChange={handleFileUpload} style={{ fontSize: '12px' }} />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '8px' }}>
               <button type="button" onClick={() => setShowAddBDCModal(false)} style={{ padding: '8px 16px', borderRadius: '6px' }}>Annuler</button>
-              <button type="submit" style={{ padding: '8px 16px', borderRadius: '6px', backgroundColor: 'var(--emerald-600)', color: '#FFF', border: 'none' }}>Émettre BDC</button>
+              <button type="submit" style={{ padding: '8px 16px', borderRadius: '6px', backgroundColor: 'var(--emerald-600)', color: '#FFF', border: 'none' }}>Émettre & Joindre</button>
             </div>
           </form>
         </div>
       )}
+
+      {/* Universal Document Viewer Modal */}
+      <DocumentViewerModal
+        isOpen={!!selectedDoc}
+        onClose={() => setSelectedDoc(null)}
+        documentTitle={selectedDoc?.title || 'Document Preview'}
+        documentUrl={selectedDoc?.url}
+      />
     </div>
   );
 }

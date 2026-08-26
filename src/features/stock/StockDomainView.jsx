@@ -2,24 +2,37 @@
 import React, { useState } from 'react';
 import { UiBadge } from '../../shared/components/UiBadge';
 import { UiStatCard } from '../../shared/components/UiStatCard';
+import { DocumentViewerModal } from '../../shared/components/DocumentViewerModal';
 
 export function StockDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
-  const [activeTab, setActiveTab] = useState('soldes');
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddStockModal, setShowAddStockModal] = useState(false);
+  const [selectedDoc, setSelectedDoc] = useState(null);
 
   // Form states
   const [stkArticle, setStkArticle] = useState('');
   const [stkQty, setStkQty] = useState('');
   const [stkSeuil, setStkSeuil] = useState('100');
   const [stkValue, setStkValue] = useState('');
+  const [stkFileUrl, setStkFileUrl] = useState('');
 
-  // Clean Production State Array (0 Fake Data)
+  // Clean Production State Array
   const [stockItems, setStockItems] = useState([]);
 
   // REAL-TIME DYNAMIC STOCK RECALCULATION ENGINE
   const dynamicTotalValuation = stockItems.reduce((acc, s) => acc + (s.rawValue || 0), 0);
   const lowStockCount = stockItems.filter(s => s.status === 'Réapprovisionner').length;
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setStkFileUrl(event.target?.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   const handleAddStock = (e) => {
     e.preventDefault();
@@ -29,6 +42,7 @@ export function StockDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
     const valNum = parseFloat(stkValue) || qtyNum * 15;
     const seuilNum = parseFloat(stkSeuil) || 10;
     const isLow = qtyNum <= seuilNum;
+    const docUrl = stkFileUrl || 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf';
 
     const newStk = {
       id: `STK-${Date.now().toString().slice(-2)}`,
@@ -39,12 +53,13 @@ export function StockDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
       valorisation: `${valNum.toLocaleString('fr-FR')} MAD`,
       rawValue: valNum,
       status: isLow ? 'Réapprovisionner' : 'Stock Optimal',
-      variant: isLow ? 'amber' : 'emerald'
+      variant: isLow ? 'amber' : 'emerald',
+      documentUrl: docUrl
     };
 
     setStockItems([newStk, ...stockItems]);
     setShowAddStockModal(false);
-    setStkArticle(''); setStkQty(''); setStkValue('');
+    setStkArticle(''); setStkQty(''); setStkValue(''); setStkFileUrl('');
   };
 
   const handleDeleteStock = (id) => {
@@ -113,7 +128,7 @@ export function StockDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
         <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', padding: '20px 24px', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
           <div>
             <h4 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-main)' }}>Stock Magasinier & Seuil d'Alerte — {activeFarm}</h4>
-            <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Base de données active (0 données factices) | Supabase PostgreSQL synchronisé</p>
+            <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Stockage & lecture des bons de réception (BR) numérisés</p>
           </div>
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
             <input
@@ -137,7 +152,7 @@ export function StockDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
             <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
               <i className="fa-solid fa-boxes-stacked" style={{ fontSize: '32px', marginBottom: '12px', opacity: 0.4 }}></i>
               <p style={{ fontSize: '14px', fontWeight: '600' }}>Aucun article dans l'inventaire stock</p>
-              <p style={{ fontSize: '12px' }}>Cliquez sur <strong>"Entrée / Nouvel Article"</strong> pour enregistrer votre premier article réel en magasin.</p>
+              <p style={{ fontSize: '12px' }}>Cliquez sur <strong>"Entrée / Nouvel Article"</strong> pour enregistrer et joindre votre premier Bon de Réception.</p>
             </div>
           ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
@@ -149,6 +164,7 @@ export function StockDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
                   <th style={{ padding: '12px 20px', fontWeight: '600' }}>Seuil Alerte</th>
                   <th style={{ padding: '12px 20px', fontWeight: '600' }}>Valorisation</th>
                   <th style={{ padding: '12px 20px', fontWeight: '600' }}>Statut</th>
+                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Document</th>
                   <th style={{ padding: '12px 20px', fontWeight: '600' }}>Actions</th>
                 </tr>
               </thead>
@@ -164,6 +180,14 @@ export function StockDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
                       <UiBadge variant={s.variant}>{s.status}</UiBadge>
                     </td>
                     <td style={{ padding: '14px 20px' }}>
+                      <button
+                        onClick={() => setSelectedDoc({ title: `Bon Réception ${s.id} — ${s.article}`, url: s.documentUrl })}
+                        style={{ padding: '5px 10px', borderRadius: '4px', border: '1px solid var(--emerald-600)', backgroundColor: 'var(--emerald-50)', color: 'var(--emerald-700)', fontSize: '11px', fontWeight: '600', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                      >
+                        <i className="fa-solid fa-eye"></i> Voir BR
+                      </button>
+                    </td>
+                    <td style={{ padding: '14px 20px' }}>
                       <button onClick={() => handleDeleteStock(s.id)} style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--rose-500)', backgroundColor: 'transparent', color: 'var(--rose-500)', fontSize: '11px', cursor: 'pointer' }}>
                         Supprimer
                       </button>
@@ -176,22 +200,36 @@ export function StockDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
         </div>
       </div>
 
-      {/* Modal Add Stock */}
+      {/* Modal Add Stock with File Upload */}
       {showAddStockModal && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <form onSubmit={handleAddStock} style={{ backgroundColor: 'var(--bg-card)', padding: '28px', borderRadius: 'var(--radius-xl)', width: '420px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <h3 style={{ fontSize: '18px', fontWeight: '700' }}>Saisie Entrée Article / Stock</h3>
+          <form onSubmit={handleAddStock} style={{ backgroundColor: 'var(--bg-card)', padding: '28px', borderRadius: 'var(--radius-xl)', width: '440px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <h3 style={{ fontSize: '18px', fontWeight: '700' }}>Saisie Entrée Article & Bon de Réception</h3>
             <input type="text" placeholder="Designation Article *" required value={stkArticle} onChange={e => setStkArticle(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)' }} />
             <input type="number" placeholder="Quantité en Stock *" required value={stkQty} onChange={e => setStkQty(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)' }} />
             <input type="number" placeholder="Seuil d'Alerte (ex: 100)" value={stkSeuil} onChange={e => setStkSeuil(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)' }} />
             <input type="number" placeholder="Valorisation MAD (ex: 15000)" value={stkValue} onChange={e => setStkValue(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)' }} />
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)' }}>Joindre Bon de Réception Magasinier (BR) *</label>
+              <input type="file" accept="image/*,.pdf" onChange={handleFileUpload} style={{ fontSize: '12px' }} />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '8px' }}>
               <button type="button" onClick={() => setShowAddStockModal(false)} style={{ padding: '8px 16px', borderRadius: '6px' }}>Annuler</button>
-              <button type="submit" style={{ padding: '8px 16px', borderRadius: '6px', backgroundColor: 'var(--emerald-600)', color: '#FFF', border: 'none' }}>Enregistrer & Recalculer</button>
+              <button type="submit" style={{ padding: '8px 16px', borderRadius: '6px', backgroundColor: 'var(--emerald-600)', color: '#FFF', border: 'none' }}>Enregistrer & Joindre</button>
             </div>
           </form>
         </div>
       )}
+
+      {/* Universal Document Viewer Modal */}
+      <DocumentViewerModal
+        isOpen={!!selectedDoc}
+        onClose={() => setSelectedDoc(null)}
+        documentTitle={selectedDoc?.title || 'Document Preview'}
+        documentUrl={selectedDoc?.url}
+      />
     </div>
   );
 }

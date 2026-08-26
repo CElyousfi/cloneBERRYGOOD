@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { UiBadge } from '../../shared/components/UiBadge';
 import { UiStatCard } from '../../shared/components/UiStatCard';
 import { createLiveRecord } from '../../shared/api/liveDataProvider.js';
+import { DocumentViewerModal } from '../../shared/components/DocumentViewerModal';
 
 export function FinanceDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
   const [activeSubTab, setActiveSubTab] = useState('workflow');
@@ -11,17 +12,22 @@ export function FinanceDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
   const [showAddInvoiceModal, setShowAddInvoiceModal] = useState(false);
   const [showAddCaisseModal, setShowAddCaisseModal] = useState(false);
 
+  // Document Viewer Modal State
+  const [selectedDoc, setSelectedDoc] = useState(null);
+
   // Form states for New Invoice
   const [invNum, setInvNum] = useState('');
   const [invSupplier, setInvSupplier] = useState('');
   const [invAmount, setInvAmount] = useState('');
+  const [invFileUrl, setInvFileUrl] = useState('');
 
   // Form states for New Caisse Movement
   const [caisseDesc, setCaisseDesc] = useState('');
   const [caisseAmount, setCaisseAmount] = useState('');
   const [caisseType, setCaisseType] = useState('depense');
+  const [caisseFileUrl, setCaisseFileUrl] = useState('');
 
-  // Clean Production State Arrays (0 Fake Data)
+  // Clean Production State Arrays
   const [invoices, setInvoices] = useState([]);
   const [caisseTransactions, setCaisseTransactions] = useState([]);
 
@@ -31,6 +37,18 @@ export function FinanceDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
   const dynamicCaisseBalance = caisseNetSum;
   const validatedInvoicesCount = invoices.filter(i => i.status === 'validee_dg' || i.status === 'payee').length;
 
+  // File Upload Handlers (converts file to Data URL for instant viewing & storage)
+  const handleFileUpload = (e, setUrlFn) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setUrlFn(event.target?.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   // CRUD Actions with Live Recalculations
   const handleAddInvoice = async (e) => {
     e.preventDefault();
@@ -38,6 +56,8 @@ export function FinanceDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
 
     const newId = invNum || `INV-${Date.now().toString().slice(-4)}`;
     const amtNum = parseFloat(invAmount) || 0;
+    const docUrl = invFileUrl || 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf';
+
     const newInv = {
       id: newId,
       fournisseur: invSupplier,
@@ -46,7 +66,8 @@ export function FinanceDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
       status: 'en_validation',
       date: new Date().toISOString().split('T')[0],
       statusLabel: 'En Validation',
-      variant: 'amber'
+      variant: 'amber',
+      documentUrl: docUrl
     };
 
     setInvoices([newInv, ...invoices]);
@@ -58,11 +79,12 @@ export function FinanceDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
       payment_status: 'en_validation',
       ferme: activeFarm,
       date_facture: newInv.date,
+      justificatif_url: docUrl,
       created_by: 'live-user'
     });
 
     setShowAddInvoiceModal(false);
-    setInvNum(''); setInvSupplier(''); setInvAmount('');
+    setInvNum(''); setInvSupplier(''); setInvAmount(''); setInvFileUrl('');
   };
 
   const handleAddCaisse = async (e) => {
@@ -70,6 +92,8 @@ export function FinanceDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
     if (!caisseDesc || !caisseAmount) return;
 
     const amtNum = parseFloat(caisseAmount) || 0;
+    const docUrl = caisseFileUrl || 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf';
+
     const newCS = {
       id: `CS-${Date.now().toString().slice(-3)}`,
       date: new Date().toISOString().split('T')[0],
@@ -77,7 +101,8 @@ export function FinanceDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
       categorie: caisseDesc,
       montant: caisseType === 'recette' ? `+ ${amtNum.toLocaleString('fr-FR')} MAD` : `- ${amtNum.toLocaleString('fr-FR')} MAD`,
       rawAmount: amtNum,
-      beneficiaire: 'Caisse Terrain'
+      beneficiaire: 'Caisse Terrain',
+      documentUrl: docUrl
     };
 
     setCaisseTransactions([newCS, ...caisseTransactions]);
@@ -88,11 +113,12 @@ export function FinanceDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
       date: newCS.date,
       ferme: activeFarm,
       categorie: 'Caisse Quick',
+      justificatif_url: docUrl,
       created_by: 'live-user'
     });
 
     setShowAddCaisseModal(false);
-    setCaisseDesc(''); setCaisseAmount('');
+    setCaisseDesc(''); setCaisseAmount(''); setCaisseFileUrl('');
   };
 
   const handleAdvanceStatus = (id) => {
@@ -223,7 +249,7 @@ export function FinanceDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
           <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', padding: '20px 24px', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
             <div>
               <h3 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-main)', fontFamily: 'var(--font-display)' }}>Pipeline Factures Fournisseurs — {activeFarm}</h3>
-              <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Base de données active (0 données factices) | Supabase PostgreSQL synchronisé</p>
+              <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Stockage & lecture des justificatifs numérisés | Supabase PostgreSQL</p>
             </div>
 
             <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -250,7 +276,7 @@ export function FinanceDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
               <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
                 <i className="fa-solid fa-file-invoice-dollar" style={{ fontSize: '32px', marginBottom: '12px', opacity: 0.4 }}></i>
                 <p style={{ fontSize: '14px', fontWeight: '600' }}>Aucune facture dans la base de données</p>
-                <p style={{ fontSize: '12px' }}>Cliquez sur <strong>"+ Nouvelle Facture"</strong> pour saisir votre première facture réelle.</p>
+                <p style={{ fontSize: '12px' }}>Cliquez sur <strong>"+ Nouvelle Facture"</strong> pour saisir et téléverser votre premier justificatif.</p>
               </div>
             ) : (
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
@@ -261,6 +287,7 @@ export function FinanceDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
                     <th style={{ padding: '12px 20px', fontWeight: '600' }}>Date Facture</th>
                     <th style={{ padding: '12px 20px', fontWeight: '600' }}>Montant TTC</th>
                     <th style={{ padding: '12px 20px', fontWeight: '600' }}>Statut Validation</th>
+                    <th style={{ padding: '12px 20px', fontWeight: '600' }}>Document</th>
                     <th style={{ padding: '12px 20px', fontWeight: '600' }}>Actions</th>
                   </tr>
                 </thead>
@@ -274,6 +301,14 @@ export function FinanceDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
                       <td style={{ padding: '14px 20px' }}>
                         <button onClick={() => handleAdvanceStatus(inv.id)} title="Cliquer pour avancer le statut" style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0 }}>
                           <UiBadge variant={inv.variant}>{inv.statusLabel} ➔</UiBadge>
+                        </button>
+                      </td>
+                      <td style={{ padding: '14px 20px' }}>
+                        <button
+                          onClick={() => setSelectedDoc({ title: `Facture ${inv.id} — ${inv.fournisseur}`, url: inv.documentUrl })}
+                          style={{ padding: '5px 10px', borderRadius: '4px', border: '1px solid var(--emerald-600)', backgroundColor: 'var(--emerald-50)', color: 'var(--emerald-700)', fontSize: '11px', fontWeight: '600', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                        >
+                          <i className="fa-solid fa-eye"></i> Voir Facture
                         </button>
                       </td>
                       <td style={{ padding: '14px 20px', display: 'flex', gap: '8px' }}>
@@ -321,6 +356,7 @@ export function FinanceDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
                     <th style={{ padding: '12px 20px', fontWeight: '600' }}>Catégorie</th>
                     <th style={{ padding: '12px 20px', fontWeight: '600' }}>Bénéficiaire / Source</th>
                     <th style={{ padding: '12px 20px', fontWeight: '600' }}>Montant</th>
+                    <th style={{ padding: '12px 20px', fontWeight: '600' }}>Justificatif</th>
                     <th style={{ padding: '12px 20px', fontWeight: '600' }}>Actions</th>
                   </tr>
                 </thead>
@@ -332,6 +368,14 @@ export function FinanceDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
                       <td style={{ padding: '14px 20px', fontWeight: '600', color: 'var(--text-main)' }}>{c.categorie}</td>
                       <td style={{ padding: '14px 20px', color: 'var(--text-secondary)' }}>{c.beneficiaire}</td>
                       <td style={{ padding: '14px 20px', fontWeight: '700', color: c.type === 'recette' ? 'var(--emerald-600)' : 'var(--rose-500)' }}>{c.montant}</td>
+                      <td style={{ padding: '14px 20px' }}>
+                        <button
+                          onClick={() => setSelectedDoc({ title: `Justificatif Caisse ${c.id}`, url: c.documentUrl })}
+                          style={{ padding: '5px 10px', borderRadius: '4px', border: '1px solid var(--emerald-600)', backgroundColor: 'var(--emerald-50)', color: 'var(--emerald-700)', fontSize: '11px', fontWeight: '600', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                        >
+                          <i className="fa-solid fa-eye"></i> Voir Reçu
+                        </button>
+                      </td>
                       <td style={{ padding: '14px 20px' }}>
                         <button onClick={() => handleDeleteCaisse(c.id)} style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--rose-500)', backgroundColor: 'transparent', color: 'var(--rose-500)', fontSize: '11px', cursor: 'pointer' }}>
                           Supprimer
@@ -346,40 +390,60 @@ export function FinanceDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
         </div>
       )}
 
-      {/* Modal Add Invoice */}
+      {/* Modal Add Invoice with File Upload */}
       {showAddInvoiceModal && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <form onSubmit={handleAddInvoice} style={{ backgroundColor: 'var(--bg-card)', padding: '28px', borderRadius: 'var(--radius-xl)', width: '420px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <h3 style={{ fontSize: '18px', fontWeight: '700' }}>Saisie Nouvelle Facture</h3>
+          <form onSubmit={handleAddInvoice} style={{ backgroundColor: 'var(--bg-card)', padding: '28px', borderRadius: 'var(--radius-xl)', width: '440px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <h3 style={{ fontSize: '18px', fontWeight: '700' }}>Saisie Nouvelle Facture & Téléversement</h3>
             <input type="text" placeholder="N° Facture (ex: INV-901)" value={invNum} onChange={e => setInvNum(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)' }} />
             <input type="text" placeholder="Nom Fournisseur *" required value={invSupplier} onChange={e => setInvSupplier(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)' }} />
             <input type="number" placeholder="Montant TTC (MAD) *" required value={invAmount} onChange={e => setInvAmount(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)' }} />
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)' }}>Joindre le Document PDF / Photo de la Facture *</label>
+              <input type="file" accept="image/*,.pdf" onChange={e => handleFileUpload(e, setInvFileUrl)} style={{ fontSize: '12px' }} />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '8px' }}>
               <button type="button" onClick={() => setShowAddInvoiceModal(false)} style={{ padding: '8px 16px', borderRadius: '6px' }}>Annuler</button>
-              <button type="submit" style={{ padding: '8px 16px', borderRadius: '6px', backgroundColor: 'var(--emerald-600)', color: '#FFF', border: 'none' }}>Enregistrer & Recalculer</button>
+              <button type="submit" style={{ padding: '8px 16px', borderRadius: '6px', backgroundColor: 'var(--emerald-600)', color: '#FFF', border: 'none' }}>Enregistrer & Joindre</button>
             </div>
           </form>
         </div>
       )}
 
-      {/* Modal Add Caisse */}
+      {/* Modal Add Caisse with File Upload */}
       {showAddCaisseModal && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <form onSubmit={handleAddCaisse} style={{ backgroundColor: 'var(--bg-card)', padding: '28px', borderRadius: 'var(--radius-xl)', width: '420px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <h3 style={{ fontSize: '18px', fontWeight: '700' }}>Saisie Mouvement Caisse</h3>
+          <form onSubmit={handleAddCaisse} style={{ backgroundColor: 'var(--bg-card)', padding: '28px', borderRadius: 'var(--radius-xl)', width: '440px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <h3 style={{ fontSize: '18px', fontWeight: '700' }}>Saisie Mouvement Caisse & Justificatif</h3>
             <select value={caisseType} onChange={e => setCaisseType(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
               <option value="depense">Dépense Caisse (-)</option>
               <option value="recette">Recette Caisse (+)</option>
             </select>
             <input type="text" placeholder="Description / Motifs *" required value={caisseDesc} onChange={e => setCaisseDesc(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)' }} />
             <input type="number" placeholder="Montant (MAD) *" required value={caisseAmount} onChange={e => setCaisseAmount(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)' }} />
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)' }}>Joindre Reçu / Ticket Caisse *</label>
+              <input type="file" accept="image/*,.pdf" onChange={e => handleFileUpload(e, setCaisseFileUrl)} style={{ fontSize: '12px' }} />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '8px' }}>
               <button type="button" onClick={() => setShowAddCaisseModal(false)} style={{ padding: '8px 16px', borderRadius: '6px' }}>Annuler</button>
-              <button type="submit" style={{ padding: '8px 16px', borderRadius: '6px', backgroundColor: 'var(--emerald-600)', color: '#FFF', border: 'none' }}>Enregistrer & Recalculer</button>
+              <button type="submit" style={{ padding: '8px 16px', borderRadius: '6px', backgroundColor: 'var(--emerald-600)', color: '#FFF', border: 'none' }}>Enregistrer Mouvement</button>
             </div>
           </form>
         </div>
       )}
+
+      {/* Universal Document Viewer Modal */}
+      <DocumentViewerModal
+        isOpen={!!selectedDoc}
+        onClose={() => setSelectedDoc(null)}
+        documentTitle={selectedDoc?.title || 'Document Preview'}
+        documentUrl={selectedDoc?.url}
+      />
     </div>
   );
 }
