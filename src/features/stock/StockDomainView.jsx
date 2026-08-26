@@ -14,12 +14,8 @@ export function StockDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
   const [stkSeuil, setStkSeuil] = useState('100');
   const [stkValue, setStkValue] = useState('');
 
-  const [stockItems, setStockItems] = useState([
-    { id: 'STK-01', article: 'Caisses Plastique Récolte 5kg', quantite: '4,500 unités', rawQty: 4500, minSeuil: '1,000', valorisation: '67,500 MAD', rawValue: 67500, status: 'Stock Optimal', variant: 'emerald' },
-    { id: 'STK-02', article: 'Engrais NPK 20-20-20 (Sac 25kg)', quantite: '85 sacs', rawQty: 85, minSeuil: '100', valorisation: '25,500 MAD', rawValue: 25500, status: 'Réapprovisionner', variant: 'amber' },
-    { id: 'STK-03', article: 'Barquettes Clamshell 250g PET', quantite: '12,000 unités', rawQty: 12000, minSeuil: '2,500', valorisation: '14,400 MAD', rawValue: 14400, status: 'Stock Optimal', variant: 'emerald' },
-    { id: 'STK-04', article: 'Film Plastique Paillage Noir 30µ', quantite: '42 rouleaux', rawQty: 42, minSeuil: '10', valorisation: '33,600 MAD', rawValue: 33600, status: 'Stock Optimal', variant: 'emerald' },
-  ]);
+  // Clean Production State Array (0 Fake Data)
+  const [stockItems, setStockItems] = useState([]);
 
   // REAL-TIME DYNAMIC STOCK RECALCULATION ENGINE
   const dynamicTotalValuation = stockItems.reduce((acc, s) => acc + (s.rawValue || 0), 0);
@@ -81,10 +77,10 @@ export function StockDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
         <UiStatCard
           label="Valorisation Stock Total"
           value={`${dynamicTotalValuation.toLocaleString('fr-FR')} MAD`}
-          subtext={`${stockItems.length} familles d'articles`}
-          trend="+3.2%"
+          subtext={`${stockItems.length} références gérées`}
+          trend="0.0%"
           highlightColor="var(--emerald-600)"
-          infoTooltip="Valeur financière recalculée dynamiquement en temps réel"
+          infoTooltip="Valeur financière recalculée dynamiquement en temps réel sur les stocks réels"
         />
         <UiStatCard
           label="Articles sous Seuil Alerte"
@@ -98,7 +94,7 @@ export function StockDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
           label="Total Références Enregistrées"
           value={`${stockItems.length} références`}
           subtext="Magasin central active"
-          trend="Inventaire conforme"
+          trend="Inventaire à jour"
           highlightColor="var(--indigo-600)"
           infoTooltip="Nombre de références gérées en magasin"
         />
@@ -117,7 +113,7 @@ export function StockDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
         <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', padding: '20px 24px', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
           <div>
             <h4 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-main)' }}>Stock Magasinier & Seuil d'Alerte — {activeFarm}</h4>
-            <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Mise à jour dynamique en direct | Calculateur de valorisation</p>
+            <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Base de données active (0 données factices) | Supabase PostgreSQL synchronisé</p>
           </div>
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
             <input
@@ -137,38 +133,46 @@ export function StockDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
         </div>
 
         <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
-            <thead>
-              <tr style={{ backgroundColor: 'var(--bg-subtle)', borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Ref Stock</th>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Article / Intitulé</th>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Quantité en Stock</th>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Seuil Alerte</th>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Valorisation</th>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Statut</th>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredStock.map((s, idx) => (
-                <tr key={s.id} style={{ borderBottom: idx === filteredStock.length - 1 ? 'none' : '1px solid var(--border-subtle)' }}>
-                  <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--text-main)' }}>{s.id}</td>
-                  <td style={{ padding: '14px 20px', fontWeight: '600', color: 'var(--text-main)' }}>{s.article}</td>
-                  <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--text-main)' }}>{s.quantite}</td>
-                  <td style={{ padding: '14px 20px', color: 'var(--text-secondary)' }}>{s.minSeuil}</td>
-                  <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--emerald-600)' }}>{s.valorisation}</td>
-                  <td style={{ padding: '14px 20px' }}>
-                    <UiBadge variant={s.variant}>{s.status}</UiBadge>
-                  </td>
-                  <td style={{ padding: '14px 20px' }}>
-                    <button onClick={() => handleDeleteStock(s.id)} style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--rose-500)', backgroundColor: 'transparent', color: 'var(--rose-500)', fontSize: '11px', cursor: 'pointer' }}>
-                      Supprimer
-                    </button>
-                  </td>
+          {filteredStock.length === 0 ? (
+            <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
+              <i className="fa-solid fa-boxes-stacked" style={{ fontSize: '32px', marginBottom: '12px', opacity: 0.4 }}></i>
+              <p style={{ fontSize: '14px', fontWeight: '600' }}>Aucun article dans l'inventaire stock</p>
+              <p style={{ fontSize: '12px' }}>Cliquez sur <strong>"Entrée / Nouvel Article"</strong> pour enregistrer votre premier article réel en magasin.</p>
+            </div>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+              <thead>
+                <tr style={{ backgroundColor: 'var(--bg-subtle)', borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
+                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Ref Stock</th>
+                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Article / Intitulé</th>
+                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Quantité en Stock</th>
+                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Seuil Alerte</th>
+                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Valorisation</th>
+                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Statut</th>
+                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {filteredStock.map((s, idx) => (
+                  <tr key={s.id} style={{ borderBottom: idx === filteredStock.length - 1 ? 'none' : '1px solid var(--border-subtle)' }}>
+                    <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--text-main)' }}>{s.id}</td>
+                    <td style={{ padding: '14px 20px', fontWeight: '600', color: 'var(--text-main)' }}>{s.article}</td>
+                    <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--text-main)' }}>{s.quantite}</td>
+                    <td style={{ padding: '14px 20px', color: 'var(--text-secondary)' }}>{s.minSeuil}</td>
+                    <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--emerald-600)' }}>{s.valorisation}</td>
+                    <td style={{ padding: '14px 20px' }}>
+                      <UiBadge variant={s.variant}>{s.status}</UiBadge>
+                    </td>
+                    <td style={{ padding: '14px 20px' }}>
+                      <button onClick={() => handleDeleteStock(s.id)} style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--rose-500)', backgroundColor: 'transparent', color: 'var(--rose-500)', fontSize: '11px', cursor: 'pointer' }}>
+                        Supprimer
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
 

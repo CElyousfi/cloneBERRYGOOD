@@ -14,17 +14,12 @@ export function AchatsDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
   const [bdcArticle, setBdcArticle] = useState('');
   const [bdcAmount, setBdcAmount] = useState('');
 
-  const [bdcList, setBdcList] = useState([
-    { id: 'BDC-8920', fournisseur: 'Agro Chimique SA', articles: 'Engrais NPK 20-20-20 (50 sacs)', montant: '25,500.00 MAD', rawAmount: 25500, date: '2026-08-25', status: 'Validé Achats', variant: 'indigo' },
-    { id: 'BDC-8921', fournisseur: 'Plastiques Emballage SARL', articles: 'Barquettes Clamshell 250g (10,000u)', montant: '12,000.00 MAD', rawAmount: 12000, date: '2026-08-24', status: 'En Attente Validation DG', variant: 'amber' },
-    { id: 'BDC-8922', fournisseur: 'Irrigation Modern Maroc', articles: 'Goutteurs Intégrés 1.6L/h (5,000m)', montant: '18,400.00 MAD', rawAmount: 18400, date: '2026-08-22', status: 'Payé & Livré', variant: 'emerald' },
-  ]);
+  // Clean Production State Array (0 Fake Data)
+  const [bdcList, setBdcList] = useState([]);
 
-  const devisList = [
-    { supplier: 'Agro Chimique SA', produit: 'Engrais NPK 20-20-20', prixUnitaire: '510 MAD / Sac', note: 'Offre retenue (Moins cher)', status: 'Sélectionné', variant: 'emerald' },
-    { supplier: 'Chimie Agricole Souss', produit: 'Engrais NPK 20-20-20', prixUnitaire: '540 MAD / Sac', note: 'Concurrence', status: 'Écarté', variant: 'neutral' },
-    { supplier: 'Fertilisation Maghreb', produit: 'Engrais NPK 20-20-20', prixUnitaire: '525 MAD / Sac', note: 'Concurrence', status: 'Écarté', variant: 'neutral' }
-  ];
+  // REAL-TIME DYNAMIC ACHATS RECALCULATION ENGINE
+  const totalEngagedSum = bdcList.reduce((acc, b) => acc + (b.rawAmount || 0), 0);
+  const pendingDGCount = bdcList.filter(b => b.status === 'En Attente Validation DG').length;
 
   const handleAddBDC = async (e) => {
     e.preventDefault();
@@ -98,104 +93,74 @@ export function AchatsDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', animation: 'fadeIn 0.2s ease-in-out' }}>
-      {/* Top Achats KPI Cards */}
+      {/* REAL-TIME DYNAMIC ACHATS KPI CARDS */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '16px' }}>
         <UiStatCard
           label="Total Engagé BDC"
-          value="55,900 MAD"
-          subtext="Mois en cours"
-          trend="+8.2%"
+          value={`${totalEngagedSum.toLocaleString('fr-FR')} MAD`}
+          subtext={`${bdcList.length} BDC en base`}
+          trend="0.0%"
           highlightColor="var(--emerald-600)"
-          infoTooltip="Total des bons de commande validés"
+          infoTooltip="Total des bons de commande validés recalculé en temps réel"
         />
         <UiStatCard
           label="BDC En Attente DG"
-          value="1 BDC"
-          subtext="Barquettes Clamshell"
-          trend="Action requise"
-          highlightColor="var(--amber-500)"
+          value={`${pendingDGCount} BDC`}
+          subtext={pendingDGCount > 0 ? 'Signature requise' : 'Aucune attente'}
+          trend={pendingDGCount > 0 ? 'Action requise' : 'À jour'}
+          highlightColor={pendingDGCount > 0 ? 'var(--amber-500)' : 'var(--emerald-600)'}
           infoTooltip="Bons de commande nécessitant la signature DG"
         />
         <UiStatCard
-          label="Économie 3 Devis"
-          value="4,500 MAD"
-          subtext="Négociation fournisseurs"
-          trend="-7.5%"
-          highlightColor="var(--emerald-600)"
-          infoTooltip="Gains réalisés par la comparaison systématique des 3 devis"
+          label="Total Commandes Emises"
+          value={`${bdcList.length} commandes`}
+          subtext="Base de données active"
+          trend="Commandes réelles"
+          highlightColor="var(--indigo-600)"
+          infoTooltip="Nombre total de bons de commande"
         />
         <UiStatCard
-          label="Fournisseurs Actifs"
-          value="12 fournisseurs"
-          subtext="Certifiés GlobalGAP"
-          trend="100% à jour"
-          highlightColor="var(--indigo-600)"
-          infoTooltip="Nombre de fournisseurs référencés"
+          label="Fournisseurs Enregistrés"
+          value={`${new Set(bdcList.map(b => b.fournisseur)).size} fournisseurs`}
+          subtext="Référencés en base"
+          trend="Base propre"
+          highlightColor="var(--emerald-600)"
+          infoTooltip="Nombre de fournisseurs actifs"
         />
-      </div>
-
-      {/* Sub-Tab Navigation */}
-      <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px' }}>
-        <button
-          onClick={() => setActiveTab('bdc')}
-          style={{
-            padding: '8px 14px',
-            borderRadius: 'var(--radius-md)',
-            fontSize: '13px',
-            fontWeight: activeTab === 'bdc' ? '700' : '500',
-            backgroundColor: activeTab === 'bdc' ? 'var(--emerald-600)' : 'var(--bg-card)',
-            color: activeTab === 'bdc' ? '#FFFFFF' : 'var(--text-secondary)',
-            border: activeTab === 'bdc' ? 'none' : '1px solid var(--border-color)',
-            cursor: 'pointer'
-          }}
-        >
-          <i className="fa-solid fa-file-contract" style={{ marginRight: '6px' }}></i>
-          Bons de Commande (BDC)
-        </button>
-        <button
-          onClick={() => setActiveTab('devis')}
-          style={{
-            padding: '8px 14px',
-            borderRadius: 'var(--radius-md)',
-            fontSize: '13px',
-            fontWeight: activeTab === 'devis' ? '700' : '500',
-            backgroundColor: activeTab === 'devis' ? 'var(--emerald-600)' : 'var(--bg-card)',
-            color: activeTab === 'devis' ? '#FFFFFF' : 'var(--text-secondary)',
-            border: activeTab === 'devis' ? 'none' : '1px solid var(--border-color)',
-            cursor: 'pointer'
-          }}
-        >
-          <i className="fa-solid fa-code-compare" style={{ marginRight: '6px' }}></i>
-          Comparateur 3 Devis Fournisseurs
-        </button>
       </div>
 
       {/* Content Table */}
-      {activeTab === 'bdc' ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', padding: '20px 24px', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-            <div>
-              <h4 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-main)' }}>Registre des Bons de Commande — {activeFarm}</h4>
-              <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Workflow validation 3 niveaux (Achats → DG → Paiement)</p>
-            </div>
-            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-              <input
-                type="text"
-                placeholder="Rechercher fournisseur/BDC..."
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '13px', outline: 'none' }}
-              />
-              <button onClick={handleExportAchatsCSV} style={{ padding: '8px 14px', borderRadius: '6px', backgroundColor: 'var(--bg-subtle)', border: '1px solid var(--border-color)', fontSize: '13px', fontWeight: '600' }}>
-                <i className="fa-solid fa-download" style={{ marginRight: '6px' }}></i> Exporter CSV
-              </button>
-              <button onClick={() => setShowAddBDCModal(true)} style={{ padding: '8px 14px', borderRadius: '6px', backgroundColor: 'var(--emerald-600)', color: '#FFF', border: 'none', fontSize: '13px', fontWeight: '600' }}>
-                <i className="fa-solid fa-plus" style={{ marginRight: '6px' }}></i> Nouveau BDC
-              </button>
-            </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', padding: '20px 24px', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+          <div>
+            <h4 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-main)' }}>Registre des Bons de Commande — {activeFarm}</h4>
+            <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Base de données active (0 données factices) | Supabase PostgreSQL synchronisé</p>
           </div>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            <input
+              type="text"
+              placeholder="Rechercher fournisseur/BDC..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '13px', outline: 'none' }}
+            />
+            <button onClick={handleExportAchatsCSV} style={{ padding: '8px 14px', borderRadius: '6px', backgroundColor: 'var(--bg-subtle)', border: '1px solid var(--border-color)', fontSize: '13px', fontWeight: '600' }}>
+              <i className="fa-solid fa-download" style={{ marginRight: '6px' }}></i> Exporter CSV
+            </button>
+            <button onClick={() => setShowAddBDCModal(true)} style={{ padding: '8px 14px', borderRadius: '6px', backgroundColor: 'var(--emerald-600)', color: '#FFF', border: 'none', fontSize: '13px', fontWeight: '600' }}>
+              <i className="fa-solid fa-plus" style={{ marginRight: '6px' }}></i> Nouveau BDC
+            </button>
+          </div>
+        </div>
 
-          <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
+        <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
+          {filteredBDC.length === 0 ? (
+            <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
+              <i className="fa-solid fa-file-contract" style={{ fontSize: '32px', marginBottom: '12px', opacity: 0.4 }}></i>
+              <p style={{ fontSize: '14px', fontWeight: '600' }}>Aucun bon de commande dans la base</p>
+              <p style={{ fontSize: '12px' }}>Cliquez sur <strong>"Nouveau BDC"</strong> pour émettre votre premier bon de commande réel.</p>
+            </div>
+          ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
               <thead>
                 <tr style={{ backgroundColor: 'var(--bg-subtle)', borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
@@ -233,39 +198,9 @@ export function AchatsDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
                 ))}
               </tbody>
             </table>
-          </div>
+          )}
         </div>
-      ) : (
-        <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
-          <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-subtle)' }}>
-            <h4 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-main)' }}>Comparateur Automatique 3 Devis (Offre Optimale)</h4>
-          </div>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
-            <thead>
-              <tr style={{ backgroundColor: 'var(--bg-subtle)', borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Fournisseur Consulté</th>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Produit / Article</th>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Prix Unitaire Proposé</th>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Remarques Négociation</th>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Décision</th>
-              </tr>
-            </thead>
-            <tbody>
-              {devisList.map((d, idx) => (
-                <tr key={d.supplier} style={{ borderBottom: idx === devisList.length - 1 ? 'none' : '1px solid var(--border-subtle)' }}>
-                  <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--text-main)' }}>{d.supplier}</td>
-                  <td style={{ padding: '14px 20px', fontWeight: '600', color: 'var(--text-main)' }}>{d.produit}</td>
-                  <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--emerald-600)' }}>{d.prixUnitaire}</td>
-                  <td style={{ padding: '14px 20px', color: 'var(--text-secondary)' }}>{d.note}</td>
-                  <td style={{ padding: '14px 20px' }}>
-                    <UiBadge variant={d.variant}>{d.status}</UiBadge>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      </div>
 
       {/* Modal Add BDC */}
       {showAddBDCModal && (

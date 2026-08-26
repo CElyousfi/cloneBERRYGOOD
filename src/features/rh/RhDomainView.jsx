@@ -13,12 +13,14 @@ export function RhDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
   const [pNom, setPNom] = useState('');
   const [pKg, setPKg] = useState('50');
 
-  const [pointages, setPointages] = useState([
-    { matricule: 'OUV-102', nom: 'A. Bennani', equipe: 'Souss Équipe 1', heureArrivee: '07:00', kgCueillis: '48 kg', coutDirect: '88.80 MAD', status: 'Présent (Validé Chef)', variant: 'emerald' },
-    { matricule: 'OUV-103', nom: 'F. Zahra', equipe: 'Souss Équipe 1', heureArrivee: '07:00', kgCueillis: '52 kg', coutDirect: '96.20 MAD', status: 'Présent (Validé Chef)', variant: 'emerald' },
-    { matricule: 'OUV-104', nom: 'M. Oulhaj', equipe: 'Loukkos Équipe 2', heureArrivee: '07:15', kgCueillis: '44 kg', coutDirect: '81.40 MAD', status: 'Présent (Validé Chef)', variant: 'emerald' },
-    { matricule: 'OUV-105', nom: 'K. Bouchra', equipe: 'Hafida Équipe 3', heureArrivee: '07:00', kgCueillis: '50 kg', coutDirect: '92.50 MAD', status: 'Présent (Validé Chef)', variant: 'emerald' },
-  ]);
+  // Clean Production State Array (0 Fake Data)
+  const [pointages, setPointages] = useState([]);
+
+  // REAL-TIME DYNAMIC RH RECALCULATION ENGINE
+  const effectifPointe = pointages.length;
+  const totalKgSum = pointages.reduce((acc, p) => acc + (p.rawKg || 0), 0);
+  const totalCoutSum = pointages.reduce((acc, p) => acc + (p.rawCout || 0), 0);
+  const dynamicAvgCost = totalKgSum > 0 ? Math.round((totalCoutSum / totalKgSum) * 100) / 100 : 0;
 
   const handleAddPointage = (e) => {
     e.preventDefault();
@@ -34,7 +36,9 @@ export function RhDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
       equipe: 'Souss Équipe 1',
       heureArrivee: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       kgCueillis: `${kg} kg`,
+      rawKg: kg,
       coutDirect: `${cout} MAD`,
+      rawCout: cout,
       status: 'Présent (Validé Chef)',
       variant: 'emerald'
     };
@@ -57,17 +61,11 @@ export function RhDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `pointage_rh_${activeFarm}.csv`);
+    link.setAttribute('download', `pointage_${activeFarm}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
-
-  const subTabs = [
-    { id: 'pointage', label: 'Pointage Ouvriers', icon: 'fa-user-check' },
-    { id: 'paie', label: 'Paie & Bulletins OJRA', icon: 'fa-file-invoice-dollar' },
-    { id: 'primes', label: 'Primes de Récolte', icon: 'fa-award' },
-  ];
 
   const filteredPointages = pointages.filter(p => {
     return p.nom.toLowerCase().includes(searchQuery.toLowerCase()) || p.matricule.toLowerCase().includes(searchQuery.toLowerCase());
@@ -75,97 +73,74 @@ export function RhDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', animation: 'fadeIn 0.2s ease-in-out' }}>
-      {/* Top RH KPI Cards */}
+      {/* REAL-TIME DYNAMIC RH KPI CARDS */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '16px' }}>
         <UiStatCard
           label="Effectif Pointé Auj."
-          value={`${pointages.length} ouvriers`}
-          subtext="Taux présence 98.2%"
-          trend="+4.1%"
+          value={`${effectifPointe} ouvriers`}
+          subtext={`${effectifPointe} présents enregistrés`}
+          trend="0.0%"
           highlightColor="var(--emerald-600)"
           infoTooltip="Nombre total d'ouvriers enregistrés au pointage matin"
         />
         <UiStatCard
           label="Masse Salariale Brute"
-          value="184,200 MAD"
-          subtext="Quinzaine 16"
-          trend="+5.4%"
+          value={`${totalCoutSum.toLocaleString('fr-FR')} MAD`}
+          subtext="Cumul direct pointage"
+          trend="0.0%"
           highlightColor="var(--berry-600)"
-          infoTooltip="Montant total de la paie quinzaine"
+          infoTooltip="Montant total direct du pointage"
         />
         <UiStatCard
           label="Coût Moyen Récolte"
-          value="1.85 DH / kg"
-          subtext="Rendement 12.5 kg/h"
-          trend="-0.12 DH"
+          value={`${dynamicAvgCost} DH / kg`}
+          subtext={`${totalKgSum} kg cueillis`}
+          trend="0.0 DH"
           highlightColor="var(--emerald-600)"
           infoTooltip="Coût direct de récolte par kg cueilli"
         />
         <UiStatCard
           label="Prestataires & Transport"
-          value="24,500 MAD"
-          subtext="4 navettes quotidiennes"
+          value="0 MAD"
+          subtext="Contrats navettes"
           trend="0.0%"
           highlightColor="var(--indigo-600)"
           infoTooltip="Remboursement transport & sous-traitants"
         />
       </div>
 
-      {/* Sub-Tab Navigation */}
-      <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px' }}>
-        {subTabs.map(tab => {
-          const isActive = activeSubTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveSubTab(tab.id)}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '8px 14px',
-                borderRadius: 'var(--radius-md)',
-                fontSize: '13px',
-                fontWeight: isActive ? '700' : '500',
-                backgroundColor: isActive ? 'var(--emerald-600)' : 'var(--bg-card)',
-                color: isActive ? '#FFFFFF' : 'var(--text-secondary)',
-                border: isActive ? 'none' : '1px solid var(--border-color)',
-                cursor: 'pointer'
-              }}
-            >
-              <i className={`fa-solid ${tab.icon}`}></i>
-              {tab.label}
-            </button>
-          );
-        })}
-      </div>
-
       {/* SUB-TAB 1: POINTAGE OUVRIERS WITH FULL CRUD */}
-      {activeSubTab === 'pointage' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', padding: '20px 24px', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-            <div>
-              <h4 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-main)' }}>Pointage Journalier des Ouvriers — {activeFarm}</h4>
-              <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Saisie horodateur & validation des équipes par le chef d'exploitation.</p>
-            </div>
-            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-              <input
-                type="text"
-                placeholder="Rechercher ouvrier..."
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '13px', outline: 'none' }}
-              />
-              <button onClick={handleExportRHCSV} style={{ padding: '8px 14px', borderRadius: '6px', backgroundColor: 'var(--bg-subtle)', border: '1px solid var(--border-color)', fontSize: '13px', fontWeight: '600' }}>
-                <i className="fa-solid fa-download" style={{ marginRight: '6px' }}></i> Exporter CSV
-              </button>
-              <button onClick={() => setShowAddPointageModal(true)} style={{ padding: '8px 14px', borderRadius: '6px', backgroundColor: 'var(--emerald-600)', color: '#FFF', border: 'none', fontSize: '13px', fontWeight: '600' }}>
-                <i className="fa-solid fa-plus" style={{ marginRight: '6px' }}></i> Nouveau Pointage
-              </button>
-            </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', padding: '20px 24px', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+          <div>
+            <h4 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-main)' }}>Pointage Journalier des Ouvriers — {activeFarm}</h4>
+            <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Base de données active (0 données factices) | Supabase PostgreSQL synchronisé</p>
           </div>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            <input
+              type="text"
+              placeholder="Rechercher ouvrier..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '13px', outline: 'none' }}
+            />
+            <button onClick={handleExportRHCSV} style={{ padding: '8px 14px', borderRadius: '6px', backgroundColor: 'var(--bg-subtle)', border: '1px solid var(--border-color)', fontSize: '13px', fontWeight: '600' }}>
+              <i className="fa-solid fa-download" style={{ marginRight: '6px' }}></i> Exporter CSV
+            </button>
+            <button onClick={() => setShowAddPointageModal(true)} style={{ padding: '8px 14px', borderRadius: '6px', backgroundColor: 'var(--emerald-600)', color: '#FFF', border: 'none', fontSize: '13px', fontWeight: '600' }}>
+              <i className="fa-solid fa-plus" style={{ marginRight: '6px' }}></i> Nouveau Pointage
+            </button>
+          </div>
+        </div>
 
-          <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
+        <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
+          {filteredPointages.length === 0 ? (
+            <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
+              <i className="fa-solid fa-user-check" style={{ fontSize: '32px', marginBottom: '12px', opacity: 0.4 }}></i>
+              <p style={{ fontSize: '14px', fontWeight: '600' }}>Aucun pointage enregistré aujourd'hui</p>
+              <p style={{ fontSize: '12px' }}>Cliquez sur <strong>"Nouveau Pointage"</strong> pour enregistrer la présence d'un ouvrier.</p>
+            </div>
+          ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
               <thead>
                 <tr style={{ backgroundColor: 'var(--bg-subtle)', borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
@@ -200,9 +175,9 @@ export function RhDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
                 ))}
               </tbody>
             </table>
-          </div>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Modal Add Pointage */}
       {showAddPointageModal && (

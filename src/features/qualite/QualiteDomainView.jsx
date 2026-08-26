@@ -15,17 +15,14 @@ export function QualiteDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
   const [inspBrix, setInspBrix] = useState('9.2');
   const [inspDefect, setInspDefect] = useState('1.5');
 
-  const [inspections, setInspections] = useState([
-    { id: 'INSP-401', lot: 'Lot Fraise Star B4', date: '2026-08-26', inspecteur: 'K. Reda', brix: '9.4 °B', rawBrix: 9.4, defectRate: '1.2 %', rawDefect: 1.2, status: 'Conforme (Cat A)', variant: 'emerald' },
-    { id: 'INSP-402', lot: 'Lot Framboise Diamond A2', date: '2026-08-25', inspecteur: 'M. Alami', brix: '8.8 °B', rawBrix: 8.8, defectRate: '2.5 %', rawDefect: 2.5, status: 'Conforme (Cat A)', variant: 'emerald' },
-    { id: 'INSP-403', lot: 'Lot Myrtille Blue C1', date: '2026-08-24', inspecteur: 'S. Bennani', brix: '7.6 °B', rawBrix: 7.6, defectRate: '4.8 %', rawDefect: 4.8, status: 'Sous Réserve (Cat B)', variant: 'amber' },
-  ]);
+  // Clean Production State Arrays (0 Fake Data)
+  const [inspections, setInspections] = useState([]);
 
   // REAL-TIME DYNAMIC QUALITY RECALCULATION ENGINE
   const conformeCount = inspections.filter(i => i.status.includes('Conforme')).length;
-  const dynamicConformityRate = Math.round((conformeCount / (inspections.length || 1)) * 100 * 10) / 10;
-  const dynamicAvgBrix = Math.round((inspections.reduce((acc, i) => acc + (i.rawBrix || 8), 0) / (inspections.length || 1)) * 10) / 10;
-  const dynamicAvgDefect = Math.round((inspections.reduce((acc, i) => acc + (i.rawDefect || 2), 0) / (inspections.length || 1)) * 10) / 10;
+  const dynamicConformityRate = inspections.length > 0 ? Math.round((conformeCount / inspections.length) * 100 * 10) / 10 : 0;
+  const dynamicAvgBrix = inspections.length > 0 ? Math.round((inspections.reduce((acc, i) => acc + (i.rawBrix || 8), 0) / inspections.length) * 10) / 10 : 0;
+  const dynamicAvgDefect = inspections.length > 0 ? Math.round((inspections.reduce((acc, i) => acc + (i.rawDefect || 2), 0) / inspections.length) * 10) / 10 : 0;
 
   const handleAddInspection = async (e) => {
     e.preventDefault();
@@ -108,15 +105,15 @@ export function QualiteDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
           label="Lots Conformes (Cat A)"
           value={`${dynamicConformityRate} %`}
           subtext={`${conformeCount} / ${inspections.length} lots validés`}
-          trend="+2.1%"
+          trend="0.0%"
           highlightColor="var(--emerald-600)"
-          infoTooltip="Taux de conformité recalculé dynamiquement selon les inspections"
+          infoTooltip="Taux de conformité recalculé dynamiquement selon les inspections réelles"
         />
         <UiStatCard
           label="Moyenne Taux Brix"
           value={`${dynamicAvgBrix} °B`}
           subtext="Seuil min: 8.0°B"
-          trend="+0.4"
+          trend="0.0°B"
           highlightColor="var(--emerald-600)"
           infoTooltip="Moyenne des réfractomètres recalculée en direct"
         />
@@ -124,7 +121,7 @@ export function QualiteDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
           label="Taux Moyen Écart / Déchets"
           value={`${dynamicAvgDefect} %`}
           subtext="Seuil toléré < 3.0%"
-          trend="-0.5%"
+          trend="0.0%"
           highlightColor="var(--emerald-600)"
           infoTooltip="Moyenne dynamique des tri de déchets à l'emballage"
         />
@@ -132,9 +129,9 @@ export function QualiteDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
           label="Total Contrôles Réfractométriques"
           value={`${inspections.length} contrôles`}
           subtext="Inspection quotidienne active"
-          trend="100% contrôlé"
+          trend="0 contrôles"
           highlightColor="var(--indigo-600)"
-          infoTooltip="Volume de contrôles effectués"
+          infoTooltip="Volume de contrôles effectués en base"
         />
       </div>
 
@@ -143,7 +140,7 @@ export function QualiteDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
         <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', padding: '20px 24px', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
           <div>
             <h4 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-main)' }}>Rapports d'Inspection Qualité — {activeFarm}</h4>
-            <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Contrôle réfractométrique Brix & tri des défauts | Recalcul dynamique</p>
+            <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Contrôle réfractométrique Brix & tri des défauts | Recalcul dynamique en direct</p>
           </div>
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
             <input
@@ -163,45 +160,53 @@ export function QualiteDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
         </div>
 
         <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
-            <thead>
-              <tr style={{ backgroundColor: 'var(--bg-subtle)', borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Réf Inspection</th>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Lot / Parcelle</th>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Date Contrôle</th>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Inspecteur</th>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Taux Brix</th>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>% Défauts</th>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Statut Conforme</th>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredInspections.map((insp, idx) => (
-                <tr key={insp.id} style={{ borderBottom: idx === filteredInspections.length - 1 ? 'none' : '1px solid var(--border-subtle)' }}>
-                  <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--text-main)' }}>{insp.id}</td>
-                  <td style={{ padding: '14px 20px', fontWeight: '600', color: 'var(--text-main)' }}>{insp.lot}</td>
-                  <td style={{ padding: '14px 20px', color: 'var(--text-secondary)' }}>{insp.date}</td>
-                  <td style={{ padding: '14px 20px', color: 'var(--text-secondary)' }}>{insp.inspecteur}</td>
-                  <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--emerald-600)' }}>{insp.brix}</td>
-                  <td style={{ padding: '14px 20px', fontWeight: '600', color: 'var(--text-main)' }}>{insp.defectRate}</td>
-                  <td style={{ padding: '14px 20px' }}>
-                    <button onClick={() => handleToggleConformity(insp.id)} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0 }}>
-                      <UiBadge variant={insp.variant}>{insp.status}</UiBadge>
-                    </button>
-                  </td>
-                  <td style={{ padding: '14px 20px', display: 'flex', gap: '8px' }}>
-                    <button onClick={() => handleToggleConformity(insp.id)} style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-subtle)', fontSize: '11px', cursor: 'pointer' }}>
-                      Basculer Statut
-                    </button>
-                    <button onClick={() => handleDeleteInspection(insp.id)} style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--rose-500)', backgroundColor: 'transparent', color: 'var(--rose-500)', fontSize: '11px', cursor: 'pointer' }}>
-                      Supprimer
-                    </button>
-                  </td>
+          {filteredInspections.length === 0 ? (
+            <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
+              <i className="fa-solid fa-clipboard-check" style={{ fontSize: '32px', marginBottom: '12px', opacity: 0.4 }}></i>
+              <p style={{ fontSize: '14px', fontWeight: '600' }}>Aucun rapport d'inspection dans la base</p>
+              <p style={{ fontSize: '12px' }}>Cliquez sur <strong>"Saisie Inspection"</strong> pour enregistrer votre premier contrôle qualité réel.</p>
+            </div>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+              <thead>
+                <tr style={{ backgroundColor: 'var(--bg-subtle)', borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
+                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Réf Inspection</th>
+                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Lot / Parcelle</th>
+                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Date Contrôle</th>
+                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Inspecteur</th>
+                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Taux Brix</th>
+                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>% Défauts</th>
+                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Statut Conforme</th>
+                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {filteredInspections.map((insp, idx) => (
+                  <tr key={insp.id} style={{ borderBottom: idx === filteredInspections.length - 1 ? 'none' : '1px solid var(--border-subtle)' }}>
+                    <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--text-main)' }}>{insp.id}</td>
+                    <td style={{ padding: '14px 20px', fontWeight: '600', color: 'var(--text-main)' }}>{insp.lot}</td>
+                    <td style={{ padding: '14px 20px', color: 'var(--text-secondary)' }}>{insp.date}</td>
+                    <td style={{ padding: '14px 20px', color: 'var(--text-secondary)' }}>{insp.inspecteur}</td>
+                    <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--emerald-600)' }}>{insp.brix}</td>
+                    <td style={{ padding: '14px 20px', fontWeight: '600', color: 'var(--text-main)' }}>{insp.defectRate}</td>
+                    <td style={{ padding: '14px 20px' }}>
+                      <button onClick={() => handleToggleConformity(insp.id)} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0 }}>
+                        <UiBadge variant={insp.variant}>{insp.status}</UiBadge>
+                      </button>
+                    </td>
+                    <td style={{ padding: '14px 20px', display: 'flex', gap: '8px' }}>
+                      <button onClick={() => handleToggleConformity(insp.id)} style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-subtle)', fontSize: '11px', cursor: 'pointer' }}>
+                        Basculer Statut
+                      </button>
+                      <button onClick={() => handleDeleteInspection(insp.id)} style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--rose-500)', backgroundColor: 'transparent', color: 'var(--rose-500)', fontSize: '11px', cursor: 'pointer' }}>
+                        Supprimer
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
 
