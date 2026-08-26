@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { UiBadge } from '../../shared/components/UiBadge';
 import { UiStatCard } from '../../shared/components/UiStatCard';
 import { getLiveFarmWeather, getLiveFarmForecast } from '../../shared/api/weatherApi.js';
+import { AppConfirmModal } from '../../shared/components/AppConfirmModal';
 
 export function AgronomieDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
   const [activeTab, setActiveTab] = useState('stations');
@@ -11,6 +12,9 @@ export function AgronomieDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
   const [forecastList, setForecastList] = useState([]);
   const [isLoadingWeather, setIsLoadingWeather] = useState(true);
   const [showAddStationModal, setShowAddStationModal] = useState(false);
+
+  // Custom Confirm Modal State
+  const [confirmModalState, setConfirmModalState] = useState({ isOpen: false, title: '', message: '', onConfirm: () => {} });
 
   // Form states
   const [stName, setStName] = useState('');
@@ -24,7 +28,6 @@ export function AgronomieDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
     { id: 'ST-03', nom: `Station Fertilisation ${activeFarm}`, debit: '18 m³/h', pression: '2.5 Bar', secteur: 'Bloc C2', status: 'Fertigation Active', variant: 'emerald' },
   ]);
 
-  // Fetch live OpenWeather data when activeFarm changes
   useEffect(() => {
     let isMounted = true;
     async function loadWeather() {
@@ -77,9 +80,14 @@ export function AgronomieDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
   };
 
   const handleDeleteStation = (id) => {
-    if (confirm(`Supprimer la station d'irrigation ${id} ?`)) {
-      setStations(stations.filter(s => s.id !== id));
-    }
+    setConfirmModalState({
+      isOpen: true,
+      title: 'Suppression Station d\'Irrigation',
+      message: `Voulez-vous vraiment supprimer la station ${id} ?`,
+      onConfirm: () => {
+        setStations(stations.filter(s => s.id !== id));
+      }
+    });
   };
 
   const handleExportAgronomieCSV = () => {
@@ -286,6 +294,15 @@ export function AgronomieDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
           </form>
         </div>
       )}
+
+      {/* In-App Confirmation Modal */}
+      <AppConfirmModal
+        isOpen={confirmModalState.isOpen}
+        onClose={() => setConfirmModalState({ ...confirmModalState, isOpen: false })}
+        onConfirm={confirmModalState.onConfirm}
+        title={confirmModalState.title}
+        message={confirmModalState.message}
+      />
     </div>
   );
 }

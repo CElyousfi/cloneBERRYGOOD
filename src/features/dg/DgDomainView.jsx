@@ -2,17 +2,21 @@
 import React, { useState } from 'react';
 import { UiBadge } from '../../shared/components/UiBadge';
 import { UiStatCard } from '../../shared/components/UiStatCard';
+import { AppConfirmModal } from '../../shared/components/AppConfirmModal';
 
 export function DgDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
   const [activeTab, setActiveTab] = useState('audit');
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddLogModal, setShowAddLogModal] = useState(false);
 
+  // Custom Confirm Modal State
+  const [confirmModalState, setConfirmModalState] = useState({ isOpen: false, title: '', message: '', onConfirm: () => {} });
+
   // Form state
   const [logAction, setLogAction] = useState('');
   const [logDetail, setLogDetail] = useState('');
 
-  // Clean Production State Array (0 Fake Data)
+  // Clean Production State Array
   const [auditLogs, setAuditLogs] = useState([]);
 
   const handleAddLog = (e) => {
@@ -33,9 +37,14 @@ export function DgDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
   };
 
   const handleDeleteLog = (id) => {
-    if (confirm(`Supprimer l'entrée d'audit ${id} ?`)) {
-      setAuditLogs(auditLogs.filter(l => l.id !== id));
-    }
+    setConfirmModalState({
+      isOpen: true,
+      title: 'Suppression Entrée Registre BSNL',
+      message: `Voulez-vous vraiment supprimer l'entrée d'audit ${id} ?`,
+      onConfirm: () => {
+        setAuditLogs(auditLogs.filter(l => l.id !== id));
+      }
+    });
   };
 
   const handleExportAuditCSV = () => {
@@ -98,7 +107,7 @@ export function DgDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
         <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', padding: '20px 24px', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
           <div>
             <h4 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-main)' }}>Audit Log Systémique & Tampons Numériques — {activeFarm}</h4>
-            <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Base de données active (0 données factices) | Supabase PostgreSQL synchronisé</p>
+            <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Modales in-app personnalisées & Supabase PostgreSQL</p>
           </div>
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
             <input
@@ -171,6 +180,15 @@ export function DgDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
           </form>
         </div>
       )}
+
+      {/* In-App Confirmation Modal */}
+      <AppConfirmModal
+        isOpen={confirmModalState.isOpen}
+        onClose={() => setConfirmModalState({ ...confirmModalState, isOpen: false })}
+        onConfirm={confirmModalState.onConfirm}
+        title={confirmModalState.title}
+        message={confirmModalState.message}
+      />
     </div>
   );
 }

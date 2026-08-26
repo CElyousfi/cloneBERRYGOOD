@@ -2,18 +2,22 @@
 import React, { useState } from 'react';
 import { UiBadge } from '../../shared/components/UiBadge';
 import { UiStatCard } from '../../shared/components/UiStatCard';
+import { AppConfirmModal } from '../../shared/components/AppConfirmModal';
 
 export function RhDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
   const [activeSubTab, setActiveSubTab] = useState('pointage');
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddPointageModal, setShowAddPointageModal] = useState(false);
 
+  // Custom Confirm Modal State
+  const [confirmModalState, setConfirmModalState] = useState({ isOpen: false, title: '', message: '', onConfirm: () => {} });
+
   // Form states
   const [pMatricule, setPMatricule] = useState('');
   const [pNom, setPNom] = useState('');
   const [pKg, setPKg] = useState('50');
 
-  // Clean Production State Array (0 Fake Data)
+  // Clean Production State Array
   const [pointages, setPointages] = useState([]);
 
   // REAL-TIME DYNAMIC RH RECALCULATION ENGINE
@@ -49,9 +53,14 @@ export function RhDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
   };
 
   const handleDeletePointage = (mat) => {
-    if (confirm(`Supprimer le pointage de ${mat} ?`)) {
-      setPointages(pointages.filter(p => p.matricule !== mat));
-    }
+    setConfirmModalState({
+      isOpen: true,
+      title: 'Suppression de Pointage',
+      message: `Voulez-vous vraiment supprimer le pointage de l'ouvrier ${mat} ?`,
+      onConfirm: () => {
+        setPointages(pointages.filter(p => p.matricule !== mat));
+      }
+    });
   };
 
   const handleExportRHCSV = () => {
@@ -114,7 +123,7 @@ export function RhDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
         <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', padding: '20px 24px', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
           <div>
             <h4 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-main)' }}>Pointage Journalier des Ouvriers — {activeFarm}</h4>
-            <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Base de données active (0 données factices) | Supabase PostgreSQL synchronisé</p>
+            <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Modales in-app personnalisées & Supabase PostgreSQL</p>
           </div>
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
             <input
@@ -194,6 +203,15 @@ export function RhDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
           </form>
         </div>
       )}
+
+      {/* In-App Confirmation Modal */}
+      <AppConfirmModal
+        isOpen={confirmModalState.isOpen}
+        onClose={() => setConfirmModalState({ ...confirmModalState, isOpen: false })}
+        onConfirm={confirmModalState.onConfirm}
+        title={confirmModalState.title}
+        message={confirmModalState.message}
+      />
     </div>
   );
 }

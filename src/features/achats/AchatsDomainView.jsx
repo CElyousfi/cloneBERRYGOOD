@@ -4,12 +4,16 @@ import { UiBadge } from '../../shared/components/UiBadge';
 import { UiStatCard } from '../../shared/components/UiStatCard';
 import { createLiveRecord } from '../../shared/api/liveDataProvider.js';
 import { DocumentViewerModal } from '../../shared/components/DocumentViewerModal';
+import { AppConfirmModal } from '../../shared/components/AppConfirmModal';
 
 export function AchatsDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
   const [activeTab, setActiveTab] = useState('bdc');
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddBDCModal, setShowAddBDCModal] = useState(false);
   const [selectedDoc, setSelectedDoc] = useState(null);
+
+  // Custom Confirm Modal State
+  const [confirmModalState, setConfirmModalState] = useState({ isOpen: false, title: '', message: '', onConfirm: () => {} });
 
   // Form state
   const [bdcSupplier, setBdcSupplier] = useState('');
@@ -87,9 +91,14 @@ export function AchatsDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
   };
 
   const handleDeleteBDC = (id) => {
-    if (confirm(`Supprimer le bon de commande ${id} ?`)) {
-      setBdcList(bdcList.filter(b => b.id !== id));
-    }
+    setConfirmModalState({
+      isOpen: true,
+      title: 'Suppression Bon de Commande',
+      message: `Voulez-vous vraiment supprimer le bon de commande ${id} ?`,
+      onConfirm: () => {
+        setBdcList(bdcList.filter(b => b.id !== id));
+      }
+    });
   };
 
   const handleExportAchatsCSV = () => {
@@ -229,7 +238,7 @@ export function AchatsDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
         </div>
       </div>
 
-      {/* Modal Add BDC with File Upload */}
+      {/* Modal Add BDC */}
       {showAddBDCModal && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <form onSubmit={handleAddBDC} style={{ backgroundColor: 'var(--bg-card)', padding: '28px', borderRadius: 'var(--radius-xl)', width: '440px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -257,6 +266,15 @@ export function AchatsDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
         onClose={() => setSelectedDoc(null)}
         documentTitle={selectedDoc?.title || 'Document Preview'}
         documentUrl={selectedDoc?.url}
+      />
+
+      {/* In-App Confirmation Modal */}
+      <AppConfirmModal
+        isOpen={confirmModalState.isOpen}
+        onClose={() => setConfirmModalState({ ...confirmModalState, isOpen: false })}
+        onConfirm={confirmModalState.onConfirm}
+        title={confirmModalState.title}
+        message={confirmModalState.message}
       />
     </div>
   );

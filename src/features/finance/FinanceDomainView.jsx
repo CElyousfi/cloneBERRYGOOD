@@ -4,6 +4,7 @@ import { UiBadge } from '../../shared/components/UiBadge';
 import { UiStatCard } from '../../shared/components/UiStatCard';
 import { createLiveRecord } from '../../shared/api/liveDataProvider.js';
 import { DocumentViewerModal } from '../../shared/components/DocumentViewerModal';
+import { AppConfirmModal } from '../../shared/components/AppConfirmModal';
 
 export function FinanceDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
   const [activeSubTab, setActiveSubTab] = useState('workflow');
@@ -11,6 +12,9 @@ export function FinanceDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
   const [statusFilter, setStatusFilter] = useState('tous');
   const [showAddInvoiceModal, setShowAddInvoiceModal] = useState(false);
   const [showAddCaisseModal, setShowAddCaisseModal] = useState(false);
+
+  // Custom Confirm Modal State
+  const [confirmModalState, setConfirmModalState] = useState({ isOpen: false, title: '', message: '', onConfirm: () => {} });
 
   // Document Viewer Modal State
   const [selectedDoc, setSelectedDoc] = useState(null);
@@ -37,7 +41,6 @@ export function FinanceDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
   const dynamicCaisseBalance = caisseNetSum;
   const validatedInvoicesCount = invoices.filter(i => i.status === 'validee_dg' || i.status === 'payee').length;
 
-  // File Upload Handlers (converts file to Data URL for instant viewing & storage)
   const handleFileUpload = (e, setUrlFn) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -49,7 +52,6 @@ export function FinanceDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
     }
   };
 
-  // CRUD Actions with Live Recalculations
   const handleAddInvoice = async (e) => {
     e.preventDefault();
     if (!invSupplier || !invAmount) return;
@@ -140,15 +142,25 @@ export function FinanceDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
   };
 
   const handleDeleteInvoice = (id) => {
-    if (confirm(`Supprimer la facture ${id} ?`)) {
-      setInvoices(invoices.filter(inv => inv.id !== id));
-    }
+    setConfirmModalState({
+      isOpen: true,
+      title: 'Suppression de Facture',
+      message: `Voulez-vous vraiment supprimer définitivement la facture ${id} de la base de données ?`,
+      onConfirm: () => {
+        setInvoices(invoices.filter(inv => inv.id !== id));
+      }
+    });
   };
 
   const handleDeleteCaisse = (id) => {
-    if (confirm(`Supprimer le mouvement caisse ${id} ?`)) {
-      setCaisseTransactions(caisseTransactions.filter(c => c.id !== id));
-    }
+    setConfirmModalState({
+      isOpen: true,
+      title: 'Suppression Mouvement Caisse',
+      message: `Voulez-vous vraiment supprimer le mouvement de caisse ${id} ?`,
+      onConfirm: () => {
+        setCaisseTransactions(caisseTransactions.filter(c => c.id !== id));
+      }
+    });
   };
 
   const handleExportCSV = () => {
@@ -249,7 +261,7 @@ export function FinanceDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
           <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', padding: '20px 24px', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
             <div>
               <h3 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-main)', fontFamily: 'var(--font-display)' }}>Pipeline Factures Fournisseurs — {activeFarm}</h3>
-              <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Stockage & lecture des justificatifs numérisés | Supabase PostgreSQL</p>
+              <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Modales in-app personnalisées & Supabase PostgreSQL</p>
             </div>
 
             <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -390,7 +402,7 @@ export function FinanceDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
         </div>
       )}
 
-      {/* Modal Add Invoice with File Upload */}
+      {/* Modal Add Invoice */}
       {showAddInvoiceModal && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <form onSubmit={handleAddInvoice} style={{ backgroundColor: 'var(--bg-card)', padding: '28px', borderRadius: 'var(--radius-xl)', width: '440px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -412,7 +424,7 @@ export function FinanceDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
         </div>
       )}
 
-      {/* Modal Add Caisse with File Upload */}
+      {/* Modal Add Caisse */}
       {showAddCaisseModal && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <form onSubmit={handleAddCaisse} style={{ backgroundColor: 'var(--bg-card)', padding: '28px', borderRadius: 'var(--radius-xl)', width: '440px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -443,6 +455,15 @@ export function FinanceDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
         onClose={() => setSelectedDoc(null)}
         documentTitle={selectedDoc?.title || 'Document Preview'}
         documentUrl={selectedDoc?.url}
+      />
+
+      {/* In-App Confirmation Modal */}
+      <AppConfirmModal
+        isOpen={confirmModalState.isOpen}
+        onClose={() => setConfirmModalState({ ...confirmModalState, isOpen: false })}
+        onConfirm={confirmModalState.onConfirm}
+        title={confirmModalState.title}
+        message={confirmModalState.message}
       />
     </div>
   );

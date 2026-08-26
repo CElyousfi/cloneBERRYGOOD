@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { UiBadge } from '../../shared/components/UiBadge';
 import { UiStatCard } from '../../shared/components/UiStatCard';
+import { AppConfirmModal } from '../../shared/components/AppConfirmModal';
 
 export function RecolteDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
   const [taskFilter, setTaskFilter] = useState('tous');
@@ -9,6 +10,9 @@ export function RecolteDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
   const [openTaskMenuId, setOpenTaskMenuId] = useState(null);
   const [showAddHarvestModal, setShowAddHarvestModal] = useState(false);
   const [showAddTaskModal, setShowAddTaskModal] = useState(false);
+
+  // Custom Confirm Modal State
+  const [confirmModalState, setConfirmModalState] = useState({ isOpen: false, title: '', message: '', onConfirm: () => {} });
 
   // Form states
   const [hParcelle, setHParcelle] = useState('');
@@ -48,8 +52,15 @@ export function RecolteDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
   };
 
   const handleDeleteTask = (id) => {
-    setTasks(tasks.filter(t => t.id !== id));
-    setOpenTaskMenuId(null);
+    setConfirmModalState({
+      isOpen: true,
+      title: 'Suppression de Tâche',
+      message: `Voulez-vous vraiment supprimer cette tâche ?`,
+      onConfirm: () => {
+        setTasks(tasks.filter(t => t.id !== id));
+        setOpenTaskMenuId(null);
+      }
+    });
   };
 
   const handleAddTask = (e) => {
@@ -93,9 +104,14 @@ export function RecolteDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
   };
 
   const handleDeleteHarvest = (id) => {
-    if (confirm(`Supprimer le bon de récolte ${id} ?`)) {
-      setHarvestLogs(harvestLogs.filter(h => h.id !== id));
-    }
+    setConfirmModalState({
+      isOpen: true,
+      title: 'Suppression Bon de Récolte',
+      message: `Voulez-vous vraiment supprimer le bon de récolte ${id} ?`,
+      onConfirm: () => {
+        setHarvestLogs(harvestLogs.filter(h => h.id !== id));
+      }
+    });
   };
 
   const handleExportHarvestCSV = () => {
@@ -337,6 +353,15 @@ export function RecolteDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
           </form>
         </div>
       )}
+
+      {/* In-App Confirmation Modal */}
+      <AppConfirmModal
+        isOpen={confirmModalState.isOpen}
+        onClose={() => setConfirmModalState({ ...confirmModalState, isOpen: false })}
+        onConfirm={confirmModalState.onConfirm}
+        title={confirmModalState.title}
+        message={confirmModalState.message}
+      />
     </div>
   );
 }

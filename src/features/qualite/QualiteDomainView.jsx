@@ -4,12 +4,16 @@ import { UiBadge } from '../../shared/components/UiBadge';
 import { UiStatCard } from '../../shared/components/UiStatCard';
 import { createLiveRecord } from '../../shared/api/liveDataProvider.js';
 import { DocumentViewerModal } from '../../shared/components/DocumentViewerModal';
+import { AppConfirmModal } from '../../shared/components/AppConfirmModal';
 
 export function QualiteDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
   const [activeSubTab, setActiveSubTab] = useState('inspections');
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddInspectionModal, setShowAddInspectionModal] = useState(false);
   const [selectedDoc, setSelectedDoc] = useState(null);
+
+  // Custom Confirm Modal State
+  const [confirmModalState, setConfirmModalState] = useState({ isOpen: false, title: '', message: '', onConfirm: () => {} });
 
   // Form state
   const [inspLot, setInspLot] = useState('');
@@ -92,9 +96,14 @@ export function QualiteDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
   };
 
   const handleDeleteInspection = (id) => {
-    if (confirm(`Supprimer le rapport d'inspection ${id} ?`)) {
-      setInspections(inspections.filter(i => i.id !== id));
-    }
+    setConfirmModalState({
+      isOpen: true,
+      title: 'Suppression Rapport Qualité',
+      message: `Voulez-vous vraiment supprimer le rapport d'inspection ${id} ?`,
+      onConfirm: () => {
+        setInspections(inspections.filter(i => i.id !== id));
+      }
+    });
   };
 
   const handleExportQualityCSV = () => {
@@ -236,7 +245,7 @@ export function QualiteDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
         </div>
       </div>
 
-      {/* Modal Add Inspection with File Upload */}
+      {/* Modal Add Inspection */}
       {showAddInspectionModal && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <form onSubmit={handleAddInspection} style={{ backgroundColor: 'var(--bg-card)', padding: '28px', borderRadius: 'var(--radius-xl)', width: '440px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -265,6 +274,15 @@ export function QualiteDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
         onClose={() => setSelectedDoc(null)}
         documentTitle={selectedDoc?.title || 'Document Preview'}
         documentUrl={selectedDoc?.url}
+      />
+
+      {/* In-App Confirmation Modal */}
+      <AppConfirmModal
+        isOpen={confirmModalState.isOpen}
+        onClose={() => setConfirmModalState({ ...confirmModalState, isOpen: false })}
+        onConfirm={confirmModalState.onConfirm}
+        title={confirmModalState.title}
+        message={confirmModalState.message}
       />
     </div>
   );

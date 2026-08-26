@@ -3,11 +3,15 @@ import React, { useState } from 'react';
 import { UiBadge } from '../../shared/components/UiBadge';
 import { UiStatCard } from '../../shared/components/UiStatCard';
 import { DocumentViewerModal } from '../../shared/components/DocumentViewerModal';
+import { AppConfirmModal } from '../../shared/components/AppConfirmModal';
 
 export function StockDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddStockModal, setShowAddStockModal] = useState(false);
   const [selectedDoc, setSelectedDoc] = useState(null);
+
+  // Custom Confirm Modal State
+  const [confirmModalState, setConfirmModalState] = useState({ isOpen: false, title: '', message: '', onConfirm: () => {} });
 
   // Form states
   const [stkArticle, setStkArticle] = useState('');
@@ -63,9 +67,14 @@ export function StockDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
   };
 
   const handleDeleteStock = (id) => {
-    if (confirm(`Supprimer l'article de stock ${id} ?`)) {
-      setStockItems(stockItems.filter(s => s.id !== id));
-    }
+    setConfirmModalState({
+      isOpen: true,
+      title: 'Suppression Article Stock',
+      message: `Voulez-vous vraiment supprimer l'article de stock ${id} ?`,
+      onConfirm: () => {
+        setStockItems(stockItems.filter(s => s.id !== id));
+      }
+    });
   };
 
   const handleExportStockCSV = () => {
@@ -200,7 +209,7 @@ export function StockDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
         </div>
       </div>
 
-      {/* Modal Add Stock with File Upload */}
+      {/* Modal Add Stock */}
       {showAddStockModal && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <form onSubmit={handleAddStock} style={{ backgroundColor: 'var(--bg-card)', padding: '28px', borderRadius: 'var(--radius-xl)', width: '440px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -229,6 +238,15 @@ export function StockDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
         onClose={() => setSelectedDoc(null)}
         documentTitle={selectedDoc?.title || 'Document Preview'}
         documentUrl={selectedDoc?.url}
+      />
+
+      {/* In-App Confirmation Modal */}
+      <AppConfirmModal
+        isOpen={confirmModalState.isOpen}
+        onClose={() => setConfirmModalState({ ...confirmModalState, isOpen: false })}
+        onConfirm={confirmModalState.onConfirm}
+        title={confirmModalState.title}
+        message={confirmModalState.message}
       />
     </div>
   );
