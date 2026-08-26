@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:9ad3e29b44a3f8b2 -->
-# Code Map — Modules lib (193)
+<!-- sourceFingerprint: sha256:288abb7befbe0f0e -->
+# Code Map — Modules lib (194)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
 
@@ -18,6 +18,7 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/budgetBgf.js | — | BUDGET_BGF |
 | functions/lib/bugReports/bugStatus.js | — | BUG_STATUSES, FILTERABLE_STATUSES, ADMIN_PROFILES, isValidStatus, isFilterableStatus, isAdminProfile, validateStatusUpdate, sortReportsByCreatedDesc |
 | functions/lib/bugReports/validateBugReport.js | — | validateBugReport, MAX_DESCRIPTION, MAX_PHOTO_BASE64_CHARS |
+| functions/lib/caisse/batchValidation.js | — | planBatchValidation, applyDelta |
 | functions/lib/caisse/champsAnalytiques.js | — | FERMES, CULTURES, PARCELLE_GENERAL, campagneOf, validateAxes |
 | functions/lib/caisse/rapprochementLock.js | — | periodeFromDate, rapprochementDocId, periodesAVerifier, MOIS_FR |
 | functions/lib/caisse/soldeDelta.js | — | computeSoldeDelta, isTypeEditable, TYPES_ENTREE, TYPES_SORTIE, TYPES_EDITABLES |

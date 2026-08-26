@@ -2,11 +2,11 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:7defa9b548408656",
+    "sourceFingerprint": "sha256:3bacc3e87c2ec857",
     "stats": {
-      "targetFiles": 250,
-      "targetFilesWithDirectTests": 145,
-      "targetFilesWithTransitiveTests": 166,
+      "targetFiles": 251,
+      "targetFilesWithDirectTests": 146,
+      "targetFilesWithTransitiveTests": 167,
       "testFilesScanned": 214
     }
   },
@@ -105,6 +105,14 @@
       ],
       "transitiveTests": [
         "tests/unit/validateBugReport.test.js"
+      ]
+    },
+    "functions/lib/caisse/batchValidation.js": {
+      "directTests": [
+        "functions/lib/caisse/__tests__/caisse.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/caisse/__tests__/caisse.test.js"
       ]
     },
     "functions/lib/caisse/champsAnalytiques.js": {

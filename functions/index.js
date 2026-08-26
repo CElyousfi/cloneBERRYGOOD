@@ -18,6 +18,7 @@ const { computeSoldeDelta, isTypeEditable } = require("./lib/caisse/soldeDelta")
 const { periodesAVerifier } = require("./lib/caisse/rapprochementLock");
 const { computeChanges } = require("./lib/caisse/txDiff");
 const caisseAxes = require("./lib/caisse/champsAnalytiques");
+const { planBatchValidation, applyDelta } = require("./lib/caisse/batchValidation");
 const { validateSupplier } = require("./lib/suppliers/supplierValidation");
 const stockCaneva = require("./lib/stockCaneva");
 const articleMerge = require("./lib/stockMerge/articleMerge");
@@ -16049,19 +16050,100 @@ exports.caisseManagement = functions
 
       // ----- validate-transactions-batch -----
       // status → 'valide', valide_par, valide_at, history. DG/Finance only.
+      //
+      // Cette action DOIT mouvementer solde_actuel exactement comme la validation
+      // unitaire (validate-transaction). Historiquement elle ne le faisait pas :
+      // les bons passaient à 'valide' sans que la caisse bouge, le solde système
+      // ne correspondait donc plus au solde physique, et une dévalidation
+      // ultérieure (update-transaction) soustrayait un delta jamais ajouté.
+      //
+      // Chaque chunk est traité dans UNE transaction Firestore : les bons et les
+      // soldes de caisse bougent ensemble, ou pas du tout.
       if (action === "validate-transactions-batch" && req.method === "POST") {
         if (!isControle && !isAdmin) return res.status(403).json({ success: false, error: "Seul DG/Finance peut valider" });
         const ids = Array.isArray(req.body.ids) ? req.body.ids : null;
         if (!ids || ids.length === 0) return res.status(400).json({ success: false, error: "ids[] requis" });
-        const now = Date.now();
-        const result = await _applyBatchUpdate(ids, (data) => ({
-          status: "valide",
-          valide_par: userInfo,
-          valide_at: admin.firestore.FieldValue.serverTimestamp(),
-          updated_at: admin.firestore.FieldValue.serverTimestamp(),
-          history: [...(data.history || []), { action: "batch_validate", by: userInfo, at: now }],
-        }));
-        return res.json({ success: true, count: result.updated, ...result });
+
+        let updated = 0, skipped = 0;
+        const errors = [];
+        /** @type {Object<string, number>} solde par caisse après validation */
+        const soldes = {};
+
+        // Chunks de 300 : la transaction écrit 1 doc par bon + 1 par caisse
+        // touchée, et Firestore plafonne à 500 écritures par transaction.
+        const chunks = [];
+        for (let i = 0; i < ids.length; i += 300) chunks.push(ids.slice(i, i + 300));
+
+        for (const chunkIds of chunks) {
+          // Compteurs LOCAUX à la tentative : une transaction Firestore peut être
+          // rejouée, les accumuler globalement compterait deux fois.
+          let chunkUpdated = 0, chunkSkipped = 0;
+          let chunkErrors = [];
+          let chunkSoldes = {};
+
+          await db_firestore.runTransaction(async (t) => {
+            chunkUpdated = 0; chunkSkipped = 0; chunkErrors = []; chunkSoldes = {};
+            const now = Date.now();
+            const txRefs = chunkIds.map(id => db_firestore.collection("caisse_transactions").doc(id));
+            const txSnaps = await t.getAll(...txRefs);
+
+            // 1. Qui est validable, et de combien chaque caisse bouge.
+            //    Logique pure et testée : functions/lib/caisse/batchValidation.js
+            const byId = {};
+            const plan = planBatchValidation(txSnaps.map((snap, i) => {
+              const data = snap.exists ? snap.data() : null;
+              if (data) byId[chunkIds[i]] = { ref: txRefs[i], data };
+              return { id: chunkIds[i], data };
+            }));
+            chunkSkipped += plan.errors.length;
+            chunkErrors.push(...plan.errors);
+
+            const eligibles = plan.eligibles.map(id => ({ id, ref: byId[id].ref, data: byId[id].data }));
+            const deltaParCaisse = plan.deltaParCaisse;
+            if (eligibles.length === 0) return;
+
+            // 2. Lire les caisses concernées (TOUTES les lectures avant les écritures).
+            const caisseIds = Object.keys(deltaParCaisse);
+            const caisseRefs = caisseIds.map(id => db_firestore.collection("caisse_definitions").doc(id));
+            const caisseSnaps = await t.getAll(...caisseRefs);
+            const caissesOk = {};
+            caisseSnaps.forEach((snap, i) => { if (snap.exists) caissesOk[caisseIds[i]] = snap.data(); });
+
+            const nowTs = admin.firestore.FieldValue.serverTimestamp();
+
+            // 3. Écritures — un bon dont la caisse n'existe pas n'est PAS validé.
+            for (const e of eligibles) {
+              if (!caissesOk[e.data.caisse_id]) {
+                chunkSkipped++;
+                chunkErrors.push({ id: e.id, reason: "caisse_introuvable" });
+                continue;
+              }
+              t.update(e.ref, {
+                status: "valide",
+                valide_par: userInfo,
+                valide_at: nowTs,
+                updated_at: nowTs,
+                history: [...(e.data.history || []), { action: "batch_validate", by: userInfo, at: now }],
+              });
+              chunkUpdated++;
+            }
+
+            for (const caisseId of caisseIds) {
+              const caisse = caissesOk[caisseId];
+              if (!caisse) continue;
+              const newSolde = applyDelta(caisse.solde_actuel, deltaParCaisse[caisseId]);
+              t.update(db_firestore.collection("caisse_definitions").doc(caisseId), { solde_actuel: newSolde, updated_at: nowTs });
+              chunkSoldes[caisseId] = newSolde;
+            }
+          });
+
+          updated += chunkUpdated;
+          skipped += chunkSkipped;
+          errors.push(...chunkErrors);
+          Object.assign(soldes, chunkSoldes);
+        }
+
+        return res.json({ success: true, count: updated, updated, skipped, errors, soldes });
       }
 
       // ----- mark-revoir-batch -----

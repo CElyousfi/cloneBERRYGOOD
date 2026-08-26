@@ -251,3 +251,84 @@ test('computeChanges — les 4 axes analytiques sont tracés', () => {
   );
   assert.deepStrictEqual(changes.map((c) => c.field), ['ferme', 'campagne', 'culture', 'parcelle']);
 });
+
+// ----------------------------------------------------------- batchValidation
+
+const { planBatchValidation, applyDelta } = require('../batchValidation');
+
+const soumis = (caisse, type, montant) => ({ status: 'soumis', caisse_id: caisse, type, montant });
+
+test('planBatchValidation — cumule le delta par caisse', () => {
+  const plan = planBatchValidation([
+    { id: 'a', data: soumis('C1', 'depense', 100) },
+    { id: 'b', data: soumis('C1', 'depense', 50) },
+    { id: 'c', data: soumis('C1', 'alimentation', 500) },
+    { id: 'd', data: soumis('C5', 'depense', 200) },
+  ]);
+  assert.deepStrictEqual(plan.eligibles, ['a', 'b', 'c', 'd']);
+  assert.deepStrictEqual(plan.deltaParCaisse, { C1: 350, C5: -200 });
+  assert.deepStrictEqual(plan.errors, []);
+});
+
+test('planBatchValidation — seul un bon « soumis » est validable', () => {
+  const plan = planBatchValidation([
+    { id: 'a', data: soumis('C1', 'depense', 100) },
+    { id: 'b', data: { status: 'brouillon', caisse_id: 'C1', type: 'depense', montant: 999 } },
+    { id: 'c', data: { status: 'valide', caisse_id: 'C1', type: 'depense', montant: 999 } },
+    { id: 'd', data: { status: 'rejete', caisse_id: 'C1', type: 'depense', montant: 999 } },
+  ]);
+  assert.deepStrictEqual(plan.eligibles, ['a']);
+  // Le montant des non-soumis ne doit JAMAIS entrer dans le delta.
+  assert.deepStrictEqual(plan.deltaParCaisse, { C1: -100 });
+  assert.deepStrictEqual(plan.errors.map((e) => [e.id, e.reason, e.status]), [
+    ['b', 'statut_non_soumis', 'brouillon'],
+    ['c', 'statut_non_soumis', 'valide'],
+    ['d', 'statut_non_soumis', 'rejete'],
+  ]);
+});
+
+test('planBatchValidation — un bon déjà validé ne crédite pas deux fois', () => {
+  const plan = planBatchValidation([{ id: 'a', data: { status: 'valide', caisse_id: 'C1', type: 'alimentation', montant: 1000 } }]);
+  assert.deepStrictEqual(plan.eligibles, []);
+  assert.deepStrictEqual(plan.deltaParCaisse, {});
+});
+
+test('planBatchValidation — document absent ou caisse manquante écartés', () => {
+  const plan = planBatchValidation([
+    { id: 'a', data: null },
+    { id: 'b', data: { status: 'soumis', type: 'depense', montant: 100 } },
+    { id: 'c', data: soumis('C1', 'depense', 100) },
+  ]);
+  assert.deepStrictEqual(plan.eligibles, ['c']);
+  assert.deepStrictEqual(plan.errors.map((e) => [e.id, e.reason]), [['a', 'not_found'], ['b', 'caisse_absente']]);
+});
+
+test('planBatchValidation — delta cohérent avec la validation unitaire', () => {
+  for (const type of ['alimentation', 'depense', 'sortie', 'paie', 'transport']) {
+    const plan = planBatchValidation([{ id: 'x', data: soumis('C1', type, 1000) }]);
+    assert.strictEqual(plan.deltaParCaisse.C1, computeSoldeDelta({ type, montant: 1000 }), `type ${type}`);
+  }
+});
+
+test('planBatchValidation — entrées vides ou invalides ne plantent pas', () => {
+  assert.deepStrictEqual(planBatchValidation([]), { eligibles: [], deltaParCaisse: {}, errors: [] });
+  assert.deepStrictEqual(planBatchValidation(null), { eligibles: [], deltaParCaisse: {}, errors: [] });
+  assert.deepStrictEqual(planBatchValidation([null, undefined]), { eligibles: [], deltaParCaisse: {}, errors: [] });
+});
+
+test('applyDelta — arrondi au centime, tolérant aux valeurs absentes', () => {
+  assert.strictEqual(applyDelta(10000, -1450.25), 8549.75);
+  assert.strictEqual(applyDelta(0.1, 0.2), 0.3);              // pas de 0.30000000000000004
+  assert.strictEqual(applyDelta(undefined, -100), -100);
+  assert.strictEqual(applyDelta(500, undefined), 500);
+  assert.strictEqual(applyDelta('abc', 100), 100);
+});
+
+test('applyDelta — scénario complet : 3 dépenses validées en masse', () => {
+  const plan = planBatchValidation([
+    { id: 'a', data: soumis('C1', 'depense', 82) },
+    { id: 'b', data: soumis('C1', 'depense', 50) },
+    { id: 'c', data: soumis('C1', 'depense', 60) },
+  ]);
+  assert.strictEqual(applyDelta(10000, plan.deltaParCaisse.C1), 9808);
+});

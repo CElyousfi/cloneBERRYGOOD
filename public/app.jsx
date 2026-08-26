@@ -60541,9 +60541,18 @@ ${rejetHtml}
                 if (!window.confirm(`Valider ${ids.length} transaction(s) ?`)) return;
                 const json = await _postBulk('validate-transactions-batch', { ids });
                 if (json) {
-                    showToast(`${json.count || ids.length} transactions validées`);
+                    // Le batch n'accepte QUE les bons au statut « Saisi » (soumis) et
+                    // mouvemente le solde de la caisse. Les bons écartés doivent être
+                    // dits, sinon l'utilisateur croit avoir tout validé.
+                    const n = json.updated !== undefined ? json.updated : (json.count || 0);
+                    const ignores = json.skipped || 0;
+                    showToast(ignores > 0
+                        ? `${n} transaction(s) validée(s) — ${ignores} ignorée(s) (déjà validée ou pas au statut « Saisi »)`
+                        : `${n} transaction(s) validée(s)`,
+                        n === 0 ? 'error' : 'success');
                     clearSelection();
                     load();
+                    onRefresh && onRefresh();   // le solde des caisses a bougé
                 }
             };
             const bulkMarkRevoir = async () => {
