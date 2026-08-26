@@ -21,12 +21,8 @@ export function AgronomieDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
   const [stFlow, setStFlow] = useState('40 m³/h');
   const [stSector, setStSector] = useState('Bloc A1');
 
-  // Live state array for Stations
-  const [stations, setStations] = useState([
-    { id: 'ST-01', nom: `Station D'Irrigation ${activeFarm}`, debit: '42 m³/h', pression: '2.8 Bar', secteur: 'Bloc A1 - A4', status: 'En Irrigation', variant: 'emerald' },
-    { id: 'ST-02', nom: `Station D'Irrigation ${activeFarm} 2`, debit: '38 m³/h', pression: '3.1 Bar', secteur: 'Bloc B1 - B6', status: 'Automatique Standby', variant: 'neutral' },
-    { id: 'ST-03', nom: `Station Fertilisation ${activeFarm}`, debit: '18 m³/h', pression: '2.5 Bar', secteur: 'Bloc C2', status: 'Fertigation Active', variant: 'emerald' },
-  ]);
+  // Clean Production State Array (0 Fake Data)
+  const [stations, setStations] = useState([]);
 
   useEffect(() => {
     let isMounted = true;
@@ -207,41 +203,49 @@ export function AgronomieDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
           </div>
 
           <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
-              <thead>
-                <tr style={{ backgroundColor: 'var(--bg-subtle)', borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
-                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>ID Station</th>
-                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Nom Station</th>
-                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Débit / Pression</th>
-                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Secteur Actif</th>
-                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Statut Opérationnel</th>
-                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredStations.map((st, idx) => (
-                  <tr key={st.id} style={{ borderBottom: idx === filteredStations.length - 1 ? 'none' : '1px solid var(--border-subtle)' }}>
-                    <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--text-main)' }}>{st.id}</td>
-                    <td style={{ padding: '14px 20px', fontWeight: '600', color: 'var(--text-main)' }}>{st.nom}</td>
-                    <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--emerald-600)' }}>{st.debit} ({st.pression})</td>
-                    <td style={{ padding: '14px 20px', color: 'var(--text-secondary)' }}>{st.secteur}</td>
-                    <td style={{ padding: '14px 20px' }}>
-                      <button onClick={() => handleToggleStation(st.id)} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0 }}>
-                        <UiBadge variant={st.variant}>{st.status} ➔</UiBadge>
-                      </button>
-                    </td>
-                    <td style={{ padding: '14px 20px', display: 'flex', gap: '8px' }}>
-                      <button onClick={() => handleToggleStation(st.id)} style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-subtle)', fontSize: '11px', cursor: 'pointer' }}>
-                        Basculer Statut
-                      </button>
-                      <button onClick={() => handleDeleteStation(st.id)} style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--rose-500)', backgroundColor: 'transparent', color: 'var(--rose-500)', fontSize: '11px', cursor: 'pointer' }}>
-                        Supprimer
-                      </button>
-                    </td>
+            {filteredStations.length === 0 ? (
+              <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                <i className="fa-solid fa-faucet-drip" style={{ fontSize: '32px', marginBottom: '12px', opacity: 0.4 }}></i>
+                <p style={{ fontSize: '14px', fontWeight: '600' }}>Aucune station enregistrée</p>
+                <p style={{ fontSize: '12px' }}>Cliquez sur <strong>"Nouvelle Station"</strong> pour créer votre première vanne ou station d'irrigation.</p>
+              </div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+                <thead>
+                  <tr style={{ backgroundColor: 'var(--bg-subtle)', borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
+                    <th style={{ padding: '12px 20px', fontWeight: '600' }}>ID Station</th>
+                    <th style={{ padding: '12px 20px', fontWeight: '600' }}>Nom Station</th>
+                    <th style={{ padding: '12px 20px', fontWeight: '600' }}>Débit / Pression</th>
+                    <th style={{ padding: '12px 20px', fontWeight: '600' }}>Secteur Actif</th>
+                    <th style={{ padding: '12px 20px', fontWeight: '600' }}>Statut Opérationnel</th>
+                    <th style={{ padding: '12px 20px', fontWeight: '600' }}>Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {filteredStations.map((st, idx) => (
+                    <tr key={st.id} style={{ borderBottom: idx === filteredStations.length - 1 ? 'none' : '1px solid var(--border-subtle)' }}>
+                      <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--text-main)' }}>{st.id}</td>
+                      <td style={{ padding: '14px 20px', fontWeight: '600', color: 'var(--text-main)' }}>{st.nom}</td>
+                      <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--emerald-600)' }}>{st.debit} ({st.pression})</td>
+                      <td style={{ padding: '14px 20px', color: 'var(--text-secondary)' }}>{st.secteur}</td>
+                      <td style={{ padding: '14px 20px' }}>
+                        <button onClick={() => handleToggleStation(st.id)} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0 }}>
+                          <UiBadge variant={st.variant}>{st.status} ➔</UiBadge>
+                        </button>
+                      </td>
+                      <td style={{ padding: '14px 20px', display: 'flex', gap: '8px' }}>
+                        <button onClick={() => handleToggleStation(st.id)} style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-subtle)', fontSize: '11px', cursor: 'pointer' }}>
+                          Basculer Statut
+                        </button>
+                        <button onClick={() => handleDeleteStation(st.id)} style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--rose-500)', backgroundColor: 'transparent', color: 'var(--rose-500)', fontSize: '11px', cursor: 'pointer' }}>
+                          Supprimer
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       ) : (

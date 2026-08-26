@@ -22,20 +22,9 @@ export function RecolteDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
   const [tTitle, setTTitle] = useState('');
   const [tDomain, setTDomain] = useState('Finance');
 
-  // Interactive Task List state
-  const [tasks, setTasks] = useState([
-    { id: 'TSK-1', text: 'Validation Facture Engrais NPK #FACT-9482', domain: 'Finance', status: 'en_cours', userInitials: 'JD', dateLabel: 'Aujourd\'hui' },
-    { id: 'TSK-2', text: 'Contrôle Taux Brix Variété Star - Bloc B4', domain: 'Qualité', status: 'en_cours', userInitials: 'KR', dateLabel: 'En retard (Hier)' },
-    { id: 'TSK-3', text: 'Rapprochement Paie Quinzaine 16 — Ferme Souss', domain: 'RH', status: 'terminee', userInitials: 'JD', dateLabel: 'Aujourd\'hui' },
-    { id: 'TSK-4', text: 'Inspection Station d\'Irrigation #2 & Filtres', domain: 'Agronomie', status: 'en_cours', userInitials: 'MA', dateLabel: 'Demain' },
-  ]);
-
-  // Interactive Harvest Records state
-  const [harvestLogs, setHarvestLogs] = useState([
-    { id: 'REC-101', parcelle: 'Bloc A1 - Fraise Star', variete: 'Fraise Star', kg: '1,450 kg', rawKg: 1450, coutParKg: '1.80 DH/kg', catA: '98 %', status: 'Conforme', variant: 'emerald' },
-    { id: 'REC-102', parcelle: 'Bloc B2 - Framboise Diamond', variete: 'Framboise Diamond', kg: '980 kg', rawKg: 980, coutParKg: '1.95 DH/kg', catA: '96 %', status: 'Conforme', variant: 'emerald' },
-    { id: 'REC-103', parcelle: 'Bloc C4 - Myrtille Blue', variete: 'Myrtille Blue', kg: '1,200 kg', rawKg: 1200, coutParKg: '1.85 DH/kg', catA: '94 %', status: 'Conforme', variant: 'emerald' },
-  ]);
+  // Clean Production State Arrays (0 Fake Data)
+  const [tasks, setTasks] = useState([]);
+  const [harvestLogs, setHarvestLogs] = useState([]);
 
   // Dynamic Aggregations
   const totalHarvestKg = harvestLogs.reduce((acc, h) => acc + (h.rawKg || 0), 0);
@@ -145,23 +134,23 @@ export function RecolteDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
           label="Total Récolté (Kg)"
           value={`${totalHarvestKg.toLocaleString('fr-FR')} kg`}
           subtext="Rendement cumulé"
-          trend="+14.2%"
+          trend="0.0%"
           highlightColor="var(--emerald-600)"
           infoTooltip="Somme totale des apports récoltés"
         />
         <UiStatCard
           label="Rendement Moyen Par Hectare"
-          value="14.8 T/ha"
+          value="0.0 T/ha"
           subtext="Objectif: 15 T/ha"
-          trend="+2.4%"
+          trend="0.0%"
           highlightColor="var(--emerald-600)"
           infoTooltip="Rendement moyen sur l'exploitation"
         />
         <UiStatCard
           label="Coût Moyen Récolte / Kg"
-          value="1.85 DH / kg"
+          value="0.00 DH / kg"
           subtext="Coût direct cueillette"
-          trend="-0.12 DH"
+          trend="0.00 DH"
           highlightColor="var(--emerald-600)"
           infoTooltip="Coût direct de récolte par kg"
         />
@@ -200,60 +189,68 @@ export function RecolteDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
         </div>
 
         {/* Task Items Checklist */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {filteredTasks.map(t => {
-            const isDone = t.status === 'terminee';
-            return (
-              <div key={t.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)', backgroundColor: isDone ? 'var(--bg-subtle)' : 'var(--bg-card)', position: 'relative' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                  {/* Interactive Checkbox */}
-                  <input
-                    type="checkbox"
-                    checked={isDone}
-                    onChange={() => handleToggleTaskStatus(t.id)}
-                    style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: 'var(--emerald-600)' }}
-                  />
-                  <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    <span style={{ fontSize: '13px', fontWeight: '600', color: isDone ? 'var(--text-muted)' : 'var(--text-main)', textDecoration: isDone ? 'line-through' : 'none' }}>
-                      {t.text}
+        {filteredTasks.length === 0 ? (
+          <div style={{ padding: '24px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
+            <i className="fa-solid fa-list-check" style={{ fontSize: '28px', marginBottom: '8px', opacity: 0.4 }}></i>
+            <p style={{ fontSize: '13px', fontWeight: '600' }}>Aucune tâche enregistrée</p>
+            <p style={{ fontSize: '12px' }}>Cliquez sur le bouton <strong>"+"</strong> pour ajouter une tâche prioritaire.</p>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {filteredTasks.map(t => {
+              const isDone = t.status === 'terminee';
+              return (
+                <div key={t.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)', backgroundColor: isDone ? 'var(--bg-subtle)' : 'var(--bg-card)', position: 'relative' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                    {/* Interactive Checkbox */}
+                    <input
+                      type="checkbox"
+                      checked={isDone}
+                      onChange={() => handleToggleTaskStatus(t.id)}
+                      style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: 'var(--emerald-600)' }}
+                    />
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <span style={{ fontSize: '13px', fontWeight: '600', color: isDone ? 'var(--text-muted)' : 'var(--text-main)', textDecoration: isDone ? 'line-through' : 'none' }}>
+                        {t.text}
+                      </span>
+                      <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                        {t.dateLabel} • Domain: <strong>{t.domain}</strong>
+                      </span>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', position: 'relative' }}>
+                    <UiBadge variant={isDone ? 'emerald' : 'amber'}>{isDone ? 'Terminée' : 'En cours'}</UiBadge>
+                    <span style={{ width: '28px', height: '28px', borderRadius: '50%', backgroundColor: 'var(--bg-subtle)', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: '700', color: 'var(--text-secondary)' }}>
+                      {t.userInitials}
                     </span>
-                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                      {t.dateLabel} • Domain: <strong>{t.domain}</strong>
-                    </span>
+
+                    {/* WORKING THREE-DOTS MENU dropdown */}
+                    <div style={{ position: 'relative' }}>
+                      <button
+                        onClick={() => setOpenTaskMenuId(openTaskMenuId === t.id ? null : t.id)}
+                        style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '4px 8px', fontSize: '14px' }}
+                      >
+                        <i className="fa-solid fa-ellipsis-vertical"></i>
+                      </button>
+
+                      {openTaskMenuId === t.id && (
+                        <div style={{ position: 'absolute', right: 0, top: '28px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-lg)', padding: '6px', zIndex: 50, width: '160px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <button onClick={() => { handleToggleTaskStatus(t.id); setOpenTaskMenuId(null); }} style={{ padding: '6px 10px', textAlign: 'left', background: 'none', border: 'none', fontSize: '12px', cursor: 'pointer', color: 'var(--text-main)' }}>
+                            <i className="fa-solid fa-check" style={{ marginRight: '8px' }}></i> {isDone ? 'Marquer En Cours' : 'Marquer Terminée'}
+                          </button>
+                          <button onClick={() => handleDeleteTask(t.id)} style={{ padding: '6px 10px', textAlign: 'left', background: 'none', border: 'none', fontSize: '12px', cursor: 'pointer', color: 'var(--rose-500)' }}>
+                            <i className="fa-solid fa-trash" style={{ marginRight: '8px' }}></i> Supprimer
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', position: 'relative' }}>
-                  <UiBadge variant={isDone ? 'emerald' : 'amber'}>{isDone ? 'Terminée' : 'En cours'}</UiBadge>
-                  <span style={{ width: '28px', height: '28px', borderRadius: '50%', backgroundColor: 'var(--bg-subtle)', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: '700', color: 'var(--text-secondary)' }}>
-                    {t.userInitials}
-                  </span>
-
-                  {/* WORKING THREE-DOTS MENU dropdown */}
-                  <div style={{ position: 'relative' }}>
-                    <button
-                      onClick={() => setOpenTaskMenuId(openTaskMenuId === t.id ? null : t.id)}
-                      style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '4px 8px', fontSize: '14px' }}
-                    >
-                      <i className="fa-solid fa-ellipsis-vertical"></i>
-                    </button>
-
-                    {openTaskMenuId === t.id && (
-                      <div style={{ position: 'absolute', right: 0, top: '28px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-lg)', padding: '6px', zIndex: 50, width: '160px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        <button onClick={() => { handleToggleTaskStatus(t.id); setOpenTaskMenuId(null); }} style={{ padding: '6px 10px', textAlign: 'left', background: 'none', border: 'none', fontSize: '12px', cursor: 'pointer', color: 'var(--text-main)' }}>
-                          <i className="fa-solid fa-check" style={{ marginRight: '8px' }}></i> {isDone ? 'Marquer En Cours' : 'Marquer Terminée'}
-                        </button>
-                        <button onClick={() => handleDeleteTask(t.id)} style={{ padding: '6px 10px', textAlign: 'left', background: 'none', border: 'none', fontSize: '12px', cursor: 'pointer', color: 'var(--rose-500)' }}>
-                          <i className="fa-solid fa-trash" style={{ marginRight: '8px' }}></i> Supprimer
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Harvest Records Data Table with Full CRUD */}
@@ -281,36 +278,44 @@ export function RecolteDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
         </div>
 
         <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
-            <thead>
-              <tr style={{ backgroundColor: 'var(--bg-subtle)', borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Réf Récolte</th>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Parcelle / Bloc</th>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Variété Culture</th>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Volume Cueilli</th>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Coût Direct / Kg</th>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>% Catégorie A</th>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredHarvestLogs.map((h, idx) => (
-                <tr key={h.id} style={{ borderBottom: idx === filteredHarvestLogs.length - 1 ? 'none' : '1px solid var(--border-subtle)' }}>
-                  <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--text-main)' }}>{h.id}</td>
-                  <td style={{ padding: '14px 20px', fontWeight: '600', color: 'var(--text-main)' }}>{h.parcelle}</td>
-                  <td style={{ padding: '14px 20px', color: 'var(--text-secondary)' }}>{h.variete}</td>
-                  <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--emerald-600)' }}>{h.kg}</td>
-                  <td style={{ padding: '14px 20px', color: 'var(--text-secondary)' }}>{h.coutParKg}</td>
-                  <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--emerald-600)' }}>{h.catA}</td>
-                  <td style={{ padding: '14px 20px' }}>
-                    <button onClick={() => handleDeleteHarvest(h.id)} style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--rose-500)', backgroundColor: 'transparent', color: 'var(--rose-500)', fontSize: '11px', cursor: 'pointer' }}>
-                      Supprimer
-                    </button>
-                  </td>
+          {filteredHarvestLogs.length === 0 ? (
+            <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
+              <i className="fa-solid fa-basket-shopping" style={{ fontSize: '32px', marginBottom: '12px', opacity: 0.4 }}></i>
+              <p style={{ fontSize: '14px', fontWeight: '600' }}>Aucun apport de récolte dans la base</p>
+              <p style={{ fontSize: '12px' }}>Cliquez sur <strong>"Saisie Récolte"</strong> pour enregistrer votre premier apport de récolte réel.</p>
+            </div>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+              <thead>
+                <tr style={{ backgroundColor: 'var(--bg-subtle)', borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
+                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Réf Récolte</th>
+                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Parcelle / Bloc</th>
+                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Variété Culture</th>
+                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Volume Cueilli</th>
+                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Coût Direct / Kg</th>
+                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>% Catégorie A</th>
+                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {filteredHarvestLogs.map((h, idx) => (
+                  <tr key={h.id} style={{ borderBottom: idx === filteredHarvestLogs.length - 1 ? 'none' : '1px solid var(--border-subtle)' }}>
+                    <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--text-main)' }}>{h.id}</td>
+                    <td style={{ padding: '14px 20px', fontWeight: '600', color: 'var(--text-main)' }}>{h.parcelle}</td>
+                    <td style={{ padding: '14px 20px', color: 'var(--text-secondary)' }}>{h.variete}</td>
+                    <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--emerald-600)' }}>{h.kg}</td>
+                    <td style={{ padding: '14px 20px', color: 'var(--text-secondary)' }}>{h.coutParKg}</td>
+                    <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--emerald-600)' }}>{h.catA}</td>
+                    <td style={{ padding: '14px 20px' }}>
+                      <button onClick={() => handleDeleteHarvest(h.id)} style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--rose-500)', backgroundColor: 'transparent', color: 'var(--rose-500)', fontSize: '11px', cursor: 'pointer' }}>
+                        Supprimer
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
 
