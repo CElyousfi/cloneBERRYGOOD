@@ -12,6 +12,8 @@ export function FinanceDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
   const [statusFilter, setStatusFilter] = useState('tous');
   const [showAddInvoiceModal, setShowAddInvoiceModal] = useState(false);
   const [showAddCaisseModal, setShowAddCaisseModal] = useState(false);
+  const [showAddLiquidationModal, setShowAddLiquidationModal] = useState(false);
+  const [showAddVirementModal, setShowAddVirementModal] = useState(false);
 
   // Custom Confirm Modal State
   const [confirmModalState, setConfirmModalState] = useState({ isOpen: false, title: '', message: '', onConfirm: () => {} });
@@ -19,25 +21,39 @@ export function FinanceDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
   // Document Viewer Modal State
   const [selectedDoc, setSelectedDoc] = useState(null);
 
-  // Form states for New Invoice
+  // Form states — Facture
   const [invNum, setInvNum] = useState('');
   const [invSupplier, setInvSupplier] = useState('');
   const [invAmount, setInvAmount] = useState('');
   const [invFileUrl, setInvFileUrl] = useState('');
 
-  // Form states for New Caisse Movement
+  // Form states — Caisse
   const [caisseDesc, setCaisseDesc] = useState('');
   const [caisseAmount, setCaisseAmount] = useState('');
   const [caisseType, setCaisseType] = useState('depense');
   const [caisseFileUrl, setCaisseFileUrl] = useState('');
 
+  // Form states — Liquidation
+  const [liqClient, setLiqClient] = useState('');
+  const [liqMontant, setLiqMontant] = useState('');
+
+  // Form states — Virement
+  const [virBanque, setVirBanque] = useState('Attijariwafa Bank');
+  const [virRef, setVirRef] = useState('');
+  const [virMontant, setVirMontant] = useState('');
+
   // Clean Production State Arrays
   const [invoices, setInvoices] = useState([]);
   const [caisseTransactions, setCaisseTransactions] = useState([]);
+  const [liquidations, setLiquidations] = useState([]);
+  const [virements, setVirements] = useState([]);
 
   // REAL-TIME DYNAMIC AGGREGATION ENGINE
   const totalInvoicesSum = invoices.reduce((acc, i) => acc + (i.rawMontant || 0), 0);
   const caisseNetSum = caisseTransactions.reduce((acc, c) => acc + (c.type === 'recette' ? c.rawAmount : -c.rawAmount), 0);
+  const totalLiquidationsSum = liquidations.reduce((acc, l) => acc + (l.rawMontant || 0), 0);
+  const totalVirementsSum = virements.reduce((acc, v) => acc + (v.rawMontant || 0), 0);
+
   const dynamicCaisseBalance = caisseNetSum;
   const validatedInvoicesCount = invoices.filter(i => i.status === 'validee_dg' || i.status === 'payee').length;
 
@@ -123,6 +139,47 @@ export function FinanceDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
     setCaisseDesc(''); setCaisseAmount(''); setCaisseFileUrl('');
   };
 
+  const handleAddLiquidation = (e) => {
+    e.preventDefault();
+    if (!liqClient || !liqMontant) return;
+
+    const amt = parseFloat(liqMontant) || 0;
+    const newL = {
+      id: `LIQ-${Date.now().toString().slice(-3)}`,
+      client: liqClient,
+      date: new Date().toISOString().split('T')[0],
+      montant: `${amt.toLocaleString('fr-FR')} MAD`,
+      rawMontant: amt,
+      status: 'Encaissé',
+      variant: 'emerald'
+    };
+
+    setLiquidations([newL, ...liquidations]);
+    setShowAddLiquidationModal(false);
+    setLiqClient(''); setLiqMontant('');
+  };
+
+  const handleAddVirement = (e) => {
+    e.preventDefault();
+    if (!virMontant) return;
+
+    const amt = parseFloat(virMontant) || 0;
+    const newV = {
+      id: virRef || `VIR-${Date.now().toString().slice(-4)}`,
+      banque: virBanque,
+      date: new Date().toISOString().split('T')[0],
+      montant: `${amt.toLocaleString('fr-FR')} MAD`,
+      rawMontant: amt,
+      status: 'Exécuté',
+      variant: 'emerald',
+      documentUrl: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf'
+    };
+
+    setVirements([newV, ...virements]);
+    setShowAddVirementModal(false);
+    setVirRef(''); setVirMontant('');
+  };
+
   const handleAdvanceStatus = (id) => {
     const nextMap = {
       en_validation: { status: 'validee_achats', label: 'Validée Achats', variant: 'indigo' },
@@ -145,7 +202,7 @@ export function FinanceDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
     setConfirmModalState({
       isOpen: true,
       title: 'Suppression de Facture',
-      message: `Voulez-vous vraiment supprimer définitivement la facture ${id} de la base de données ?`,
+      message: `Voulez-vous vraiment supprimer définitivement la facture ${id} ?`,
       onConfirm: () => {
         setInvoices(invoices.filter(inv => inv.id !== id));
       }
@@ -159,6 +216,28 @@ export function FinanceDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
       message: `Voulez-vous vraiment supprimer le mouvement de caisse ${id} ?`,
       onConfirm: () => {
         setCaisseTransactions(caisseTransactions.filter(c => c.id !== id));
+      }
+    });
+  };
+
+  const handleDeleteLiquidation = (id) => {
+    setConfirmModalState({
+      isOpen: true,
+      title: 'Suppression Liquidation',
+      message: `Voulez-vous vraiment supprimer la liquidation ${id} ?`,
+      onConfirm: () => {
+        setLiquidations(liquidations.filter(l => l.id !== id));
+      }
+    });
+  };
+
+  const handleDeleteVirement = (id) => {
+    setConfirmModalState({
+      isOpen: true,
+      title: 'Suppression Virement',
+      message: `Voulez-vous vraiment supprimer le virement bancaire ${id} ?`,
+      onConfirm: () => {
+        setVirements(virements.filter(v => v.id !== id));
       }
     });
   };
@@ -179,13 +258,13 @@ export function FinanceDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
   const subTabs = [
     { id: 'workflow', label: 'Workflow Factures', icon: 'fa-file-invoice-dollar' },
     { id: 'caisse', label: 'Trésorerie & Caisse', icon: 'fa-vault' },
+    { id: 'liquidations', label: 'Liquidations & Ventes', icon: 'fa-chart-line' },
+    { id: 'virements', label: 'Virements & Banques', icon: 'fa-building-columns' },
   ];
 
-  const filteredInvoices = invoices.filter(inv => {
-    const matchesSearch = inv.fournisseur.toLowerCase().includes(searchQuery.toLowerCase()) || inv.id.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = statusFilter === 'tous' || inv.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
+  const filteredInvoices = invoices.filter(inv => inv.fournisseur.toLowerCase().includes(searchQuery.toLowerCase()) || inv.id.toLowerCase().includes(searchQuery.toLowerCase()));
+  const filteredLiquidations = liquidations.filter(l => l.client.toLowerCase().includes(searchQuery.toLowerCase()) || l.id.toLowerCase().includes(searchQuery.toLowerCase()));
+  const filteredVirements = virements.filter(v => v.banque.toLowerCase().includes(searchQuery.toLowerCase()) || v.id.toLowerCase().includes(searchQuery.toLowerCase()));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', animation: 'fadeIn 0.2s ease-in-out' }}>
@@ -208,20 +287,20 @@ export function FinanceDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
           infoTooltip="Solde caisse calculé sur les entrées/sorties réelles"
         />
         <UiStatCard
-          label="Factures Validées DG / Payées"
-          value={`${validatedInvoicesCount} factures`}
-          subtext={`Sur un total de ${invoices.length}`}
-          trend="Validation à jour"
-          highlightColor="var(--emerald-600)"
-          infoTooltip="Nombre de factures validées"
-        />
-        <UiStatCard
-          label="Résultat Avant Impôt (EBE Estimé)"
-          value={`${(totalInvoicesSum * 0.45).toLocaleString('fr-FR')} MAD`}
-          subtext="EBE recalculé"
+          label="Total Liquidations Ventes"
+          value={`${totalLiquidationsSum.toLocaleString('fr-FR')} MAD`}
+          subtext={`${liquidations.length} décomptes encaissés`}
           trend="0.0%"
           highlightColor="var(--emerald-600)"
-          infoTooltip="Estimation automatique de l'EBE à 45%"
+          infoTooltip="Total des liquidations sur ventes export & local"
+        />
+        <UiStatCard
+          label="Virements Bancaires Exécutés"
+          value={`${totalVirementsSum.toLocaleString('fr-FR')} MAD`}
+          subtext={`${virements.length} virements réglés`}
+          trend="0.0%"
+          highlightColor="var(--emerald-600)"
+          infoTooltip="Somme des règlements bancaires effectués"
         />
       </div>
 
@@ -261,7 +340,7 @@ export function FinanceDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
           <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', padding: '20px 24px', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
             <div>
               <h3 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-main)', fontFamily: 'var(--font-display)' }}>Pipeline Factures Fournisseurs — {activeFarm}</h3>
-              <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Modales in-app personnalisées & Supabase PostgreSQL</p>
+              <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Workflow validation 3 niveaux & documents numérisés</p>
             </div>
 
             <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -402,7 +481,128 @@ export function FinanceDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
         </div>
       )}
 
-      {/* Modal Add Invoice */}
+      {/* SUB-TAB 3: LIQUIDATIONS & VENTES */}
+      {activeSubTab === 'liquidations' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', padding: '20px 24px', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <h4 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-main)' }}>Liquidations des Ventes & Comptes Clients — {activeFarm}</h4>
+              <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Décomptes de vente export & marché local</p>
+            </div>
+            <button onClick={() => setShowAddLiquidationModal(true)} style={{ padding: '8px 14px', borderRadius: '6px', backgroundColor: 'var(--emerald-600)', color: '#FFF', border: 'none', fontSize: '13px', fontWeight: '600' }}>
+              <i className="fa-solid fa-plus" style={{ marginRight: '6px' }}></i> Saisie Liquidation
+            </button>
+          </div>
+
+          <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
+            {filteredLiquidations.length === 0 ? (
+              <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                <i className="fa-solid fa-chart-line" style={{ fontSize: '32px', marginBottom: '12px', opacity: 0.4 }}></i>
+                <p style={{ fontSize: '14px', fontWeight: '600' }}>Aucune liquidation de vente</p>
+                <p style={{ fontSize: '12px' }}>Cliquez sur <strong>"Saisie Liquidation"</strong> pour enregistrer votre premier décompte de vente.</p>
+              </div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+                <thead>
+                  <tr style={{ backgroundColor: 'var(--bg-subtle)', borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
+                    <th style={{ padding: '12px 20px', fontWeight: '600' }}>Réf Liquidation</th>
+                    <th style={{ padding: '12px 20px', fontWeight: '600' }}>Client / Exportateur</th>
+                    <th style={{ padding: '12px 20px', fontWeight: '600' }}>Date Décompte</th>
+                    <th style={{ padding: '12px 20px', fontWeight: '600' }}>Montant Encaissé</th>
+                    <th style={{ padding: '12px 20px', fontWeight: '600' }}>Statut</th>
+                    <th style={{ padding: '12px 20px', fontWeight: '600' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredLiquidations.map((l, idx) => (
+                    <tr key={l.id} style={{ borderBottom: idx === filteredLiquidations.length - 1 ? 'none' : '1px solid var(--border-subtle)' }}>
+                      <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--text-main)' }}>{l.id}</td>
+                      <td style={{ padding: '14px 20px', fontWeight: '600', color: 'var(--text-main)' }}>{l.client}</td>
+                      <td style={{ padding: '14px 20px', color: 'var(--text-secondary)' }}>{l.date}</td>
+                      <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--emerald-600)' }}>{l.montant}</td>
+                      <td style={{ padding: '14px 20px' }}>
+                        <UiBadge variant={l.variant}>{l.status}</UiBadge>
+                      </td>
+                      <td style={{ padding: '14px 20px' }}>
+                        <button onClick={() => handleDeleteLiquidation(l.id)} style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--rose-500)', backgroundColor: 'transparent', color: 'var(--rose-500)', fontSize: '11px', cursor: 'pointer' }}>
+                          Supprimer
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* SUB-TAB 4: VIREMENTS & BANQUES */}
+      {activeSubTab === 'virements' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', padding: '20px 24px', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <h4 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-main)' }}>Registre des Virements Bancaires & Ordres de Paiement — {activeFarm}</h4>
+              <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Exécution des ordonnancements de paiement fournisseurs & paie</p>
+            </div>
+            <button onClick={() => setShowAddVirementModal(true)} style={{ padding: '8px 14px', borderRadius: '6px', backgroundColor: 'var(--emerald-600)', color: '#FFF', border: 'none', fontSize: '13px', fontWeight: '600' }}>
+              <i className="fa-solid fa-plus" style={{ marginRight: '6px' }}></i> Saisie Ordre Virement
+            </button>
+          </div>
+
+          <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
+            {filteredVirements.length === 0 ? (
+              <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                <i className="fa-solid fa-building-columns" style={{ fontSize: '32px', marginBottom: '12px', opacity: 0.4 }}></i>
+                <p style={{ fontSize: '14px', fontWeight: '600' }}>Aucun virement bancaire enregistré</p>
+                <p style={{ fontSize: '12px' }}>Cliquez sur <strong>"Saisie Ordre Virement"</strong> pour exécuter un virement bancaire.</p>
+              </div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+                <thead>
+                  <tr style={{ backgroundColor: 'var(--bg-subtle)', borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
+                    <th style={{ padding: '12px 20px', fontWeight: '600' }}>N° Virement</th>
+                    <th style={{ padding: '12px 20px', fontWeight: '600' }}>Banque Émettrice</th>
+                    <th style={{ padding: '12px 20px', fontWeight: '600' }}>Date Virement</th>
+                    <th style={{ padding: '12px 20px', fontWeight: '600' }}>Montant Réglé</th>
+                    <th style={{ padding: '12px 20px', fontWeight: '600' }}>Statut</th>
+                    <th style={{ padding: '12px 20px', fontWeight: '600' }}>Avis Virement</th>
+                    <th style={{ padding: '12px 20px', fontWeight: '600' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredVirements.map((v, idx) => (
+                    <tr key={v.id} style={{ borderBottom: idx === filteredVirements.length - 1 ? 'none' : '1px solid var(--border-subtle)' }}>
+                      <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--text-main)' }}>{v.id}</td>
+                      <td style={{ padding: '14px 20px', fontWeight: '600', color: 'var(--text-main)' }}>{v.banque}</td>
+                      <td style={{ padding: '14px 20px', color: 'var(--text-secondary)' }}>{v.date}</td>
+                      <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--emerald-600)' }}>{v.montant}</td>
+                      <td style={{ padding: '14px 20px' }}>
+                        <UiBadge variant={v.variant}>{v.status}</UiBadge>
+                      </td>
+                      <td style={{ padding: '14px 20px' }}>
+                        <button
+                          onClick={() => setSelectedDoc({ title: `Avis Virement ${v.id}`, url: v.documentUrl })}
+                          style={{ padding: '5px 10px', borderRadius: '4px', border: '1px solid var(--emerald-600)', backgroundColor: 'var(--emerald-50)', color: 'var(--emerald-700)', fontSize: '11px', fontWeight: '600', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                        >
+                          <i className="fa-solid fa-eye"></i> Voir Avis
+                        </button>
+                      </td>
+                      <td style={{ padding: '14px 20px' }}>
+                        <button onClick={() => handleDeleteVirement(v.id)} style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--rose-500)', backgroundColor: 'transparent', color: 'var(--rose-500)', fontSize: '11px', cursor: 'pointer' }}>
+                          Supprimer
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* MODALS */}
       {showAddInvoiceModal && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <form onSubmit={handleAddInvoice} style={{ backgroundColor: 'var(--bg-card)', padding: '28px', borderRadius: 'var(--radius-xl)', width: '440px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -410,12 +610,10 @@ export function FinanceDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
             <input type="text" placeholder="N° Facture (ex: INV-901)" value={invNum} onChange={e => setInvNum(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)' }} />
             <input type="text" placeholder="Nom Fournisseur *" required value={invSupplier} onChange={e => setInvSupplier(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)' }} />
             <input type="number" placeholder="Montant TTC (MAD) *" required value={invAmount} onChange={e => setInvAmount(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)' }} />
-            
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <label style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)' }}>Joindre le Document PDF / Photo de la Facture *</label>
               <input type="file" accept="image/*,.pdf" onChange={e => handleFileUpload(e, setInvFileUrl)} style={{ fontSize: '12px' }} />
             </div>
-
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '8px' }}>
               <button type="button" onClick={() => setShowAddInvoiceModal(false)} style={{ padding: '8px 16px', borderRadius: '6px' }}>Annuler</button>
               <button type="submit" style={{ padding: '8px 16px', borderRadius: '6px', backgroundColor: 'var(--emerald-600)', color: '#FFF', border: 'none' }}>Enregistrer & Joindre</button>
@@ -424,7 +622,6 @@ export function FinanceDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
         </div>
       )}
 
-      {/* Modal Add Caisse */}
       {showAddCaisseModal && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <form onSubmit={handleAddCaisse} style={{ backgroundColor: 'var(--bg-card)', padding: '28px', borderRadius: 'var(--radius-xl)', width: '440px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -435,15 +632,47 @@ export function FinanceDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
             </select>
             <input type="text" placeholder="Description / Motifs *" required value={caisseDesc} onChange={e => setCaisseDesc(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)' }} />
             <input type="number" placeholder="Montant (MAD) *" required value={caisseAmount} onChange={e => setCaisseAmount(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)' }} />
-            
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <label style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)' }}>Joindre Reçu / Ticket Caisse *</label>
               <input type="file" accept="image/*,.pdf" onChange={e => handleFileUpload(e, setCaisseFileUrl)} style={{ fontSize: '12px' }} />
             </div>
-
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '8px' }}>
               <button type="button" onClick={() => setShowAddCaisseModal(false)} style={{ padding: '8px 16px', borderRadius: '6px' }}>Annuler</button>
               <button type="submit" style={{ padding: '8px 16px', borderRadius: '6px', backgroundColor: 'var(--emerald-600)', color: '#FFF', border: 'none' }}>Enregistrer Mouvement</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {showAddLiquidationModal && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <form onSubmit={handleAddLiquidation} style={{ backgroundColor: 'var(--bg-card)', padding: '28px', borderRadius: 'var(--radius-xl)', width: '420px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <h3 style={{ fontSize: '18px', fontWeight: '700' }}>Saisie Liquidation Ventes</h3>
+            <input type="text" placeholder="Nom Client / Exportateur *" required value={liqClient} onChange={e => setLiqClient(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)' }} />
+            <input type="number" placeholder="Montant Encaissé MAD *" required value={liqMontant} onChange={e => setLiqMontant(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)' }} />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button type="button" onClick={() => setShowAddLiquidationModal(false)} style={{ padding: '8px 16px', borderRadius: '6px' }}>Annuler</button>
+              <button type="submit" style={{ padding: '8px 16px', borderRadius: '6px', backgroundColor: 'var(--emerald-600)', color: '#FFF', border: 'none' }}>Enregistrer Décompte</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {showAddVirementModal && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <form onSubmit={handleAddVirement} style={{ backgroundColor: 'var(--bg-card)', padding: '28px', borderRadius: 'var(--radius-xl)', width: '420px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <h3 style={{ fontSize: '18px', fontWeight: '700' }}>Saisie Ordre de Virement Bancaire</h3>
+            <select value={virBanque} onChange={e => setVirBanque(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+              <option value="Attijariwafa Bank">Attijariwafa Bank</option>
+              <option value="Banque Populaire">Banque Populaire</option>
+              <option value="BMCE Bank of Africa">BMCE Bank of Africa</option>
+              <option value="Crédit Agricole du Maroc">Crédit Agricole du Maroc</option>
+            </select>
+            <input type="text" placeholder="Réf Ordre / N° Transaction (ex: VIR-9081)" value={virRef} onChange={e => setVirRef(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)' }} />
+            <input type="number" placeholder="Montant Virement MAD *" required value={virMontant} onChange={e => setVirMontant(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)' }} />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button type="button" onClick={() => setShowAddVirementModal(false)} style={{ padding: '8px 16px', borderRadius: '6px' }}>Annuler</button>
+              <button type="submit" style={{ padding: '8px 16px', borderRadius: '6px', backgroundColor: 'var(--emerald-600)', color: '#FFF', border: 'none' }}>Exécuter Virement</button>
             </div>
           </form>
         </div>
