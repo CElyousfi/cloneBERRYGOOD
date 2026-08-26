@@ -4,7 +4,7 @@
     "healthScore": {
       "subScores": {
         "classification": {
-          "detail": "231/373 fichiers classifiés",
+          "detail": "233/375 fichiers classifiés",
           "max": 40,
           "score": 25
         },
@@ -14,7 +14,7 @@
           "score": 27
         },
         "testCoverage": {
-          "detail": "65/162 modules avec ≥1 test",
+          "detail": "66/164 modules avec ≥1 test",
           "max": 30,
           "score": 12
         }
@@ -31,7 +31,7 @@
         "file": "public/components/CampagneAnalytiqueTab.jsx"
       },
       {
-        "commits": 36,
+        "commits": 37,
         "file": "public/app.jsx"
       },
       {
@@ -41,6 +41,10 @@
       {
         "commits": 24,
         "file": "functions/pointageService.js"
+      },
+      {
+        "commits": 15,
+        "file": "functions/index.js"
       },
       {
         "commits": 15,
@@ -57,20 +61,16 @@
       {
         "commits": 13,
         "file": "functions/lib/paie/__tests__/coutOuvrierCampagne.test.js"
-      },
-      {
-        "commits": 12,
-        "file": "functions/index.js"
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:e686656d8509dcca",
+    "sourceFingerprint": "sha256:15fcd65cb9c634a3",
     "stats": {
-      "backendModules": 94,
+      "backendModules": 95,
       "cloudFunctions": 91,
       "coverageScore": 40,
       "domains": 10,
-      "extractedComponents": 26,
+      "extractedComponents": 27,
       "firestoreCollections": 60,
       "libHelpers": 42,
       "monolithSymbols": 120,
@@ -160,6 +160,13 @@
           "coCommits": 4,
           "domain": null,
           "file": "tests/unit/stockDestinations.test.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 3,
+          "domain": null,
+          "file": "public/components/MagBCScanModal.js",
           "note": "probabilistic",
           "windowDays": 90
         }
@@ -382,6 +389,7 @@
           "caisseManagement"
         ],
         "modules": [
+          "caisse",
           "caisseImport",
           "marcheLocalCaisse"
         ],
@@ -398,7 +406,7 @@
         "services": []
       },
       "confidence": "high",
-      "coverageScore": 71,
+      "coverageScore": 67,
       "firestore": {
         "collections": [
           "caisse_definitions",
@@ -407,6 +415,7 @@
       },
       "frontend": {
         "components": [
+          "public/components/CaisseSaisieSub.jsx",
           "public/components/RapprochementPaiePopup.jsx"
         ],
         "libs": [
@@ -461,6 +470,7 @@
       "label": "Caisse & Finance",
       "tests": {
         "backend": [
+          "functions/lib/caisse/__tests__/caisse.test.js",
           "functions/lib/marcheLocalCaisse/__tests__/encaissements.test.js",
           "functions/lib/marcheLocalCaisse/__tests__/marcheLocalCaisse.test.js"
         ],
@@ -2166,6 +2176,10 @@
       "confidence": "medium",
       "domain": "admin"
     },
+    "functions/lib/caisse": {
+      "confidence": "high",
+      "domain": "caisse"
+    },
     "functions/lib/caisseImport": {
       "confidence": "high",
       "domain": "caisse"
@@ -2389,6 +2403,10 @@
     "public/components/BugReportsAdmin.jsx": {
       "confidence": "high",
       "domain": "admin"
+    },
+    "public/components/CaisseSaisieSub.jsx": {
+      "confidence": "high",
+      "domain": "caisse"
     },
     "public/components/CampagneAnalytiqueTab.jsx": {
       "confidence": "high",
@@ -2972,7 +2990,7 @@
     "AdminConsoleTab": {
       "domain": "admin",
       "file": "public/app.jsx",
-      "line": 63595
+      "line": 63539
     },
     "AgroAnalyseFoliairesTab": {
       "domain": "agro",
@@ -3047,7 +3065,7 @@
     "CaisseTab": {
       "domain": "caisse",
       "file": "public/app.jsx",
-      "line": 59860
+      "line": 59879
     },
     "CampagneTab": {
       "domain": "referentiel",
@@ -3102,7 +3120,7 @@
     "ComingSoonTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 62861
+      "line": 62805
     },
     "CoutRecolteTab": {
       "domain": "recolte",
@@ -3112,27 +3130,27 @@
     "DGAdoptionTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 63951
+      "line": 63895
     },
     "DGMeetingCRTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 64918
+      "line": 64862
     },
     "DGParametresTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 66156
+      "line": 66100
     },
     "DGSignatureTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 65620
+      "line": 65564
     },
     "DGTasksTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 64468
+      "line": 64412
     },
     "DGValidationsTab": {
       "domain": "pointage",
@@ -3162,7 +3180,7 @@
     "EvolutionTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 66297
+      "line": 66241
     },
     "FinBDCTab": {
       "domain": "achats",
@@ -3357,7 +3375,7 @@
     "ProductivityReportTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 66771
+      "line": 66715
     },
     "QualiteBonsApportTab": {
       "domain": "qualite",
@@ -3487,7 +3505,7 @@
     "SuiviPointageTab": {
       "domain": "pointage",
       "file": "public/app.jsx",
-      "line": 65298
+      "line": 65242
     },
     "SuiviTab": {
       "domain": null,

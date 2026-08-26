@@ -14,6 +14,9 @@ const { updateBdcVirementCore, recordVirementAvis } = require("./bdcVirementServ
 const bdcWorkflow = require("./lib/bdc/workflow");
 const bdcReceptionGuard = require("./lib/bdc/receptionGuard");
 const caisseImport = require("./lib/caisseImport");
+const { computeSoldeDelta, isTypeEditable } = require("./lib/caisse/soldeDelta");
+const { periodesAVerifier } = require("./lib/caisse/rapprochementLock");
+const { computeChanges } = require("./lib/caisse/txDiff");
 const { validateSupplier } = require("./lib/suppliers/supplierValidation");
 const stockCaneva = require("./lib/stockCaneva");
 const articleMerge = require("./lib/stockMerge/articleMerge");
@@ -15478,32 +15481,146 @@ exports.caisseManagement = functions
       }
 
       // ========== UPDATE TRANSACTION ==========
+      // Modification d'un bon APRÈS création — jusqu'au statut 'valide' inclus.
+      // Spec : docs/spec-modification-bon-caisse.md
+      //
+      // Règles clés :
+      //  - modifier un bon 'valide' le DÉVALIDE (retour 'soumis') et annule son
+      //    delta d'origine sur solde_actuel ; le nouveau delta sera appliqué à la
+      //    re-validation par validate-transaction (pas de duplication de formule) ;
+      //  - refus si le rapprochement du mois source OU cible est clôturé ;
+      //  - 'reference' est GELÉE (identifiant métier du bon papier) ;
+      //  - transferts et mouvements de compte client non modifiables ici.
       if (action === "update-transaction" && req.method === "POST") {
-        if (!isSaisie && !isAdmin) return res.status(403).json({ success: false, error: "Seul le service Achats peut modifier des transactions" });
-        const { id, caisse_id, type, montant, reference, description, code_analytique, date, files } = req.body;
+        if (!isSaisie && !isControle && !isAdmin) return res.status(403).json({ success: false, error: "Accès non autorisé à la modification de transactions" });
+        const { id, caisse_id, type, montant, description, code_analytique, date, files,
+          matricule, beneficiaire_nom } = req.body;
         if (!id) return res.status(400).json({ success: false, error: "ID requis" });
 
-        const doc = await db_firestore.collection("caisse_transactions").doc(id).get();
+        const txRef = db_firestore.collection("caisse_transactions").doc(id);
+        const doc = await txRef.get();
         if (!doc.exists) return res.status(404).json({ success: false, error: "Transaction introuvable" });
         const current = doc.data();
 
-        // Can only edit own brouillon or rejete
-        if (!["brouillon", "rejete"].includes(current.status)) return res.status(400).json({ success: false, error: "Seul un brouillon ou une transaction rejetée peut être modifié" });
-        if (current.saisie_by?.uid !== authUser.uid && !isAdmin) return res.status(403).json({ success: false, error: "Vous ne pouvez modifier que vos propres transactions" });
+        // --- Gardes de statut / type / propriété ---
+        const STATUTS_EDITABLES = ["brouillon", "soumis", "a_revoir", "rejete", "valide"];
+        if (!STATUTS_EDITABLES.includes(current.status)) {
+          return res.status(400).json({ success: false, error: `Une transaction au statut « ${current.status} » ne peut pas être modifiée` });
+        }
+        if (!isTypeEditable(current.type)) {
+          return res.status(400).json({ success: false, error: "Un transfert ou un mouvement de compte client ne se modifie pas ici" });
+        }
+        // Achats (sans rôle de contrôle) : ses propres saisies uniquement.
+        if (!isControle && !isAdmin && current.saisie_by?.uid !== authUser.uid) {
+          return res.status(403).json({ success: false, error: "Vous ne pouvez modifier que vos propres transactions" });
+        }
 
-        const updates = { updated_at: admin.firestore.FieldValue.serverTimestamp() };
-        if (caisse_id) updates.caisse_id = caisse_id;
-        if (type) updates.type = type;
-        if (montant) updates.montant = parseFloat(montant);
-        if (reference) updates.reference = reference;
-        if (description !== undefined) updates.description = description;
-        if (code_analytique !== undefined) updates.code_analytique = code_analytique;
-        if (date) updates.date = date;
-        if (files) updates.files = files.slice(0, 3);
-        updates.history = [...(current.history || []), { action: "modification", by: userInfo, at: Date.now() }];
+        // --- Validation des champs entrants (alignée sur create-transaction) ---
+        if (type !== undefined && !isTypeEditable(type)) {
+          return res.status(400).json({ success: false, error: "Type invalide" });
+        }
+        let montantNum;
+        if (montant !== undefined) {
+          montantNum = parseFloat(montant);
+          if (!Number.isFinite(montantNum) || montantNum <= 0) {
+            return res.status(400).json({ success: false, error: "Le montant doit être un nombre positif" });
+          }
+        }
+        if (date !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(String(date))) {
+          return res.status(400).json({ success: false, error: "Date invalide (format attendu AAAA-MM-JJ)" });
+        }
+        if (caisse_id !== undefined && caisse_id !== current.caisse_id) {
+          const caisseDoc = await db_firestore.collection("caisse_definitions").doc(caisse_id).get();
+          if (!caisseDoc.exists || !caisseDoc.data().active) {
+            return res.status(404).json({ success: false, error: "Caisse introuvable ou inactive" });
+          }
+        }
 
-        await db_firestore.collection("caisse_transactions").doc(id).update(updates);
-        return res.json({ success: true });
+        // --- Patch effectif (seuls les champs fournis) ---
+        const patch = {};
+        if (caisse_id !== undefined) patch.caisse_id = caisse_id;
+        if (type !== undefined) patch.type = type;
+        if (montantNum !== undefined) patch.montant = montantNum;
+        if (description !== undefined) patch.description = description;
+        if (code_analytique !== undefined) patch.code_analytique = code_analytique;
+        if (date !== undefined) patch.date = date;
+        if (matricule !== undefined) patch.matricule = matricule;
+        if (beneficiaire_nom !== undefined) patch.beneficiaire_nom = beneficiaire_nom;
+        if (files !== undefined) patch.files = (files || []).slice(0, 3);
+
+        const changes = computeChanges(current, patch);
+        if (changes.length === 0) {
+          return res.json({ success: true, status: current.status, devalidated: false, changes: [] });
+        }
+
+        // --- Verrou rapprochement (période source ET cible) ---
+        // Appliqué si le bon pèse sur le solde théorique (validé) ou s'il change
+        // de position (date / caisse) — pour ne pas le déplacer vers un mois clos.
+        const positionChange = changes.some((c) => c.field === "date" || c.field === "caisse_id");
+        if (current.status === "valide" || positionChange) {
+          const periodes = periodesAVerifier(
+            { caisse_id: current.caisse_id, date: current.date },
+            { caisse_id: patch.caisse_id !== undefined ? patch.caisse_id : current.caisse_id,
+              date: patch.date !== undefined ? patch.date : current.date }
+          );
+          const rapDocs = await Promise.all(
+            periodes.map((p) => db_firestore.collection("caisse_rapprochements").doc(p.docId).get())
+          );
+          for (let i = 0; i < rapDocs.length; i++) {
+            if (rapDocs[i].exists && rapDocs[i].data().statut === "cloture") {
+              return res.status(400).json({
+                success: false,
+                error: `Modification impossible : le rapprochement de ${periodes[i].label} est clôturé.`,
+              });
+            }
+          }
+        }
+
+        const now = admin.firestore.FieldValue.serverTimestamp();
+        const devalidated = current.status === "valide";
+
+        if (!devalidated) {
+          // Aucun solde en jeu : write simple.
+          await txRef.update({
+            ...patch,
+            updated_at: now,
+            history: [...(current.history || []), { action: "modification", by: userInfo, at: Date.now(), changes }],
+          });
+          return res.json({ success: true, status: current.status, devalidated: false, changes });
+        }
+
+        // --- Cas validé : dévalidation + annulation atomique du delta d'origine ---
+        await db_firestore.runTransaction(async (t) => {
+          const txDoc = await t.get(txRef);
+          if (!txDoc.exists) throw new Error("Transaction introuvable");
+          const txData = txDoc.data();
+          // Relecture DANS la transaction : une validation/dévalidation concurrente
+          // a pu changer le statut entre-temps.
+          if (txData.status !== "valide") throw new Error("La transaction n'est plus validée — rechargez la liste");
+
+          const caisseRef = db_firestore.collection("caisse_definitions").doc(txData.caisse_id);
+          const caisseDoc = await t.get(caisseRef);
+          if (!caisseDoc.exists) throw new Error("Caisse introuvable");
+
+          // Delta calculé sur les valeurs D'AVANT modification, imputé sur la
+          // caisse D'AVANT modification. Le nouveau delta viendra de la re-validation.
+          const deltaOrigine = computeSoldeDelta({ type: txData.type, montant: txData.montant });
+          const newSolde = Math.round(((caisseDoc.data().solde_actuel || 0) - deltaOrigine) * 100) / 100;
+
+          t.update(txRef, {
+            ...patch,
+            status: "soumis",
+            soumis_par: userInfo,
+            soumis_at: now,
+            valide_par: admin.firestore.FieldValue.delete(),
+            valide_at: admin.firestore.FieldValue.delete(),
+            updated_at: now,
+            history: [...(txData.history || []), { action: "modification", by: userInfo, at: Date.now(), changes, devalidated: true }],
+          });
+          t.update(caisseRef, { solde_actuel: newSolde, updated_at: now });
+        });
+
+        return res.json({ success: true, status: "soumis", devalidated: true, changes });
       }
 
       // ========== SUBMIT TRANSACTION ==========
@@ -15545,13 +15662,11 @@ exports.caisseManagement = functions
           const caisseDoc = await t.get(caisseRef);
           if (!caisseDoc.exists) throw new Error("Caisse introuvable");
 
-          // Calculate balance change
-          const montant = txData.montant || 0;
-          let delta = 0;
-          if (txData.type === "alimentation" || txData.type === "transfer_in") delta = montant;
-          else if (["depense", "sortie", "transfer_out", "paie", "transport"].includes(txData.type)) delta = -montant;
+          // Calculate balance change — formule partagée avec update-transaction
+          // (dévalidation), cf. functions/lib/caisse/soldeDelta.js
+          const delta = computeSoldeDelta({ type: txData.type, montant: txData.montant });
 
-          const newSolde = (caisseDoc.data().solde_actuel || 0) + delta;
+          const newSolde = Math.round(((caisseDoc.data().solde_actuel || 0) + delta) * 100) / 100;
 
           t.update(txRef, {
             status: "valide", valide_par: userInfo, valide_at: admin.firestore.FieldValue.serverTimestamp(),

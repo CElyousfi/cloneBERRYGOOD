@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:b9fcbc2e4a5ffb2d",
+    "sourceFingerprint": "sha256:0654da16632da753",
     "stats": {
-      "targetFiles": 244,
-      "targetFilesWithDirectTests": 141,
-      "targetFilesWithTransitiveTests": 162,
-      "testFilesScanned": 213
+      "targetFiles": 249,
+      "targetFilesWithDirectTests": 144,
+      "targetFilesWithTransitiveTests": 165,
+      "testFilesScanned": 214
     }
   },
   "index": {
@@ -105,6 +105,30 @@
       ],
       "transitiveTests": [
         "tests/unit/validateBugReport.test.js"
+      ]
+    },
+    "functions/lib/caisse/rapprochementLock.js": {
+      "directTests": [
+        "functions/lib/caisse/__tests__/caisse.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/caisse/__tests__/caisse.test.js"
+      ]
+    },
+    "functions/lib/caisse/soldeDelta.js": {
+      "directTests": [
+        "functions/lib/caisse/__tests__/caisse.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/caisse/__tests__/caisse.test.js"
+      ]
+    },
+    "functions/lib/caisse/txDiff.js": {
+      "directTests": [
+        "functions/lib/caisse/__tests__/caisse.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/caisse/__tests__/caisse.test.js"
       ]
     },
     "functions/lib/caisseImport/detectCols.js": {
@@ -1366,6 +1390,14 @@
       "transitiveTests": []
     },
     "public/components/BugReportsAdmin.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/CaisseSaisieSub.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/CaisseSaisieSub.jsx": {
       "directTests": [],
       "transitiveTests": []
     },

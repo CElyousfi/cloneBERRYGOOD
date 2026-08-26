@@ -59327,6 +59327,25 @@ ${rejetHtml}
             rejete:    { label: 'Rejeté',    color: '#991B1B', bg: '#FEE2E2' },
         };
 
+        // Exposés pour public/components/CaisseSaisieSub.jsx (composant extrait,
+        // scope séparé). Propriétés de window, pas de binding lexical : aucune
+        // collision possible avec le scope global (cf. umd-global-collision).
+        window.TXN_TYPE_LABELS = TXN_TYPE_LABELS;
+        window.CAISSE_STATUS_LABELS = STATUS_LABELS;
+
+        // Statuts d'un bon de caisse encore modifiables (miroir UI de la garde
+        // backend update-transaction — la garde qui compte est côté serveur).
+        const CAISSE_STATUTS_EDITABLES = ['brouillon', 'soumis', 'a_revoir', 'rejete', 'valide'];
+        // Types saisis à la main (transferts et compte client exclus).
+        const CAISSE_TYPES_EDITABLES = ['alimentation', 'depense', 'sortie', 'paie', 'transport'];
+
+        // Libellés lisibles des champs, pour l'historique des modifications.
+        const CAISSE_FIELD_LABELS = {
+            date: 'Date', montant: 'Montant', type: 'Type', caisse_id: 'Caisse',
+            code_analytique: 'Code analytique', description: 'Description',
+            matricule: 'Matricule', beneficiaire_nom: 'Bénéficiaire', files: 'Pièces jointes',
+        };
+
         function formatMAD(n) { return (n || 0).toLocaleString('fr-MA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' DH'; }
 
         // Sprint 3 — labels mois (utilisé par CaisseRapprochementSub)
@@ -59938,8 +59957,8 @@ ${rejetHtml}
                         ))}
                     </div>
                     {subTab === 'caisse_dashboard' && <CaisseDashboardSub dashData={dashData} caisses={caisses} isControle={isControle} onNavigate={setSubTab} />}
-                    {subTab === 'caisse_transactions' && <CaisseTransactionsSub caisses={caisses} />}
-                    {subTab === 'caisse_saisie' && <CaisseSaisieSub caisses={caisses} onDone={() => { refresh(); setSubTab('caisse_transactions'); }} />}
+                    {subTab === 'caisse_transactions' && <CaisseTransactionsSub caisses={caisses} isSaisie={isSaisie} isControle={isControle} onRefresh={refresh} />}
+                    {subTab === 'caisse_saisie' && window.CaisseSaisieSub && <window.CaisseSaisieSub caisses={caisses} onDone={() => { refresh(); setSubTab('caisse_transactions'); }} />}
                     {subTab === 'caisse_alimentations' && <CaisseFilteredTypeSub caisses={caisses} typeFilter="alimentation" title="Alimentations" icon="fa-arrow-down" isSaisie={isSaisie} onDone={refresh} />}
                     {subTab === 'caisse_paie' && <CaisseFilteredTypeSub caisses={caisses} typeFilter="paie" title="Paie" icon="fa-money-check-dollar" isSaisie={isSaisie} onDone={refresh} hasEmployee />}
                     {subTab === 'caisse_transport' && <CaisseFilteredTypeSub caisses={caisses} typeFilter="transport" title="Transport" icon="fa-truck" isSaisie={isSaisie} onDone={refresh} hasEmployee />}
@@ -60160,8 +60179,10 @@ ${rejetHtml}
         }
 
         // ---- Transactions List Sub ----
-        function CaisseTransactionsSub({ caisses: caissesProp }) {
+        function CaisseTransactionsSub({ caisses: caissesProp, isSaisie, isControle, onRefresh }) {
             const [transactions, setTransactions] = useState([]);
+            // Transaction en cours de modification (pop-up d'édition). null = fermée.
+            const [editTx, setEditTx] = useState(null);
             const [loading, setLoading] = useState(true);
             const [filterCaisse, setFilterCaisse] = useState('');
             const [filterStatus, setFilterStatus] = useState('');
@@ -60292,6 +60313,34 @@ ${rejetHtml}
                     return { key, dir: 'asc' };
                 });
             };
+            // Droit de modifier un bon — MIROIR COSMÉTIQUE de la garde backend
+            // (update-transaction). La garde qui fait foi est côté serveur : ce
+            // helper ne sert qu'à ne pas proposer un bouton qui échouerait.
+            const canEditTx = (tx) => {
+                if (!tx || !window.CaisseSaisieSub) return false;
+                if (CAISSE_STATUTS_EDITABLES.indexOf(tx.status) === -1) return false;
+                if (CAISSE_TYPES_EDITABLES.indexOf(tx.type) === -1) return false;
+                // DG/Finance : tout bon éditable. Achats : ses propres saisies,
+                // sauf un brouillon d'un autre (déjà exclu par la propriété).
+                if (isControle) return true;
+                if (!isSaisie) return false;
+                // Achats : uniquement ses propres saisies. Si l'uid courant n'est pas
+                // lisible (auth pas encore prête), on propose le bouton — le backend
+                // renverra un 403 explicite plutôt que de masquer l'action à tort.
+                const uid = (firebaseAuth && firebaseAuth.currentUser) ? firebaseAuth.currentUser.uid : null;
+                if (!uid) return true;
+                return tx.saisie_by?.uid === uid;
+            };
+
+            // Rendu lisible d'une valeur d'historique selon le champ.
+            const formatChangeValue = (field, value) => {
+                if (field === 'montant') return formatMAD(Number(value) || 0);
+                if (field === 'caisse_id') return (caisses.find(c => c.id === value) || {}).nom || value || '—';
+                if (field === 'type') return (TXN_TYPE_LABELS[value] || {}).label || value || '—';
+                if (field === 'files') return `${value} photo(s)`;
+                return (value === '' || value === undefined || value === null) ? '—' : String(value);
+            };
+
             // Helper : indicator glyph per column
             const sortIndicator = (key) => {
                 if (!sortConfig || sortConfig.key !== key || !sortConfig.dir) return '⇅';
@@ -60895,11 +60944,48 @@ ${rejetHtml}
                                                 <div key={j} style={{fontSize:11,color:'var(--gray-600)',padding:'4px 8px',background:'var(--gray-100)',borderRadius:6}}>
                                                     <strong>{h.action}</strong> par {h.by?.name||'—'} le {h.at ? new Date(h.at).toLocaleString('fr-FR') : '—'}
                                                     {h.motif && <span style={{color:'var(--red)'}}> — {h.motif}</span>}
+                                                    {h.devalidated && <span style={{color:'var(--orange)',fontWeight:600}}> — dévalidé</span>}
+                                                    {/* Détail avant → après d'une modification (action 'modification') */}
+                                                    {Array.isArray(h.changes) && h.changes.length > 0 && (
+                                                        <div style={{marginTop:3,paddingLeft:8,borderLeft:'2px solid var(--gray-200)',display:'flex',flexDirection:'column',gap:1}}>
+                                                            {h.changes.map((c,k) => (
+                                                                <div key={k}>
+                                                                    {CAISSE_FIELD_LABELS[c.field] || c.field}{' '}
+                                                                    <span style={{color:'var(--gray-400)',textDecoration:'line-through'}}>{formatChangeValue(c.field, c.from)}</span>
+                                                                    {' → '}
+                                                                    <strong>{formatChangeValue(c.field, c.to)}</strong>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
                                                 </div>
                                             ))}
                                         </div>
                                     </div>
                                 )}
+                                {/* Actions — modification d'un bon après création */}
+                                {canEditTx(selectedTx) && (
+                                    <div style={{marginTop:20,paddingTop:16,borderTop:'1px solid var(--gray-200)',display:'flex',justifyContent:'flex-end',gap:10}}>
+                                        <button onClick={()=>{ const tx = selectedTx; setSelectedTx(null); setEditTx(tx); }}
+                                            style={{padding:'9px 18px',borderRadius:10,border:'none',background:'var(--berry)',color:'white',cursor:'pointer',fontSize:13,fontWeight:600}}>
+                                            <i className="fa-solid fa-pen-to-square" style={{marginRight:6}}></i>Modifier
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Modale d'édition — réutilise le formulaire de saisie en mode édition */}
+                    {editTx && window.CaisseSaisieSub && (
+                        <div className="modal-overlay" onClick={()=>setEditTx(null)}>
+                            <div className="modal-content" onClick={e=>e.stopPropagation()} style={{maxWidth:680,padding:0,background:'transparent',border:'none',boxShadow:'none'}}>
+                                <window.CaisseSaisieSub
+                                    caisses={caisses}
+                                    editTx={editTx}
+                                    onCancel={()=>setEditTx(null)}
+                                    onDone={()=>{ setEditTx(null); load(); onRefresh && onRefresh(); }}
+                                />
                             </div>
                         </div>
                     )}
@@ -60908,152 +60994,10 @@ ${rejetHtml}
         }
 
         // ---- Saisie Sub (Achats only) ----
-        function CaisseSaisieSub({ caisses, onDone, defaultType, defaultCaisseId }) {
-            const [form, setForm] = useState({ caisse_id: defaultCaisseId || caisses[0]?.id || '', type: defaultType || 'depense', montant: '', reference: '', description: '', code_analytique: '', date: new Date().toISOString().slice(0,10), files: [], matricule: '', beneficiaire_nom: '' });
-            const [saving, setSaving] = useState(false);
-            const [codesAnalytiques, setCodesAnalytiques] = useState([]);
-
-            React.useEffect(() => {
-                fetch('/api/stock?action=list-codes-analytiques').then(r=>r.json()).then(json => {
-                    if (json.success && json.codes) setCodesAnalytiques(json.codes);
-                }).catch(()=>{});
-            }, []);
-
-            const handleFile = (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
-                const reader = new FileReader();
-                reader.onload = (ev) => {
-                    const img = new Image();
-                    img.onload = () => {
-                        const canvas = document.createElement('canvas');
-                        const maxW = 1200;
-                        let w = img.width, h = img.height;
-                        if (w > maxW) { h = h * maxW / w; w = maxW; }
-                        canvas.width = w; canvas.height = h;
-                        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-                        const compressed = canvas.toDataURL('image/jpeg', 0.7);
-                        setForm(f => ({ ...f, files: [...f.files, { name: file.name, data: compressed }].slice(0, 3) }));
-                    };
-                    img.src = ev.target.result;
-                };
-                reader.readAsDataURL(file);
-            };
-
-            const removeFile = (idx) => setForm(f => ({ ...f, files: f.files.filter((_, i) => i !== idx) }));
-
-            const submit = (asBrouillon) => {
-                if (!form.caisse_id || !form.type || !form.montant || !form.date) return alert('Veuillez remplir les champs obligatoires');
-                if (parseFloat(form.montant) <= 0) return alert('Le montant doit être positif');
-                setSaving(true);
-                fetch('/api/caisse?action=create-transaction', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ...form, montant: parseFloat(form.montant), submit: !asBrouillon }),
-                }).then(r => r.json()).then(json => {
-                    if (json.success) { alert(asBrouillon ? 'Brouillon enregistré' : 'Transaction soumise pour validation'); onDone(); }
-                    else alert('Erreur: ' + (json.error || 'Inconnue'));
-                }).catch(err => alert('Erreur: ' + err.message)).finally(() => setSaving(false));
-            };
-
-            const inputStyle = { width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid var(--gray-200)', fontSize: 13, fontFamily: 'Inter, sans-serif' };
-
-            return (
-                <div style={{maxWidth:640}}>
-                    <div style={{background:'white',borderRadius:12,border:'1px solid var(--gray-200)',padding:24}}>
-                        <h4 style={{margin:'0 0 20px',display:'flex',alignItems:'center',gap:8}}>
-                            <i className="fa-solid fa-plus-circle" style={{color:'var(--berry)'}}></i>Nouvelle Transaction
-                        </h4>
-                        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
-                            <div>
-                                <label style={{fontSize:11,fontWeight:600,color:'var(--gray-600)',marginBottom:4,display:'block'}}>Caisse *</label>
-                                <select value={form.caisse_id} onChange={e=>setForm({...form,caisse_id:e.target.value})} style={inputStyle}>
-                                    {caisses.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
-                                </select>
-                            </div>
-                            <div>
-                                <label style={{fontSize:11,fontWeight:600,color:'var(--gray-600)',marginBottom:4,display:'block'}}>Type *</label>
-                                <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-                                    {['alimentation','depense','sortie','paie','transport'].map(t => {
-                                        const tt = TXN_TYPE_LABELS[t];
-                                        return (
-                                            <button key={t} onClick={()=>setForm({...form,type:t})}
-                                                style={{flex:'1 0 calc(33% - 6px)',padding:'8px 6px',borderRadius:8,border: form.type===t ? `2px solid ${tt.color}` : '1px solid var(--gray-200)',
-                                                    background: form.type===t ? tt.bg : 'white', color: form.type===t ? tt.color : 'var(--gray-600)',
-                                                    fontSize:11,fontWeight:form.type===t?700:500,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:4}}>
-                                                <i className={`fa-solid ${tt.icon}`}></i>{tt.label}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                            <div>
-                                <label style={{fontSize:11,fontWeight:600,color:'var(--gray-600)',marginBottom:4,display:'block'}}>Montant (DH) *</label>
-                                <input type="number" step="0.01" min="0" value={form.montant} onChange={e=>setForm({...form,montant:e.target.value})} style={inputStyle} placeholder="0.00" />
-                            </div>
-                            <div>
-                                <label style={{fontSize:11,fontWeight:600,color:'var(--gray-600)',marginBottom:4,display:'block'}}>Date *</label>
-                                <input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})} style={inputStyle} />
-                            </div>
-                            <div>
-                                <label style={{fontSize:11,fontWeight:600,color:'var(--gray-600)',marginBottom:4,display:'block'}}>Référence</label>
-                                <input type="text" value={form.reference} onChange={e=>setForm({...form,reference:e.target.value})} style={inputStyle} placeholder="Auto-générée si vide" />
-                            </div>
-                            <div>
-                                <label style={{fontSize:11,fontWeight:600,color:'var(--gray-600)',marginBottom:4,display:'block'}}>Code Analytique</label>
-                                <select value={form.code_analytique} onChange={e=>setForm({...form,code_analytique:e.target.value})} style={inputStyle}>
-                                    <option value="">— Aucun —</option>
-                                    {codesAnalytiques.map(c => <option key={c} value={c}>{c}</option>)}
-                                </select>
-                            </div>
-                            {(form.type === 'paie' || form.type === 'transport') && (
-                                <>
-                                    <div>
-                                        <label style={{fontSize:11,fontWeight:600,color:'var(--gray-600)',marginBottom:4,display:'block'}}>Matricule</label>
-                                        <input type="text" value={form.matricule} onChange={e=>setForm({...form,matricule:e.target.value})} style={inputStyle} placeholder="Ex: 02123" />
-                                    </div>
-                                    <div>
-                                        <label style={{fontSize:11,fontWeight:600,color:'var(--gray-600)',marginBottom:4,display:'block'}}>Bénéficiaire (Nom)</label>
-                                        <input type="text" value={form.beneficiaire_nom} onChange={e=>setForm({...form,beneficiaire_nom:e.target.value})} style={inputStyle} placeholder="Nom de l'employé" />
-                                    </div>
-                                </>
-                            )}
-                            <div style={{gridColumn:'1/-1'}}>
-                                <label style={{fontSize:11,fontWeight:600,color:'var(--gray-600)',marginBottom:4,display:'block'}}>Description</label>
-                                <textarea value={form.description} onChange={e=>setForm({...form,description:e.target.value})} style={{...inputStyle,minHeight:70,resize:'vertical'}} placeholder="Description de la transaction..." />
-                            </div>
-                            <div style={{gridColumn:'1/-1'}}>
-                                <label style={{fontSize:11,fontWeight:600,color:'var(--gray-600)',marginBottom:4,display:'block'}}>Pièces jointes (max 3)</label>
-                                <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:8}}>
-                                    {form.files.map((f,i) => (
-                                        <div key={i} style={{position:'relative',width:70,height:70}}>
-                                            <img src={f.data} alt="" style={{width:70,height:70,objectFit:'cover',borderRadius:8,border:'1px solid var(--gray-200)'}} />
-                                            <button onClick={()=>removeFile(i)} style={{position:'absolute',top:-6,right:-6,width:20,height:20,borderRadius:'50%',background:'var(--red)',color:'white',border:'none',cursor:'pointer',fontSize:10,display:'flex',alignItems:'center',justifyContent:'center'}}>
-                                                <i className="fa-solid fa-xmark"></i>
-                                            </button>
-                                        </div>
-                                    ))}
-                                </div>
-                                {form.files.length < 3 && (
-                                    <label style={{display:'inline-flex',alignItems:'center',gap:6,padding:'8px 14px',borderRadius:8,border:'1px dashed var(--gray-200)',cursor:'pointer',fontSize:12,color:'var(--gray-600)'}}>
-                                        <i className="fa-solid fa-camera"></i>Ajouter une photo
-                                        <input type="file" accept="image/*" onChange={handleFile} style={{display:'none'}} />
-                                    </label>
-                                )}
-                            </div>
-                        </div>
-                        <div style={{display:'flex',gap:10,marginTop:20,justifyContent:'flex-end'}}>
-                            <button onClick={()=>submit(true)} disabled={saving} style={{padding:'10px 20px',borderRadius:10,border:'1px solid var(--gray-200)',background:'white',cursor:'pointer',fontSize:13,fontWeight:500,opacity:saving?0.5:1}}>
-                                <i className="fa-solid fa-floppy-disk" style={{marginRight:6}}></i>Enregistrer brouillon
-                            </button>
-                            <button onClick={()=>submit(false)} disabled={saving} style={{padding:'10px 20px',borderRadius:10,border:'none',background:'var(--berry)',color:'white',cursor:'pointer',fontSize:13,fontWeight:600,opacity:saving?0.5:1}}>
-                                {saving ? <i className="fa-solid fa-spinner fa-spin" style={{marginRight:6}}></i> : <i className="fa-solid fa-paper-plane" style={{marginRight:6}}></i>}
-                                Soumettre pour validation
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            );
-        }
+        // EXTRAIT vers public/components/CaisseSaisieSub.jsx (règle de modularisation,
+        // CLAUDE.md). Bimodal : création + édition (action update-transaction).
+        // Référencé via window.CaisseSaisieSub — jamais en référence nue (crash global
+        // si le <script> du composant n'a pas chargé, cf. tab-bare-global-ref-crash).
 
         // ---- Filtered Type Sub (Alimentations / Paie / Transport) ----
         function CaisseFilteredTypeSub({ caisses, typeFilter, title, icon, isSaisie, onDone, hasEmployee }) {
@@ -61123,7 +61067,7 @@ ${rejetHtml}
                         <button onClick={() => setShowForm(false)} style={{padding:'6px 14px',borderRadius:8,border:'1px solid var(--gray-200)',background:'white',cursor:'pointer',fontSize:12,marginBottom:16}}>
                             <i className="fa-solid fa-arrow-left" style={{marginRight:6}}></i>Retour à la liste
                         </button>
-                        <CaisseSaisieSub caisses={caisses} defaultType={typeFilter} onDone={() => { setShowForm(false); load(); onDone && onDone(); }} />
+                        {window.CaisseSaisieSub && <window.CaisseSaisieSub caisses={caisses} defaultType={typeFilter} onDone={() => { setShowForm(false); load(); onDone && onDone(); }} />}
                     </div>
                 );
             }
