@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:b133dc5fc1b4af32",
+    "sourceFingerprint": "sha256:8e3fd2e69e00494d",
     "stats": {
-      "targetFiles": 257,
-      "targetFilesWithDirectTests": 148,
-      "targetFilesWithTransitiveTests": 169,
-      "testFilesScanned": 217
+      "targetFiles": 262,
+      "targetFilesWithDirectTests": 151,
+      "targetFilesWithTransitiveTests": 172,
+      "testFilesScanned": 220
     }
   },
   "index": {
@@ -258,6 +258,8 @@
       "transitiveTests": [
         "functions/lib/campagneExport/__tests__/buildWorkbook.test.js",
         "functions/lib/campagneExport/__tests__/renderXlsx.test.js",
+        "functions/lib/consoBons/__tests__/aggregateParcelle.test.js",
+        "functions/lib/consoBons/__tests__/bonsToConsoRows.test.js",
         "tests/unit/bcScan.test.js",
         "tests/unit/bcScanMatch.test.js",
         "tests/unit/campagneExportBackend.test.js"
@@ -317,6 +319,42 @@
         "functions/lib/campagneRapportHebdo/__tests__/runJob.test.js",
         "functions/lib/campagneRapportHebdo/__tests__/whatsappDocument.test.js"
       ]
+    },
+    "functions/lib/consoBons/aggregateParcelle.js": {
+      "directTests": [
+        "functions/lib/consoBons/__tests__/aggregateParcelle.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/consoBons/__tests__/aggregateParcelle.test.js"
+      ]
+    },
+    "functions/lib/consoBons/bonsToConsoRows.js": {
+      "directTests": [
+        "functions/lib/consoBons/__tests__/aggregateParcelle.test.js",
+        "functions/lib/consoBons/__tests__/bonsToConsoRows.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/consoBons/__tests__/aggregateParcelle.test.js",
+        "functions/lib/consoBons/__tests__/bonsToConsoRows.test.js"
+      ]
+    },
+    "functions/lib/consoBons/fermeConso.js": {
+      "directTests": [
+        "functions/lib/consoBons/__tests__/fermeConso.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/consoBons/__tests__/aggregateParcelle.test.js",
+        "functions/lib/consoBons/__tests__/bonsToConsoRows.test.js",
+        "functions/lib/consoBons/__tests__/fermeConso.test.js"
+      ]
+    },
+    "functions/lib/consoBons/fetchBons.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "functions/lib/consoBons/index.js": {
+      "directTests": [],
+      "transitiveTests": []
     },
     "functions/lib/fonctions/fonctionsHistory.js": {
       "directTests": [
@@ -587,6 +625,8 @@
         "tests/unit/campagneUtilsBackend.test.js"
       ],
       "transitiveTests": [
+        "functions/lib/consoBons/__tests__/aggregateParcelle.test.js",
+        "functions/lib/consoBons/__tests__/bonsToConsoRows.test.js",
         "functions/lib/mappingConso/__tests__/resolver.test.js",
         "functions/lib/pointage/__tests__/campagnePeriodes.test.js",
         "functions/lib/pointage/__tests__/mirrorWindow.test.js",
@@ -1030,6 +1070,9 @@
         "tests/unit/refParcelleFerme.test.js"
       ],
       "transitiveTests": [
+        "functions/lib/consoBons/__tests__/aggregateParcelle.test.js",
+        "functions/lib/consoBons/__tests__/bonsToConsoRows.test.js",
+        "functions/lib/consoBons/__tests__/fermeConso.test.js",
         "tests/unit/refParcelleFerme.test.js",
         "tests/unit/referentielSync.test.js"
       ]
@@ -1370,6 +1413,7 @@
         "tests/unit/consoValorisation.test.js"
       ],
       "transitiveTests": [
+        "functions/lib/consoBons/__tests__/aggregateParcelle.test.js",
         "tests/unit/consoValorisation.test.js"
       ]
     },
@@ -1378,6 +1422,9 @@
         "tests/unit/fermeParcelle.test.js"
       ],
       "transitiveTests": [
+        "functions/lib/consoBons/__tests__/aggregateParcelle.test.js",
+        "functions/lib/consoBons/__tests__/bonsToConsoRows.test.js",
+        "functions/lib/consoBons/__tests__/fermeConso.test.js",
         "tests/unit/fermeParcelle.test.js"
       ]
     },

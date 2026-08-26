@@ -40,6 +40,9 @@ const pmpDetailLib = require("./lib/stock/pmpDetail");
 const consoValorisationLib = require("./lib/valorisation/consoValorisation");
 const consoAccessControl = require("./lib/valorisation/accessControl");
 const { deriveFermeFromParcelle } = require("./lib/valorisation/fermeParcelle");
+// Consommation depuis les BONS Smart Berry (`consumption_vouchers`) — la source
+// BEE ONE `sql_mirror_consommation` est tarie depuis avril 2026.
+const consoBons = require("./lib/consoBons");
 const parcelleGroupSplit = require("./lib/parcelleGroupes/split");
 const locationsConfig = require("./lib/stock/locationsConfig");
 const scanAttachment = require("./lib/stock/scanAttachment");
@@ -8538,6 +8541,8 @@ exports.stockManagement = functions
             success: true,
             role: perim.role,
             perimetre_ferme: perim.perimetre_ferme,
+            perimetre_culture: perim.culture_filtre || null,
+            parcelles_ferme_indeterminee: [],
             since: DEFAULT_SINCE,
             campagne: "2025/2026",
             dateExtraction: new Date().toLocaleDateString("fr-FR"),
@@ -8551,26 +8556,80 @@ exports.stockManagement = functions
         // 1) Filtres période + culture (paramètres optionnels).
         const since = (req.query.since && /^\d{4}-\d{2}-\d{2}$/.test(req.query.since)) ? req.query.since : DEFAULT_SINCE;
         const culture = req.query.culture && String(req.query.culture).trim() ? String(req.query.culture).trim() : undefined;
-        const consoFilters = { weekStart: since };
-        if (culture) consoFilters.culture = culture;
-        // NOTE: on N'INJECTE PAS perim.ferme_filtre dans getConsommationRows.
-        // Le champ Ferme du mirror vaut « BERRY GOOD Farms » sur 100% des lignes
-        // (inexploitable) : la vraie ferme est encodée dans Parcelle_Culturale.
-        // Le cloisonnement chef se fait ci-dessous par dérivation en mémoire.
+        // NOTE: on ne filtre PAS sur un champ Ferme de la source.
+        // Dans le mirror BEE ONE il valait « BERRY GOOD Farms » sur 100 % des
+        // lignes ; dans les bons Smart Berry, `item.ferme` porte cette même
+        // valeur fourre-tout sur 212 items /500 (mesuré en prod). Inexploitable
+        // dans les deux cas : la vraie ferme est encodée dans le libellé de
+        // parcelle. Le cloisonnement chef se fait ci-dessous par dérivation
+        // en mémoire, fail-closed — inchangé.
 
-        // 2) Lignes de conso depuis le mirror (sans filtre Ferme).
-        let consoRows = await getConsommationRows(consoFilters);
+        // 2) Lignes de conso depuis les BONS SMART BERRY (`consumption_vouchers`).
+        //    Bascule décidée par Omar (ticket sb/conso-campagne-bons) : la source
+        //    BEE ONE `sql_mirror_consommation` est TARIE (dernières lignes en
+        //    avril 2026), la consommation réelle est saisie dans les bons par le
+        //    magasinier. Bons UNIQUEMENT : pas d'union avec BEE ONE, pas de
+        //    bascule à une date. Conséquence ASSUMÉE : la période antérieure aux
+        //    premiers bons s'affiche vide. Rien n'est supprimé côté BEE ONE, et
+        //    `getConsommationRows` reste utilisé par les autres écrans
+        //    (fertigation, phytosanitaire, produits, parcelles, dashboard,
+        //    agroSummary, exports campagne).
+        //    L'adaptateur produit exactement la forme de ligne mirror consommée
+        //    par `aggregateConsoValorisee` — aucun changement en aval.
+        const [bonsConso, refParcelles] = await Promise.all([
+          consoBons.fetchBonsConsommation(db_firestore),
+          consoBons.fetchReferentielParcelles(db_firestore),
+        ]);
+        let consoRows = consoBons.adaptBonsToConsoRows(bonsConso, {
+          since,
+          haByLabel: refParcelles.haByLabel,
+          sbMap: refParcelles.sbMap,
+        });
+        // Filtre culture optionnel (param client), à l'identique de l'ancien
+        // filtre `getConsommationRows({culture})` — mais sur la culture RÉSOLUE
+        // (référentiel SB puis repli), et non sur le champ brut du bon, vide ou
+        // sale sur la majorité des items.
+        if (culture) {
+          consoRows = consoRows.filter((r) => r.Culture === culture);
+        }
+
+        // Libellés dont la ferme est indéterminable — capturés AVANT tout filtre
+        // de périmètre : après filtrage ils ont justement disparu, et la liste
+        // serait systématiquement vide pour le seul profil que ça concerne.
+        const fermeIndeterminee = consoBons.resolveFermeInconnue(
+          consoRows.map((r) => r.Parcelle_Culturale)
+        );
 
         // 2bis) Cloisonnement ferme FAIL-CLOSED pour un périmètre chef.
         //   perimetre_ferme === 'all' (DG/Finance/admin) → aucune restriction,
         //   y compris les parcelles non dérivables. Sinon (chef), on ne garde
         //   QUE les lignes dont la ferme dérivée du libellé == son périmètre.
         //   Une parcelle dérivée à null est EXCLUE (jamais montrée à un chef).
+        //   Dérivation = `consoBons.fermeDeParcelle`, RÈGLE UNIQUE partagée avec
+        //   l'écran Campagne. Elle compose `deriveFermeFromParcelle` (utilisée
+        //   ici jusqu'ici) et le repli SECTEUR : sans ce repli, `chef_f5`
+        //   perdait ses 2 parcelles S8 (BREEZE/CASCADE MYRTILLE, 40 lignes),
+        //   dérivées à null par la seule règle valorisation.
         if (perim.perimetre_ferme !== 'all') {
           const cible = perim.perimetre_ferme;
           consoRows = consoRows.filter(
-            (r) => deriveFermeFromParcelle(r.Parcelle_Culturale) === cible
+            (r) => consoBons.fermeDeParcelle(r.Parcelle_Culturale) === cible
           );
+        }
+        // 2ter) Cloisonnement CULTURE FAIL-CLOSED — barrière IMPOSÉE serveur.
+        //   Sans elle, `chef_f1` (perimetre_ferme 'all' + culture_filtre
+        //   'Framboise') échappait à TOUT filtrage : le bloc 2bis est sauté pour
+        //   un périmètre 'all', et la culture n'était appliquée nulle part.
+        //   Mesuré avant correction : `chef_f1` recevait les 500 lignes, dont 78
+        //   d'Avocatier et 125 de F5-Myrtille. `chef_f5` voyait en plus les
+        //   parcelles F5-Framboise. Le filtre porte sur la culture RÉSOLUE par
+        //   l'adaptateur (référentiel `culture_sb` puis repli), jamais sur le
+        //   champ brut du bon. C'est le pendant exact du filtre appliqué dans
+        //   `aggregateConsoParcelle` pour l'écran Campagne.
+        //   ⚠️ Distinct du `?culture=` client ci-dessus : celui-ci est un confort
+        //   d'affichage, celui-là n'est pas négociable.
+        if (perim.culture_filtre) {
+          consoRows = consoRows.filter((r) => r.Culture === perim.culture_filtre);
         }
         // 3) Map de PMP par canon(nom) depuis articles_catalog (active).
         const canon = consoValorisationLib.canon;
@@ -8604,10 +8663,19 @@ exports.stockManagement = functions
           success: true,
           role: perim.role,
           perimetre_ferme: perim.perimetre_ferme,
+          // Périmètre cultural IMPOSÉ (chef_f1 → Framboise, chef_f5 → Myrtille).
+          // Additif : rend le cloisonnement lisible côté client au lieu de le
+          // laisser deviner à partir d'un tableau incomplet.
+          perimetre_culture: perim.culture_filtre || null,
           since,
           culture: culture || null,
           campagne: "2025/2026",
           dateExtraction: new Date().toLocaleDateString("fr-FR"),
+          // Libellés dont la ferme est indéterminable : ils sont EXCLUS du
+          // périmètre d'un chef (fail-closed). Remontés pour que l'écran puisse
+          // le dire, plutôt que d'afficher un tableau vide sans explication.
+          // Vide sur les 19 libellés réels d'aujourd'hui.
+          parcelles_ferme_indeterminee: fermeIndeterminee,
           articles_non_valorises,
           ...agg,
         });

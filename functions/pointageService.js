@@ -25,7 +25,6 @@ const {
   getWorkerHistory,
   getCueilletteRows,
   getSyncStatus,
-  getConsommationRows,
 } = require("./firestoreDataService");
 
 // Coût CHARGÉ d'une journée d'ouvrier (CNSS patronale + transport compris) —
@@ -99,6 +98,9 @@ const parcelleGroupValidate = require("./lib/parcelleGroupes/validate");
 const parcelleGroupSeedHa = require("./lib/parcelleGroupes/seedHa");
 // Budget JH/Ha par parcelle × famille d'opération (validation + merge purs).
 const campagneBudget = require("./lib/campagneBudget/validate");
+// Consommation depuis les BONS Smart Berry (`consumption_vouchers`) — la source
+// BEE ONE `sql_mirror_consommation` est tarie depuis avril 2026.
+const consoBons = require("./lib/consoBons");
 // Export Excel « Campagne » côté serveur (structure + rendu ExcelJS) — module
 // pur : aucune lecture Firestore, tout lui est injecté.
 const campagneExport = require("./lib/campagneExport");
@@ -4409,91 +4411,89 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
       }
 
       // ------ CAMPAGNE-CONSO-PARCELLE : consommation Engrais+Pesticides par parcelle ------
-      // Lit sql_mirror_consommation, agrège par parcelle × article, enrichit avec Ha.
-      // Note: les lignes miroir n'ont pas de champ Cout — seules les quantités sont disponibles.
+      // SOURCE : les BONS DE CONSOMMATION Smart Berry (`consumption_vouchers`),
+      // et NON PLUS la collection miroir BEE ONE `sql_mirror_consommation`.
+      //
+      // Pourquoi (décision Omar, ticket sb/conso-campagne-bons) : la source BEE
+      // ONE est TARIE depuis avril 2026 — le miroir couvre 2025-07 → 2026-04 et
+      // ZÉRO ligne sur la campagne courante, d'où le « Aucune donnée pour cette
+      // sélection » de l'écran, alors que le magasinier saisit sa consommation
+      // dans les bons depuis. On tourne la page : bons UNIQUEMENT, pas d'union,
+      // pas de bascule à une date. Conséquence ASSUMÉE : les campagnes
+      // antérieures s'affichent vides ici. Rien n'est supprimé côté BEE ONE, et
+      // `getConsommationRows` reste utilisé par d'autres actions (fertigation,
+      // phytosanitaire, produits, parcelles, dashboard, agroSummary, exports).
+      //
+      // Le rattachement à la campagne se fait par la DATE DU BON (`campagneOf`) :
+      // aucun champ campagne n'est persisté sur les bons, et la date est
+      // modifiable a posteriori (`update-bc-date`) — un bon PEUT donc changer de
+      // campagne, c'est voulu.
+      //
+      // Note : les bons ne portent pas de coût — seules les quantités sont
+      // disponibles, `totalEngraisCout`/`totalPesticidesCout` restent à 0 comme
+      // avant (valoriser cet écran au PMP est une décision produit séparée).
       if (action === "campagne-conso-parcelle") {
-        const today = new Date();
-        const y = today.getFullYear();
-        const startYear = today.getMonth() >= 6 ? y : y - 1;
-        const campagne = {
-          start: `${startYear}-07-01`,
-          end: `${startYear + 1}-06-30`,
-          label: `${startYear}/${startYear + 1}`,
-        };
+        const campagneLabel = campagneCourante(); // '2026-2027'
+        // Fail-CLOSED sur l'horloge : sans campagne résoluble, l'adaptation ne
+        // filtrerait plus rien et renverrait TOUS les bons, toutes campagnes
+        // confondues. Impossible en pratique (`campagneCourante()` dérive de la
+        // date système), mais c'est le seul fail-open du chemin — on le ferme.
+        if (!campagneLabel) {
+          return res.status(500).json({ success: false, error: "Campagne courante indéterminable" });
+        }
+        const campagne = { label: campagneLabel.replace('-', '/') };
 
         const cached = await withCache(
-          pointageCacheKey(`campagne_conso_parcelle_v1_${campagne.start}`, _fermeFilter),
+          // Clé versionnée v2 : la source a changé, l'ancien cache v1 (miroir)
+          // ne doit jamais être resservi.
+          pointageCacheKey(`campagne_conso_parcelle_v2_${campagneLabel}`, _fermeFilter, _cultureFilter),
           30 * 60 * 1000,
           async () => {
-            // Lire toutes les lignes conso de la collection miroir (toutes catégories)
-            const allRows = await getConsommationRows({});
+            const [bons, referentiel] = await Promise.all([
+              consoBons.fetchBonsConsommation(db_firestore),
+              consoBons.fetchReferentielParcelles(db_firestore),
+            ]);
 
-            // Filtrer sur la campagne (champ Date : YYYY-MM-DD)
-            const campagneRows = allRows.filter(r => r.Date >= campagne.start && r.Date <= campagne.end);
-
-            // Enrichir avec Ha depuis sb_parcelle_referentiel
-            const refSnap = await db_firestore.collection('sb_parcelle_referentiel').get();
-            const haByRef = {};
-            refSnap.forEach(doc => {
-              const d = doc.data();
-              if (d.label_bee_one && d.ha) haByRef[d.label_bee_one.trim().toUpperCase()] = d.ha;
+            const rows = consoBons.adaptBonsToConsoRows(bons, {
+              campagne: campagneLabel,
+              haByLabel: referentiel.haByLabel,
+              sbMap: referentiel.sbMap,
             });
 
-            // Grouper par parcelle
-            const byParcelle = {};
-            for (const r of campagneRows) {
-              const parcelle = (r.Parcelle_Culturale || '').trim();
-              if (!parcelle) continue;
-              // Dériver la ferme : les lignes conso ont un champ Ferme (ex. 'F1', 'F5', 'BAHIA')
-              // On s'appuie sur deriveFerme via Parcelle_Culturale comme fallback
-              const ferme = deriveFerme(null, parcelle);
-              if (!byParcelle[parcelle]) {
-                const haKey = parcelle.toUpperCase();
-                byParcelle[parcelle] = {
-                  parcelle,
-                  ferme,
-                  ha: haByRef[haKey] || 0,
-                  engraisMap: {},
-                  pesticidesMap: {},
-                };
-              }
-              const art = (r.Article || '').trim();
-              const cat = (r.Article_Categorie || '').trim();
-              const qty = r.Quantite || 0;
-              const unite = (r.Article_unite || '').trim();
-              if (cat === 'Engrais') {
-                if (!byParcelle[parcelle].engraisMap[art]) {
-                  byParcelle[parcelle].engraisMap[art] = { article: art, qty: 0, unite, coutTotal: 0 };
-                }
-                byParcelle[parcelle].engraisMap[art].qty += qty;
-              } else if (cat === 'Pesticides') {
-                if (!byParcelle[parcelle].pesticidesMap[art]) {
-                  byParcelle[parcelle].pesticidesMap[art] = { article: art, qty: 0, unite, coutTotal: 0 };
-                }
-                byParcelle[parcelle].pesticidesMap[art].qty += qty;
-              }
-            }
-
-            const parcelles = Object.values(byParcelle)
-              .map(p => {
-                const engrais = Object.values(p.engraisMap).sort((a, b) => a.article.localeCompare(b.article));
-                const pesticides = Object.values(p.pesticidesMap).sort((a, b) => a.article.localeCompare(b.article));
-                return {
-                  parcelle: p.parcelle,
-                  ferme: p.ferme,
-                  ha: p.ha,
-                  engrais,
-                  pesticides,
-                  totalEngraisCout: 0,
-                  totalPesticidesCout: 0,
-                };
-              })
-              .filter(p => p.engrais.length > 0 || p.pesticides.length > 0)
-              .sort((a, b) => a.parcelle.localeCompare(b.parcelle));
+            // Cloisonnement chef appliqué DANS l'agrégation, fail-closed :
+            // l'action est ferme-aware côté cache mais ne filtrait aucune ligne
+            // — invisible tant que l'écran renvoyait 0 parcelle, ça exposerait
+            // les autres fermes maintenant qu'il en renvoie. Le filtre culture
+            // couvre chef_f1, dont le périmètre ferme vaut 'all'.
+            //
+            // Dérivation = `consoBons.fermeDeParcelle`, RÈGLE UNIQUE partagée
+            // avec `conso-valorisee`. Elle remplace `deriveFerme` ici : celui-ci
+            // renvoyait 'Autre' sur `F2 - HAAS` / `F3 -HAAS` / `F4 -HAAS`, si
+            // bien que `chef_avo` recevait un écran VIDE alors que ses 20,5 ha
+            // avaient consommé 60 lignes. Les libellés non résolus restent
+            // exclus (fail-closed) mais sont remontés dans le payload.
+            const parcelles = consoBons.aggregateConsoParcelle(rows, {
+              haByLabel: referentiel.haByLabel,
+              sbMap: referentiel.sbMap,
+              deriveFerme: (parcelle) => consoBons.fermeDeParcelle(parcelle) || 'Autre',
+              fermeFilter: _fermeFilter,
+              cultureFilter: _cultureFilter,
+            });
 
             return {
               success: true,
               campagne: campagne.label,
+              source: 'bons_smart_berry',
+              // Périmètres IMPOSÉS, rendus explicites pour que l'écran puisse
+              // expliquer un tableau court au lieu de le laisser deviner.
+              perimetre_ferme: _fermeFilter || 'all',
+              perimetre_culture: _cultureFilter || null,
+              // Libellés dont la ferme est indéterminable : exclus du périmètre
+              // d'un chef. Calculés sur les lignes AVANT filtrage (après, ils
+              // ont disparu). Vide sur les 19 libellés réels d'aujourd'hui.
+              parcelles_ferme_indeterminee: consoBons.resolveFermeInconnue(
+                rows.map((r) => r.Parcelle_Culturale)
+              ),
               parcelles,
             };
           }

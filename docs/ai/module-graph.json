@@ -4,7 +4,7 @@
     "healthScore": {
       "subScores": {
         "classification": {
-          "detail": "235/377 fichiers classifiés",
+          "detail": "235/378 fichiers classifiés",
           "max": 40,
           "score": 25
         },
@@ -14,7 +14,7 @@
           "score": 27
         },
         "testCoverage": {
-          "detail": "66/166 modules avec ≥1 test",
+          "detail": "67/167 modules avec ≥1 test",
           "max": 30,
           "score": 12
         }
@@ -39,11 +39,11 @@
         "file": "tests/unit/campagneAnalytiquePivot.test.js"
       },
       {
-        "commits": 24,
+        "commits": 26,
         "file": "functions/pointageService.js"
       },
       {
-        "commits": 20,
+        "commits": 22,
         "file": "functions/index.js"
       },
       {
@@ -64,9 +64,9 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:7359b7bfe549fc2d",
+    "sourceFingerprint": "sha256:c3a33b72fbe2ff36",
     "stats": {
-      "backendModules": 95,
+      "backendModules": 96,
       "cloudFunctions": 91,
       "coverageScore": 40,
       "domains": 10,
@@ -75,7 +75,7 @@
       "libHelpers": 42,
       "monolithSymbols": 120,
       "tabFunctions": 120,
-      "unclassifiedFiles": 142,
+      "unclassifiedFiles": 143,
       "unitTestFiles": 44
     }
   },
@@ -2198,6 +2198,10 @@
       "confidence": "high",
       "domain": "referentiel"
     },
+    "functions/lib/consoBons": {
+      "confidence": "low",
+      "domain": null
+    },
     "functions/lib/fonctions": {
       "confidence": "high",
       "domain": "paie"
@@ -4011,6 +4015,10 @@
     {
       "confidence": "low",
       "file": "functions/lib/budgetBgf.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/lib/consoBons"
     },
     {
       "confidence": "low",

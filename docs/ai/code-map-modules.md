@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:05fec1503a0ddcf8 -->
-# Code Map — Modules lib (196)
+<!-- sourceFingerprint: sha256:19ab8733f4a4b906 -->
+# Code Map — Modules lib (201)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
 
@@ -41,6 +41,11 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/campagneRapportHebdo/envois.js | — | buildEnvois, resumeEnvois, nbParcellesFromFeuilles, formatDateLabel, buildBodyParams |
 | functions/lib/campagneRapportHebdo/index.js | — | CRON_CONFIG, HTTP_CONFIG, AUDIENCE, TEMPLATE_NAME, ALERT_TEMPLATE_NAME, ALERT_PROFILE_ID, XLSX_MIME, TRIGGER_PROFILES, CONFIRM_SEND, buildEnvois, resumeEnvois, nbParcellesFromFeuilles, formatDateLabel, buildBodyParams, resolveRecipientsByProfile, checkRecipients, dryRun, runRapportHebdo, buildHttpHandler |
 | functions/lib/campagneRapportHebdo/runJob.js | — | resolveRecipientsByProfile, checkRecipients, dryRun, runRapportHebdo, buildHttpHandler, maskPhone |
+| functions/lib/consoBons/aggregateParcelle.js | — | aggregateConsoParcelle |
+| functions/lib/consoBons/bonsToConsoRows.js | — | adaptBonsToConsoRows, categorieOf, quantiteOf |
+| functions/lib/consoBons/fermeConso.js | — | fermeDeParcelle, resolveFermeInconnue |
+| functions/lib/consoBons/fetchBons.js | — | fetchBonsConsommation, fetchReferentielParcelles |
+| functions/lib/consoBons/index.js | — | adaptBonsToConsoRows, categorieOf, quantiteOf, aggregateConsoParcelle, fermeDeParcelle, resolveFermeInconnue, fetchBonsConsommation, fetchReferentielParcelles |
 | functions/lib/fonctions/fonctionsHistory.js | — | buildFonctionUpdate |
 | functions/lib/fonctions/fonctionsValidate.js | — | normalizeFonctionSlug, normalizeLibelle, normalizeOrdre |
 | functions/lib/forecastConfirmation.js | — | parseForecastConfirmation |
