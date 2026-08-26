@@ -47,6 +47,8 @@ const parcelleGroupSplit = require("./lib/parcelleGroupes/split");
 const locationsConfig = require("./lib/stock/locationsConfig");
 const scanAttachment = require("./lib/stock/scanAttachment");
 const bcScan = require("./lib/stock/bcScan");
+// Journal de précision du scan (observation pure — ne change rien au scanner).
+const bcScanJournal = require("./lib/stock/bcScanJournal");
 const bcDate = require("./lib/stock/bcDate");
 const stockFilesRecord = require("./lib/stockFiles/recordSubmission");
 const { createStockFileReminders } = require("./lib/stockFiles/reminders");
@@ -10687,6 +10689,55 @@ IMPORTANT:
           return nextCount;
         });
         return res.json({ success: true, id: parcAliasId, count: parcCount });
+      }
+
+      // ---- JOURNAL DE PRÉCISION DU SCAN (spec §4.4, lot C) --------------------
+      // Un document par ligne ENREGISTRÉE — pas seulement par ligne corrigée.
+      // Une proposition conservée est une CONFIRMATION : c'est le dénominateur,
+      // sans lui aucun taux n'est calculable. Le journal sert à régler les
+      // seuils (SIMILARITY_THRESHOLD / INCLUSION_THRESHOLD) sur des faits, et
+      // surtout à faire apparaître les faux positifs avérés : une proposition
+      // sortie en `exact` puis corrigée par le magasinier.
+      //
+      // ⚠️ Cette action est de l'OBSERVATION, jamais du métier. Le front
+      // l'appelle APRÈS un `create-bc` réussi, en best effort : un échec ici ne
+      // doit jamais faire échouer l'enregistrement du bon. Le contrat de
+      // `create-bc` reste inchangé (purement additif).
+      if (action === "save-bc-scan-journal" && req.method === "POST") {
+        // Rôle résolu SERVEUR, jamais depuis le body — même garde que les alias.
+        const journalRole = await resolveCallerRole(authUser);
+        if (journalRole !== "magasinier" && journalRole !== "dg") {
+          return res.status(403).json({ success: false, error: "Réservé au profil magasinier (ou dg)" });
+        }
+        const { date: journalDate, bon_numero: journalBon, lignes: journalLignes } = req.body || {};
+        // `corrige_par` est résolu SERVEUR (token + profil), jamais repris du
+        // body : c'est une donnée d'audit, elle ne se déclare pas.
+        const journalBuilt = bcScanJournal.buildJournalDocs({
+          date: journalDate,
+          bon_numero: journalBon,
+          lignes: journalLignes,
+          corrige_par: {
+            uid: (authUser && authUser.uid) || "",
+            profileId: journalRole,
+            name: (authUser && (authUser.name || authUser.email)) || "",
+          },
+        });
+        if (!journalBuilt.ok) {
+          return res.status(400).json({ success: false, error: journalBuilt.error });
+        }
+        // Un bon fait une quinzaine de lignes : un seul batch suffit très
+        // largement (plafond du module = 200, limite Firestore = 500).
+        const journalBatch = db_firestore.batch();
+        journalBuilt.docs.forEach((doc) => {
+          journalBatch.set(db_firestore.collection("bc_scan_corrections").doc(), doc);
+        });
+        await journalBatch.commit();
+        return res.json({
+          success: true,
+          campagne: journalBuilt.campagne,
+          enregistrees: journalBuilt.docs.length,
+          ignorees: journalBuilt.ignorees,
+        });
       }
 
       // ========== SCAN FICHE IRRIGATION (AI-powered irrigation sheet scanning) ==========

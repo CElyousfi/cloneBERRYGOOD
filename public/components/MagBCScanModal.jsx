@@ -250,6 +250,10 @@
           parcelle_initial: parcelleVal,
           // Nb de fois que l'alias a été confirmé (statut `alias` uniquement).
           parcelle_alias_count: (match && match.aliasCount) || undefined,
+          // Score du rapprochement de parcelle. Champ PUREMENT observationnel :
+          // rien ne l'affiche ni ne s'en sert pour décider — il ne part qu'au
+          // journal de précision (lot C) pour corréler seuil et correction.
+          parcelle_score: parcelleVal && match ? match.score : undefined,
           parcelle_candidats: candidats,
           quantite: raw.quantite != null ? String(raw.quantite) : '',
           unite,
@@ -268,7 +272,7 @@
     const emptyLine = () => ({
       article_lu: '', pile: '', article: '', article_initial: '', article_status: 'unmatched', article_alias_count: undefined,
       parcelle_lue: '', parcelle_status: 'unmatched', parcelle_candidats: [],
-      parcelle_initial: '', parcelle_alias_count: undefined,
+      parcelle_initial: '', parcelle_alias_count: undefined, parcelle_score: undefined,
       quantite: '', unite: 'kg', parcelle: '', parcelle_ref: '', culture: '', ferme: '', groupe_id: '',
       barre: false, reintegre: false,
     });
@@ -554,6 +558,42 @@
       }),
     }).catch(() => {});
 
+    /**
+     * Journal de précision (spec §4.4, lot C) — OBSERVATION, jamais du métier.
+     *
+     * On envoie CHAQUE ligne enregistrée, pas seulement les corrigées : une
+     * ligne où la proposition a été conservée est une CONFIRMATION, c'est le
+     * dénominateur sans lequel aucun taux n'est calculable. La métrique cible :
+     * une proposition sortie en `exact` puis corrigée = faux positif avéré.
+     *
+     * Appelé APRÈS un `create-bc` réussi, en best effort : un échec ici ne doit
+     * JAMAIS faire échouer l'enregistrement du bon (d'où le `.catch` muet).
+     * Le contrat de `create-bc` n'est pas touché.
+     */
+    const saveJournal = (dateBon, numeroBon, items) => fetch('/api/stock?action=save-bc-scan-journal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        date: dateBon,
+        bon_numero: numeroBon,
+        // `corrige_par` n'est PAS envoyé : il est résolu serveur depuis le token.
+        lignes: items.map(i => ({
+          article_lu: i.article_lu || '',
+          article_propose: i.article_initial || '',
+          article_choisi: i.article || '',
+          article_status_initial: i.article_status || '',
+          article_score: i.article_score,
+          article_alias_count: i.article_alias_count,
+          parcelle_lue: i.parcelle_lue || '',
+          parcelle_proposee: i.parcelle_initial || '',
+          parcelle_choisie: i.parcelle || '',
+          parcelle_status_initial: i.parcelle_status || '',
+          parcelle_score: i.parcelle_score,
+          parcelle_alias_count: i.parcelle_alias_count,
+        })),
+      }),
+    }).catch(() => {});
+
     const gotoNextUnsaved = (savedId) => {
       const list = queueRef.current;
       const after = list.findIndex((q, i) => i > currentIdx && q.status !== 'saved' && q.id !== savedId);
@@ -614,6 +654,16 @@
               && knownParcelle(i.parcelle) && i.parcelle !== i.parcelle_initial)
             .forEach(i => { saveParcelleAlias(i.parcelle_lue, i.parcelle); });
         }
+        // Journal de précision : TOUTES les lignes enregistrées, corrigées ou
+        // non (cf. saveJournal). Best effort, après le succès de create-bc.
+        //
+        // try/catch PROPRE, en plus du .catch() sur la promesse : le .catch ne
+        // couvre que les rejections. Une exception SYNCHRONE (JSON.stringify sur
+        // une structure inattendue, .map sur autre chose qu'un tableau) tomberait
+        // sinon dans le catch de handleSave et afficherait « Erreur réseau »
+        // ALORS QUE LE BON EST CRÉÉ — bon marqué non enregistré, donc risque de
+        // double saisie. Le journal ne doit avoir AUCUN chemin vers l'utilisateur.
+        try { saveJournal(entry.header.date, json.numero || '', validItems); } catch (e) {}
         const savedId = entry.id;
         setQueue(prev => prev.map(q => (q.id === savedId ? { ...q, status: 'saved', numero: json.numero || '' } : q)));
         const nbSaved = createdCount + 1;

@@ -244,6 +244,17 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Journal de PRÉCISION du scan des bons de consommation : un document par
+    // ligne enregistrée (confirmations ET corrections — sans les confirmations,
+    // aucun taux n'est calculable). Purement observationnel, exploité par
+    // scripts/scan-precision-report.js. Lecture pour utilisateur authentifié,
+    // écriture via la Cloud Function stockManagement (action
+    // save-bc-scan-journal) uniquement.
+    match /bc_scan_corrections/{docId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
     // Stock balances — read-only for authenticated users, write via Cloud Functions
     match /stock_balances/{docId} {
       allow read: if request.auth != null;

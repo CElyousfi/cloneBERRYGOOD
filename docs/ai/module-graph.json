@@ -31,7 +31,7 @@
         "file": "public/components/CampagneAnalytiqueTab.jsx"
       },
       {
-        "commits": 43,
+        "commits": 42,
         "file": "public/app.jsx"
       },
       {
@@ -39,11 +39,11 @@
         "file": "tests/unit/campagneAnalytiquePivot.test.js"
       },
       {
-        "commits": 26,
+        "commits": 23,
         "file": "functions/pointageService.js"
       },
       {
-        "commits": 22,
+        "commits": 20,
         "file": "functions/index.js"
       },
       {
@@ -64,14 +64,14 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:c3a33b72fbe2ff36",
+    "sourceFingerprint": "sha256:113866af29e66d06",
     "stats": {
       "backendModules": 96,
       "cloudFunctions": 91,
       "coverageScore": 40,
       "domains": 10,
       "extractedComponents": 29,
-      "firestoreCollections": 60,
+      "firestoreCollections": 61,
       "libHelpers": 42,
       "monolithSymbols": 120,
       "tabFunctions": 120,
@@ -99,6 +99,7 @@
       "firestore": {
         "collections": [
           "bc_scan_aliases",
+          "bc_scan_corrections",
           "scan_corrections",
           "security_scan_registre"
         ]
@@ -145,6 +146,13 @@
         {
           "coCommits": 4,
           "domain": null,
+          "file": "public/components/MagBCScanModal.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 4,
+          "domain": null,
           "file": "public/components/MagBdcReceptionTab.js",
           "note": "probabilistic",
           "windowDays": 90
@@ -160,13 +168,6 @@
           "coCommits": 4,
           "domain": null,
           "file": "tests/unit/stockDestinations.test.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 3,
-          "domain": null,
-          "file": "public/components/MagBCScanModal.js",
           "note": "probabilistic",
           "windowDays": 90
         }
@@ -2693,6 +2694,10 @@
       "domain": null
     },
     "bc_scan_aliases": {
+      "accessLevel": "CF-only",
+      "domain": "achats"
+    },
+    "bc_scan_corrections": {
       "accessLevel": "CF-only",
       "domain": "achats"
     },

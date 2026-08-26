@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:8e3fd2e69e00494d",
+    "sourceFingerprint": "sha256:55091d92e056fd04",
     "stats": {
-      "targetFiles": 262,
-      "targetFilesWithDirectTests": 151,
-      "targetFilesWithTransitiveTests": 172,
-      "testFilesScanned": 220
+      "targetFiles": 263,
+      "targetFilesWithDirectTests": 152,
+      "targetFilesWithTransitiveTests": 173,
+      "testFilesScanned": 222
     }
   },
   "index": {
@@ -631,6 +631,7 @@
         "functions/lib/pointage/__tests__/campagnePeriodes.test.js",
         "functions/lib/pointage/__tests__/mirrorWindow.test.js",
         "tests/unit/bcDate.test.js",
+        "tests/unit/bcScanJournal.test.js",
         "tests/unit/campagne-export-fail-loud.test.js",
         "tests/unit/campagneUtilsBackend.test.js"
       ]
@@ -1225,6 +1226,14 @@
       "transitiveTests": [
         "tests/unit/bcScan.test.js",
         "tests/unit/bcScanMatch.test.js"
+      ]
+    },
+    "functions/lib/stock/bcScanJournal.js": {
+      "directTests": [
+        "tests/unit/bcScanJournal.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/bcScanJournal.test.js"
       ]
     },
     "functions/lib/stock/locationsConfig.js": {
