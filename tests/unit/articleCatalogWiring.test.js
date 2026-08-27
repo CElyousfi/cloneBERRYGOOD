@@ -412,6 +412,122 @@ for (const nomAction of ['suggest-article-duplicates', 'merge-articles']) {
   });
 }
 
+// ───────────────────────────────────────────────────────────────────────────
+// 3ter. FUSION DE DOUBLONS — les DONNÉES DE DÉCISION remontent à l'écran
+// ───────────────────────────────────────────────────────────────────────────
+//
+// La projection ne gardait que {reference, nom, categorie, unite} : la pop-up
+// affichait deux fiches jumelles indiscernables, et présélectionnait
+// `articles[0]`. Comme `merge-articles` ne transfère NI prix NI nb_achats vers
+// le maître, un maître choisi au hasard laisse un article actif NON
+// VALORISABLE. Ces trois champs sont donc la condition même d'un choix éclairé.
+
+test('suggest-article-duplicates — la projection remonte le docId, clé de fusion', () => {
+  const h = handlerSource('suggest-article-duplicates');
+  // `merge-articles` résout par `.doc(<clé>)`. Sans `id`, l'écran n'a que le
+  // champ `reference`, qui diverge du docId sur 92 fiches et pointe des
+  // documents FANTÔMES sans nom — la fusion s'y exécuterait.
+  assert.match(h, /\n\s*id: d\.id,/, 'le docId doit être projeté');
+  // …et il reste distinct de `reference`, qui garde son repli d'affichage.
+  assert.match(h, /reference: data\.reference \|\| d\.id,/);
+});
+
+test('suggest-article-duplicates — la projection remonte prix_pmp, prix_ht et nb_achats', () => {
+  const h = handlerSource('suggest-article-duplicates');
+  for (const champ of ['prix_pmp', 'prix_ht', 'nb_achats']) {
+    assert.match(
+      h,
+      new RegExp(champ + ': data\\.' + champ + ' === undefined \\? null : data\\.' + champ),
+      champ + ' absent de la projection : l’écran ne peut plus décider'
+    );
+  }
+  // …et la projection reste bien celle des articles envoyés à groupDuplicates
+  // (sinon les assertions ci-dessus pourraient viser un objet sans rapport).
+  const iMap = h.indexOf('snap.docs.map(d => {');
+  const iGroup = h.indexOf('articleMerge.groupDuplicates(articles)');
+  assert.ok(iMap > -1 && iGroup > -1 && iMap < iGroup, 'projection puis groupement');
+});
+
+test('suggest-article-duplicates — la suggestion vient du module pur, pas du handler', () => {
+  const h = handlerSource('suggest-article-duplicates');
+  // Le handler renvoie TEL QUEL ce que rend groupDuplicates : la règle de
+  // choix ne doit avoir qu'une seule implémentation, dans lib/stockMerge.
+  assert.match(h, /const groups = articleMerge\.groupDuplicates\(articles\);/);
+  assert.match(h, /return res\.json\(\{ success: true, groups \}\);/);
+  assert.doesNotMatch(h, /prix_pmp\s*>\s*0/, 'la règle de choix ne doit pas être recopiée ici');
+});
+
+test('la réponse de suggest-article-duplicates porte un maître suggéré exploitable', () => {
+  // Contrepartie EXÉCUTABLE : on rejoue la projection du handler sur des
+  // documents et on vérifie la forme réellement servie à l'écran.
+  const articleMerge = require('../../functions/lib/stockMerge/articleMerge');
+  const docs = [
+    { reference: 'AVEC_PRIX', nom: 'VERTIMEC', categorie: 'Phyto', unite: 'L', prix_pmp: 38.25, prix_ht: null, nb_achats: 0 },
+    { reference: 'SANS_PRIX', nom: 'Vertimec', categorie: 'phyto', unite: 'L', prix_pmp: null, prix_ht: null, nb_achats: 4 },
+  ];
+  const [g] = articleMerge.groupDuplicates(docs);
+  assert.equal(g.decidable, true);
+  assert.equal(g.master_suggere, 'AVEC_PRIX');
+  assert.match(g.raison, /38,25 DH/);
+  assert.equal(g.articles.find((a) => a.reference === 'SANS_PRIX').nb_achats, 4);
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// 3quater. FUSION — refus des fiches FANTÔMES, en entrée de merge-articles
+// ───────────────────────────────────────────────────────────────────────────
+//
+// La garde ne testait que `masterSnap.data().active === false` : un document
+// sans champ `active` donnait `undefined !== false` et passait. Il existe en
+// production 5 documents fantômes (`ENG 0150`, `ENG 0952`, `eng 1245`,
+// `eng 456`, `enr 14`) sans `nom` ni `active`. Fusionner vers l'un d'eux
+// réécrit `article_nom: ""` sur les mouvements ouverts, `article: ""` sur les
+// lignes de BDC ouverts, pose les soldes sous un nom vide et désactive le vrai
+// doublon — pendant que la vraie fiche reste active. Rien ne prévient : la
+// prévisualisation n'affiche que des compteurs.
+
+test('merge-articles — master ET doublons passent par la garde d’intégrité PURE', () => {
+  const h = handlerSource('merge-articles');
+  // Master : la garde délègue à la règle pure et retourne immédiatement.
+  assert.match(
+    h,
+    /const masterIntegrite = articleMerge\.verifierIntegriteFiche\(masterData, master_ref, "master"\);\s*\n\s*if \(!masterIntegrite\.ok\) \{\s*\n\s*return res\.status\(400\)\.json\(\{ success: false, error: masterIntegrite\.erreur \}\);/,
+    'la garde du master doit déléguer à la règle pure et retourner'
+  );
+  // Doublons : MÊME garde, dans la boucle de validation.
+  assert.match(
+    h,
+    /const doublonIntegrite = articleMerge\.verifierIntegriteFiche\(doublonData, doublonRefs\[i\], "doublon"\);\s*\n\s*if \(!doublonIntegrite\.ok\) \{\s*\n\s*return res\.status\(400\)\.json\(\{ success: false, error: doublonIntegrite\.erreur \}\);/,
+    'la garde des doublons doit déléguer à la règle pure et retourner'
+  );
+  // L'ancienne garde négative ne subsiste dans AUCUNE ligne de code (les
+  // commentaires, eux, ont le droit de la citer) : elle laissait passer tout
+  // document sans champ `active`.
+  const codeSeul = h.replace(/^\s*\/\/.*$/gm, '');
+  assert.doesNotMatch(codeSeul, /active === false/, 'garde négative encore présente');
+  assert.doesNotMatch(codeSeul, /masterSnap\.data\(\)\.active/);
+});
+
+test('merge-articles — la garde d’intégrité précède toute lecture opérationnelle', () => {
+  const h = handlerSource('merge-articles');
+  const iMaster = h.indexOf('masterIntegrite');
+  const iDoublon = h.indexOf('doublonIntegrite');
+  const iMouvements = h.indexOf('collection("stock_movements")');
+  assert.ok(iMaster > -1 && iDoublon > -1 && iMouvements > -1, 'gardes et collecte présentes');
+  assert.ok(iMaster < iMouvements, 'master validé avant la collecte');
+  assert.ok(iDoublon < iMouvements, 'doublons validés avant la collecte');
+  // `masterNom` — qui sert à réécrire les libellés — n'est lu qu'APRÈS la garde.
+  const iNom = h.indexOf('const masterNom =');
+  assert.ok(iNom > -1 && iMaster < iNom, 'le nom du master est lu après sa validation');
+});
+
+test('merge-articles — la garde d’intégrité est bien la règle pure testée', () => {
+  // Contrepartie EXÉCUTABLE des assertions de source : la fonction pointée par
+  // le câblage refuse réellement le fantôme « magical ».
+  const { verifierIntegriteFiche } = require('../../functions/lib/stockMerge/articleMerge');
+  assert.equal(verifierIntegriteFiche({ prix_ht: 42 }, 'ENG 0150', 'master').ok, false);
+  assert.equal(verifierIntegriteFiche({ active: true, nom: 'MAGICAL' }, 'ENG0150', 'master').ok, true);
+});
+
 test('merge-articles — la garde précède TOUTE écriture de fusion', () => {
   const h = handlerSource('merge-articles');
   const iGarde = h.indexOf('stockRoles.peutFusionnerArticles');

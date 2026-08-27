@@ -50,6 +50,117 @@ test('groupDuplicates: ignore active=false et noms vides', () => {
   assert.deepEqual(groups[0].articles.map((a) => a.reference).sort(), ['A1', 'A4']);
 });
 
+test('groupDuplicates: propage les DONNÉES DE DÉCISION (prix + achats)', () => {
+  // Sans ces champs, l'écran de fusion affiche deux fiches indiscernables et
+  // le maître ne peut pas être suggéré : c'est exactement le bug du ticket.
+  const articles = [
+    { reference: 'A1', nom: 'Vertimec', prix_pmp: 38.25, prix_ht: 40, nb_achats: 3, active: true },
+    { reference: 'A2', nom: 'VERTIMEC', active: true },
+  ];
+  const [g] = M.groupDuplicates(articles);
+  const a1 = g.articles.find((a) => a.reference === 'A1');
+  const a2 = g.articles.find((a) => a.reference === 'A2');
+  assert.equal(a1.prix_pmp, 38.25);
+  assert.equal(a1.prix_ht, 40);
+  assert.equal(a1.nb_achats, 3);
+  // Les champs existent même absents en base : l'écran affiche « — », pas undefined.
+  assert.equal(a2.prix_pmp, null);
+  assert.equal(a2.prix_ht, null);
+  assert.equal(a2.nb_achats, null);
+});
+
+test('groupDuplicates: chaque groupe porte la suggestion de maître', () => {
+  // La règle de choix ne doit exister QU'À UN endroit : le front la consomme,
+  // il ne la recalcule pas.
+  const [g] = M.groupDuplicates([
+    { id: 'SANS_PRIX', reference: 'SANS_PRIX', nom: 'Vertimec', nb_achats: 12, active: true },
+    { id: 'AVEC_PRIX', reference: 'AVEC_PRIX', nom: 'VERTIMEC', prix_pmp: 38.25, active: true },
+  ]);
+  assert.equal(g.decidable, true);
+  assert.equal(g.master_suggere, 'AVEC_PRIX');
+  assert.match(g.raison, /38,25 DH/);
+});
+
+test('groupDuplicates: le docId est propagé, et c’est LUI le maître suggéré', () => {
+  // Cas « magical » : le champ `reference` est espacé, le docId ne l'est pas,
+  // et un document FANTÔME sans nom existe à la référence espacée. Rendre
+  // `reference` comme master_suggere ferait fusionner vers le fantôme.
+  const [g] = M.groupDuplicates([
+    { id: 'ENG0151', reference: 'ENG 0151', nom: 'Magical', nb_achats: 5, active: true },
+    { id: 'ENG0150', reference: 'ENG 0150', nom: 'MAGICAL', prix_pmp: 107.95, active: true },
+  ]);
+  assert.equal(g.master_suggere, 'ENG0150');
+  assert.notEqual(g.master_suggere, 'ENG 0150', 'la référence espacée adresse un fantôme');
+  // Chaque article porte les DEUX : `id` pour adresser, `reference` pour Omar.
+  const reelle = g.articles.find((a) => a.id === 'ENG0150');
+  assert.equal(reelle.reference, 'ENG 0150');
+  assert.deepEqual(g.articles.map((a) => a.id).sort(), ['ENG0150', 'ENG0151']);
+});
+
+test('groupDuplicates: groupe indécidable -> aucun maître suggéré (fail-closed)', () => {
+  const [g] = M.groupDuplicates([
+    { reference: 'PREMIERE', nom: 'Vertimec', active: true },
+    { reference: 'SECONDE', nom: 'VERTIMEC', active: true },
+  ]);
+  assert.equal(g.decidable, false);
+  assert.equal(g.master_suggere, null);
+  // Surtout pas un repli silencieux sur la première fiche du tableau.
+  assert.notEqual(g.master_suggere, 'PREMIERE');
+  assert.ok(g.raison.length > 10);
+});
+
+// ── garde d'intégrité des fiches entrant dans une fusion ───────────────────
+
+test('verifierIntegriteFiche: une fiche vivante et nommée passe', () => {
+  const v = M.verifierIntegriteFiche({ active: true, nom: 'MAGICAL' }, 'ENG0150', 'master');
+  assert.equal(v.ok, true);
+  assert.equal(v.erreur, '');
+});
+
+test('verifierIntegriteFiche: le document FANTÔME est refusé (cas « magical »)', () => {
+  // Document réel en base : ni `nom`, ni champ `active`, seulement un prix_ht.
+  // L'ancienne garde `active === false` recevait `undefined !== false` et le
+  // laissait passer : la fusion réécrivait alors article_nom:"" sur les
+  // mouvements ouverts et article:"" sur les lignes de BDC ouverts.
+  const fantome = { prix_ht: 42 };
+  const v = M.verifierIntegriteFiche(fantome, 'ENG 0150', 'master');
+  assert.equal(v.ok, false);
+  assert.match(v.erreur, /ENG 0150/, 'le message doit nommer la fiche en cause');
+  assert.match(v.erreur, /refus/i);
+  // La garde doit être POSITIVE : `active !== true`, pas `active === false`.
+  assert.equal(M.verifierIntegriteFiche({ nom: 'X' }, 'R', 'master').ok, false);
+  assert.equal(M.verifierIntegriteFiche({ active: 'true', nom: 'X' }, 'R', 'master').ok, false);
+  assert.equal(M.verifierIntegriteFiche({ active: 1, nom: 'X' }, 'R', 'master').ok, false);
+});
+
+test('verifierIntegriteFiche: une fiche sans nom exploitable est refusée', () => {
+  for (const nom of [undefined, null, '', '   ']) {
+    const v = M.verifierIntegriteFiche({ active: true, nom }, 'ENG0150', 'doublon');
+    assert.equal(v.ok, false, 'nom : ' + JSON.stringify(nom));
+    assert.match(v.erreur, /nom/);
+  }
+});
+
+test('verifierIntegriteFiche: une fiche déjà fusionnée (active:false) est refusée', () => {
+  // Sinon le doublon d'une fusion précédente pourrait être redésigné maître.
+  const v = M.verifierIntegriteFiche({ active: false, nom: 'X', merged_into: 'Y' }, 'R', 'master');
+  assert.equal(v.ok, false);
+});
+
+test('verifierIntegriteFiche: document absent / valeur non-objet -> refus, jamais un crash', () => {
+  for (const rien of [null, undefined, 42, 'x', true]) {
+    const v = M.verifierIntegriteFiche(rien, 'R', 'doublon');
+    assert.equal(v.ok, false, 'entrée : ' + String(rien));
+    assert.equal(typeof v.erreur, 'string');
+    assert.ok(v.erreur.length > 10);
+  }
+});
+
+test('verifierIntegriteFiche: le rôle apparaît dans le message', () => {
+  assert.match(M.verifierIntegriteFiche({}, 'R', 'master').erreur, /master/);
+  assert.match(M.verifierIntegriteFiche({}, 'R', 'doublon').erreur, /doublon/);
+});
+
 test('groupDuplicates: entrée vide / non-array -> []', () => {
   assert.deepEqual(M.groupDuplicates([]), []);
   assert.deepEqual(M.groupDuplicates(null), []);

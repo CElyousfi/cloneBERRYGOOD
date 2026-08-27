@@ -8969,9 +8969,28 @@ exports.stockManagement = functions
           return res.status(403).json({ success: false, error: suggestDupPerm.raison });
         }
         const snap = await db_firestore.collection("articles_catalog").where("active", "==", true).get();
+        // `prix_pmp`, `prix_ht` et `nb_achats` sont les DONNÉES DE DÉCISION :
+        // `merge-articles` ne les transfère PAS du doublon vers le maître, donc
+        // retenir la fiche sans prix laisse un article actif non valorisable.
+        // Sans elles dans la projection, l'écran ne peut ni les afficher ni
+        // suggérer un maître (cf. lib/stockMerge/masterSuggestion.js).
         const articles = snap.docs.map(d => {
           const data = d.data();
-          return { reference: data.reference || d.id, nom: data.nom || "", categorie: data.categorie || "", unite: data.unite || "" };
+          return {
+            // `id` = docId : SEULE clé acceptée par `merge-articles`, qui
+            // résout par `.doc(<clé>)`. Le champ `reference` diverge du docId
+            // sur 92 fiches (« ENG 0149 » vs « ENG0149 ») et 5 documents
+            // fantômes existent aux références espacées : l'envoyer comme
+            // master_ref ferait fusionner vers un document sans nom.
+            id: d.id,
+            reference: data.reference || d.id,
+            nom: data.nom || "",
+            categorie: data.categorie || "",
+            unite: data.unite || "",
+            prix_pmp: data.prix_pmp === undefined ? null : data.prix_pmp,
+            prix_ht: data.prix_ht === undefined ? null : data.prix_ht,
+            nb_achats: data.nb_achats === undefined ? null : data.nb_achats,
+          };
         });
         const groups = articleMerge.groupDuplicates(articles);
         return res.json({ success: true, groups });
@@ -8998,15 +9017,22 @@ exports.stockManagement = functions
           return res.status(400).json({ success: false, error: "Le master ne peut pas être dans les doublons" });
         }
 
-        // Validation existence + active du master
+        // Validation existence + INTÉGRITÉ du master.
+        // La garde ne testait que `active === false` : un document sans champ
+        // `active` passait (`undefined !== false`). Il existe en production 5
+        // documents FANTÔMES sans `nom` ni `active` (références espacées dont
+        // le docId ne l'est pas) — fusionner vers l'un d'eux réécrit les
+        // libellés de mouvements et de BDC avec une chaîne vide. Règle pure
+        // partagée avec la validation des doublons ci-dessous.
         const masterSnap = await db_firestore.collection("articles_catalog").doc(master_ref).get();
         if (!masterSnap.exists) {
           return res.status(404).json({ success: false, error: "Article master introuvable: " + master_ref });
         }
-        if (masterSnap.data().active === false) {
-          return res.status(400).json({ success: false, error: "L'article master est inactif" });
-        }
         const masterData = masterSnap.data();
+        const masterIntegrite = articleMerge.verifierIntegriteFiche(masterData, master_ref, "master");
+        if (!masterIntegrite.ok) {
+          return res.status(400).json({ success: false, error: masterIntegrite.erreur });
+        }
         const masterNom = masterData.nom || "";
         const masterUnite = masterData.unite || "kg";
 
@@ -9018,7 +9044,15 @@ exports.stockManagement = functions
           if (!doublonDocs[i].exists) {
             return res.status(404).json({ success: false, error: "Article doublon introuvable: " + doublonRefs[i] });
           }
-          doublonNoms[doublonRefs[i]] = doublonDocs[i].data().nom || "";
+          const doublonData = doublonDocs[i].data();
+          // MÊME garde que le master : un doublon fantôme se ferait désactiver
+          // à la place de la vraie fiche — « fusion effectuée » à l'écran, et
+          // le doublon toujours là au rechargement (cas réel « ksc 7 perla »).
+          const doublonIntegrite = articleMerge.verifierIntegriteFiche(doublonData, doublonRefs[i], "doublon");
+          if (!doublonIntegrite.ok) {
+            return res.status(400).json({ success: false, error: doublonIntegrite.erreur });
+          }
+          doublonNoms[doublonRefs[i]] = doublonData.nom || "";
         }
         // Ensembles de valeurs identifiant un doublon dans les docs opérationnels :
         // - stock_movements.items[].article_ref peut contenir la référence OU le nom (legacy)

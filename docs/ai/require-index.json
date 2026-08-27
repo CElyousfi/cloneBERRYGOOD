@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:0aeee980058a2168",
+    "sourceFingerprint": "sha256:678c5b84f0a5a337",
     "stats": {
-      "targetFiles": 271,
-      "targetFilesWithDirectTests": 157,
-      "targetFilesWithTransitiveTests": 178,
-      "testFilesScanned": 233
+      "targetFiles": 272,
+      "targetFilesWithDirectTests": 158,
+      "targetFilesWithTransitiveTests": 179,
+      "testFilesScanned": 235
     }
   },
   "index": {
@@ -1395,6 +1395,8 @@
     },
     "functions/lib/stockMerge/articleMerge.js": {
       "directTests": [
+        "tests/unit/articleCatalogWiring.test.js",
+        "tests/unit/articleMasterPick.test.js",
         "tests/unit/articleMerge.test.js",
         "tests/unit/classer-article-cablage.test.js"
       ],
@@ -1405,6 +1407,27 @@
         "functions/lib/stockRoles/__tests__/articleClassement.test.js",
         "tests/unit/articleCatalogMergeButton.test.js",
         "tests/unit/articleCatalogWiring.test.js",
+        "tests/unit/articleMasterPick.test.js",
+        "tests/unit/articleMerge.test.js",
+        "tests/unit/bcScan.test.js",
+        "tests/unit/bcScanMatch.test.js",
+        "tests/unit/classer-article-cablage.test.js"
+      ]
+    },
+    "functions/lib/stockMerge/masterSuggestion.js": {
+      "directTests": [
+        "tests/unit/articleMasterPick.test.js",
+        "tests/unit/articleMasterSuggestion.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/consoBons/__tests__/aggregateParcelle.test.js",
+        "functions/lib/consoBons/__tests__/articleCategories.test.js",
+        "functions/lib/consoBons/__tests__/bonsToConsoRows.test.js",
+        "functions/lib/stockRoles/__tests__/articleClassement.test.js",
+        "tests/unit/articleCatalogMergeButton.test.js",
+        "tests/unit/articleCatalogWiring.test.js",
+        "tests/unit/articleMasterPick.test.js",
+        "tests/unit/articleMasterSuggestion.test.js",
         "tests/unit/articleMerge.test.js",
         "tests/unit/bcScan.test.js",
         "tests/unit/bcScanMatch.test.js",

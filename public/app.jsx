@@ -47527,14 +47527,24 @@ ${rejetHtml}
                 setShowMerge(true); setMergeLoading(true); setMergeGroups(null); setMergeMasters({}); setMergePreview(null);
                 fetch('/api/stock?action=suggest-article-duplicates&profileId='+encodeURIComponent(currentProfile))
                 .then(r=>r.json()).then(j=>{
-                    if(j.success){ setMergeGroups(j.groups||[]); const m={}; (j.groups||[]).forEach(g=>{ if(g.articles[0]) m[g.normalized]=g.articles[0].reference; }); setMergeMasters(m); }
+                    // Présélection = le maître SUGGÉRÉ par le serveur (règle pure
+                    // lib/stockMerge/masterSuggestion.js), jamais g.articles[0] :
+                    // la première fiche du tableau est un ordre Firestore, et
+                    // merge-articles ne transfère ni prix ni nb_achats au maître.
+                    // Groupe non décidable -> AUCUNE présélection (fail-closed).
+                    if(j.success){ setMergeGroups(j.groups||[]); const m={}; (j.groups||[]).forEach(g=>{ if(g.decidable && g.master_suggere) m[g.normalized]=g.master_suggere; }); setMergeMasters(m); }
                     else alert('Erreur: '+j.error);
                 }).catch(()=>alert('Erreur réseau')).finally(()=>setMergeLoading(false));
             };
 
+            // ⚠️ On adresse par a.id (le docId), JAMAIS par a.reference : le
+            // serveur résout par .doc(<clé>), et 92 fiches ont un `reference`
+            // espacé que le docId n'a pas (« ENG 0149 » vs « ENG0149 »). Pire,
+            // des documents fantômes sans nom existent à ces références-là :
+            // la fusion s'y exécuterait et viderait les libellés de BDC.
             const previewMerge = (group) => {
                 const masterRef = mergeMasters[group.normalized];
-                const doublonRefs = group.articles.map(a=>a.reference).filter(r=>r!==masterRef);
+                const doublonRefs = group.articles.map(a=>a.id).filter(r=>r!==masterRef);
                 if(!masterRef || doublonRefs.length===0){ alert('Sélectionnez un master et au moins un doublon'); return; }
                 setMergeBusy(true); setMergePreview(null);
                 fetch('/api/stock?action=merge-articles', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ master_ref: masterRef, doublon_refs: doublonRefs, mode:'preview', by: actor() }) })
@@ -47543,7 +47553,11 @@ ${rejetHtml}
 
             const executeMerge = (group) => {
                 const masterRef = mergeMasters[group.normalized];
-                const doublonRefs = group.articles.map(a=>a.reference).filter(r=>r!==masterRef);
+                const doublonRefs = group.articles.map(a=>a.id).filter(r=>r!==masterRef);
+                // Même garde que previewMerge : depuis le fail-closed, un groupe
+                // indécidable laisse légitimement masterRef à undefined — sans
+                // ce contrôle le confirm() annoncerait « fusion dans undefined ».
+                if(!masterRef || doublonRefs.length===0){ alert('Sélectionnez un master et au moins un doublon'); return; }
                 if(!confirm('Confirmer la fusion de '+doublonRefs.length+' doublon(s) dans « '+masterRef+' » ?\nLes doublons seront désactivés (réversible).')) return;
                 setMergeBusy(true);
                 fetch('/api/stock?action=merge-articles', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ master_ref: masterRef, doublon_refs: doublonRefs, mode:'execute', by: actor() }) })
@@ -47801,16 +47815,47 @@ ${rejetHtml}
                                                 return (
                                                 <div key={group.normalized} style={{border:'1px solid #eee',borderRadius:10,padding:14}}>
                                                     <div style={{fontSize:11,color:'#999',marginBottom:8,fontStyle:'italic'}}>« {group.normalized} »</div>
+                                                    {/* La suggestion vient du serveur (règle pure) et s'EXPLIQUE : Omar
+                                                        confirme d'un coup d'œil au lieu de faire confiance à l'aveugle.
+                                                        Groupe non décidable -> aucune présélection, arbitrage humain. */}
+                                                    {group.decidable ? (
+                                                        <div style={{background:'rgba(39,174,96,0.08)',border:'1px solid rgba(39,174,96,0.25)',borderRadius:6,padding:'6px 10px',fontSize:11,color:'#1e7e45',marginBottom:8}}>
+                                                            <i className="fa-solid fa-lightbulb" style={{marginRight:6}}></i>
+                                                            Suggestion : conserver <strong>{group.master_suggere}</strong> — {group.raison}. Vous pouvez choisir une autre fiche.
+                                                        </div>
+                                                    ) : (
+                                                        <div style={{background:'rgba(231,76,60,0.08)',border:'1px solid rgba(231,76,60,0.25)',borderRadius:6,padding:'6px 10px',fontSize:11,color:'#c0392b',marginBottom:8}}>
+                                                            <i className="fa-solid fa-triangle-exclamation" style={{marginRight:6}}></i>
+                                                            Aucune suggestion — {group.raison}. Choisissez vous-même l'article à conserver avant de fusionner.
+                                                        </div>
+                                                    )}
                                                     <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                                                        {group.articles.map(a => (
-                                                            <label key={a.reference} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 8px',borderRadius:6,background: masterRef===a.reference?'rgba(39,174,96,0.08)':'#fafafa',cursor:'pointer'}}>
-                                                                <input type="radio" name={'master-'+group.normalized} checked={masterRef===a.reference} onChange={()=>{ setMergeMasters(m=>({...m,[group.normalized]:a.reference})); setMergePreview(null); }} />
+                                                        {group.articles.map(a => {
+                                                            const pmpNum = parseFloat(a.prix_pmp);
+                                                            const htNum = parseFloat(a.prix_ht);
+                                                            const prixVal = (isFinite(pmpNum) && pmpNum > 0) ? pmpNum : ((isFinite(htNum) && htNum > 0) ? htNum : null);
+                                                            const prixSrc = (isFinite(pmpNum) && pmpNum > 0) ? 'PMP' : 'HT';
+                                                            const achNum = parseFloat(a.nb_achats);
+                                                            const nbAch = (isFinite(achNum) && achNum > 0) ? achNum : 0;
+                                                            // Comparaison sur le docId, comme l'envoi. Le `!!masterRef`
+                                                            // évite qu'un groupe sans présélection (masterRef undefined)
+                                                            // coche TOUTES les lignes par égalité d'undefined.
+                                                            const estMaster = !!masterRef && masterRef===a.id;
+                                                            // Une fiche NON retenue qui porte un prix ou des achats perdrait
+                                                            // cette donnée à la fusion (merge-articles ne la transfère pas).
+                                                            const perteDonnees = !estMaster && (prixVal!==null || nbAch>0);
+                                                            return (
+                                                            <label key={a.id} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 8px',borderRadius:6,background: estMaster?'rgba(39,174,96,0.08)':(perteDonnees?'rgba(231,76,60,0.06)':'#fafafa'),cursor:'pointer'}}>
+                                                                <input type="radio" name={'master-'+group.normalized} checked={estMaster} onChange={()=>{ setMergeMasters(m=>({...m,[group.normalized]:a.id})); setMergePreview(null); }} />
                                                                 <span style={{fontFamily:'monospace',fontSize:11,color:'var(--berry)',fontWeight:600,minWidth:90}}>{a.reference}</span>
+                                                                {a.id && a.id!==a.reference && <span title="Identifiant réel du document (celui utilisé par la fusion)" style={{fontFamily:'monospace',fontSize:10,color:'#999'}}>doc {a.id}</span>}
                                                                 <span style={{fontSize:13,fontWeight:600}}>{a.nom}</span>
                                                                 <span style={{fontSize:10,color:'#888'}}>{a.categorie||''} {a.unite?'· '+a.unite:''}</span>
-                                                                {masterRef===a.reference ? <span style={{marginLeft:'auto',fontSize:10,color:'#27ae60',fontWeight:700}}>MASTER</span> : <span style={{marginLeft:'auto',fontSize:10,color:'#e67e22',fontWeight:600}}>doublon</span>}
-                                                            </label>
-                                                        ))}
+                                                                <span title="Prix unitaire de la fiche (PMP, sinon prix HT)" style={{fontSize:11,fontWeight:700,color: prixVal!==null?'#2c3e50':'#bbb'}}>{prixVal!==null ? (prixVal.toFixed(2).replace('.',',')+' DH ('+prixSrc+')') : '— DH'}</span>
+                                                                <span title="Nombre d'achats historiques" style={{fontSize:10,color: nbAch>0?'#2c3e50':'#bbb'}}>{nbAch>0 ? (nbAch+' achat'+(nbAch>1?'s':'')) : '0 achat'}</span>
+                                                                {estMaster ? <span style={{marginLeft:'auto',fontSize:10,color:'#27ae60',fontWeight:700}}>MASTER</span> : <span style={{marginLeft:'auto',fontSize:10,color: perteDonnees?'#c0392b':'#e67e22',fontWeight:600}}>{perteDonnees ? 'doublon ⚠ prix/achats perdus' : 'doublon'}</span>}
+                                                            </label>);
+                                                        })}
                                                     </div>
                                                     {pv && (
                                                         <div style={{marginTop:10,background:'#f8f9fa',borderRadius:8,padding:12,fontSize:12,color:'#2c3e50'}}>

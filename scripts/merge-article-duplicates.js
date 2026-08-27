@@ -10,8 +10,23 @@
  * document d'audit `article_merges` avec snapshot de rollback) vit dans
  * l'action `merge-articles` de functions/index.js, déjà livrée et testée. Ce
  * script ORCHESTRE : il détecte les groupes, applique la règle de choix de la
- * fiche maître (module pur scripts/lib/articleMasterPick.js), et appelle
- * l'action — en preview d'abord, en execute seulement sur demande explicite.
+ * fiche maître, et appelle l'action — en preview d'abord, en execute seulement
+ * sur demande explicite.
+ *
+ * ── UNE SEULE RÈGLE DE CHOIX DANS LE DÉPÔT ────────────────────────────────
+ * La règle vit dans `functions/lib/stockMerge/masterSuggestion.js`, module pur
+ * partagé avec la pop-up de fusion (`scripts/lib/articleMasterPick.js` n'en
+ * est plus qu'un ré-export). Cascade à priorité explicite :
+ *   1. une seule fiche avec `prix_pmp > 0`                        -> elle
+ *   2. sinon, si AUCUN PMP : une seule avec `prix_ht > 0`         -> elle
+ *   3. sinon, si AUCUN prix : une seule avec `nb_achats > 0`      -> elle
+ *   4. sinon : NON TRANCHÉ (le script refuse alors d'exécuter).
+ * Mesuré sur les 105 groupes de production : 78 tranchés par un prix
+ * (niveaux 1 et 2), 27 par `nb_achats`, 0 non tranché.
+ *
+ * Avant l'unification, ce script portait sa propre règle (`prix_pmp` seul) et
+ * désignait une fiche DIFFÉRENTE de l'écran sur 26 groupes, sans que rien ne
+ * le signale.
  *
  * ── DEUX TEMPS, LECTURE SEULE PAR DÉFAUT ──────────────────────────────────
  *   node scripts/merge-article-duplicates.js                  # --report (défaut)
@@ -77,7 +92,17 @@ const fs = require('fs')
 const path = require('path')
 
 const PROJECT_DIR = path.resolve(__dirname, '..')
-const { pickMaster, pmpOf, nbAchatsOf } = require('./lib/articleMasterPick')
+// Ré-export du module pur partagé avec la pop-up de fusion : une SEULE règle
+// de choix du maître dans le dépôt (cf. scripts/lib/articleMasterPick.js).
+const {
+  choisirMaster,
+  pmpArticle,
+  prixHtArticle,
+  nbAchatsArticle,
+  REGLE_PMP,
+  REGLE_PRIX_HT,
+  REGLE_NB_ACHATS,
+} = require('./lib/articleMasterPick')
 
 const BASE_URL_PAR_DEFAUT = 'https://berrygood-farms-dashboard.web.app'
 
@@ -214,24 +239,26 @@ function renderGroup(g) {
   const L = []
   L.push('')
   L.push('── ' + g.normalized.toUpperCase())
-  if (!g.pick.decided) {
-    L.push('   ⛔ NON TRANCHÉ : ' + g.pick.reason)
+  if (!g.pick.decidable) {
+    L.push('   ⛔ NON TRANCHÉ : ' + g.pick.raison)
     for (const a of g.articles) {
       L.push(
         '      · ' + a.id + '  | cat=' + (a.categorie || '—') +
-        ' | pmp=' + fmt(pmpOf(a)) + ' | nb_achats=' + nbAchatsOf(a)
+        ' | pmp=' + fmt(pmpArticle(a)) + ' | ht=' + fmt(prixHtArticle(a)) +
+        ' | nb_achats=' + nbAchatsArticle(a)
       )
     }
     return L
   }
   const m = g.pick.master
   L.push(
-    '   MAÎTRE   ' + m.id + '  (règle « ' + g.pick.rule +' » : ' + g.pick.reason + ')'
+    '   MAÎTRE   ' + m.id + '  (règle « ' + g.pick.regle +' » : ' + g.pick.raison + ')'
   )
   for (const d of g.pick.doublons) {
     L.push(
       '   ABSORBÉE ' + d.id + '  | cat=' + (d.categorie || '—') +
-      ' | pmp=' + fmt(pmpOf(d)) + ' | nb_achats=' + nbAchatsOf(d)
+      ' | pmp=' + fmt(pmpArticle(d)) + ' | ht=' + fmt(prixHtArticle(d)) +
+      ' | nb_achats=' + nbAchatsArticle(d)
     )
   }
   for (const i of g.incoherences) L.push('   ⚠️  ' + i)
@@ -283,7 +310,7 @@ async function buildPlan(baseUrl, token, limit) {
   const plan = []
   for (const grp of groups) {
     const { articles, incoherences } = hydrateGroup(grp.articles || [], byId, byReference)
-    const pick = pickMaster(articles)
+    const pick = choisirMaster(articles)
     const entry = {
       normalized: grp.normalized,
       articles,
@@ -292,7 +319,7 @@ async function buildPlan(baseUrl, token, limit) {
       preview: null,
       previewError: null,
     }
-    if (pick.decided) {
+    if (pick.decidable) {
       const r = await apiPost(baseUrl, token, 'merge-articles', {
         master_ref: pick.master.id,
         doublon_refs: pick.doublons.map((d) => d.id),
@@ -352,10 +379,11 @@ async function main() {
 
   const { plan, catalogue } = await buildPlan(opts.baseUrl, token, opts.limit)
 
-  const decides = plan.filter((g) => g.pick.decided && !g.previewError)
-  const bloques = plan.filter((g) => !g.pick.decided || g.previewError)
-  const parPmp = decides.filter((g) => g.pick.rule === 'prix_pmp')
-  const parAchats = decides.filter((g) => g.pick.rule === 'nb_achats')
+  const decides = plan.filter((g) => g.pick.decidable && !g.previewError)
+  const bloques = plan.filter((g) => !g.pick.decidable || g.previewError)
+  const parPmp = decides.filter((g) => g.pick.regle === REGLE_PMP)
+  const parPrixHt = decides.filter((g) => g.pick.regle === REGLE_PRIX_HT)
+  const parAchats = decides.filter((g) => g.pick.regle === REGLE_NB_ACHATS)
 
   const lignes = []
   for (const g of plan) lignes.push(...renderGroup(g))
@@ -366,6 +394,7 @@ async function main() {
   console.log('Fiches actives au catalogue      : ' + catalogue)
   console.log('Groupes de doublons détectés     : ' + plan.length)
   console.log('  tranchés par « prix_pmp »      : ' + parPmp.length)
+  console.log('  tranchés par « prix_ht »       : ' + parPrixHt.length + '  (non valorisés : pas de PMP)')
   console.log('  tranchés par « nb_achats »     : ' + parAchats.length)
   console.log('  NON tranchés / en erreur       : ' + bloques.length)
   const aDesactiver = decides.reduce((n, g) => n + g.pick.doublons.length, 0)
