@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:678c5b84f0a5a337",
+    "sourceFingerprint": "sha256:1845daeb9abc4226",
     "stats": {
-      "targetFiles": 272,
-      "targetFilesWithDirectTests": 158,
-      "targetFilesWithTransitiveTests": 179,
-      "testFilesScanned": 235
+      "targetFiles": 274,
+      "targetFilesWithDirectTests": 160,
+      "targetFilesWithTransitiveTests": 181,
+      "testFilesScanned": 240
     }
   },
   "index": {
@@ -1220,6 +1220,24 @@
       "directTests": [],
       "transitiveTests": []
     },
+    "functions/lib/receptionValorisation/prixLigne.js": {
+      "directTests": [
+        "functions/lib/receptionValorisation/__tests__/prixLigne.test.js",
+        "functions/lib/receptionValorisation/__tests__/receptionBdc.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/receptionValorisation/__tests__/prixLigne.test.js",
+        "functions/lib/receptionValorisation/__tests__/receptionBdc.test.js"
+      ]
+    },
+    "functions/lib/receptionValorisation/receptionBdc.js": {
+      "directTests": [
+        "functions/lib/receptionValorisation/__tests__/receptionBdc.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/receptionValorisation/__tests__/receptionBdc.test.js"
+      ]
+    },
     "functions/lib/sentinel/sentinelRecipients.js": {
       "directTests": [
         "tests/unit/sentinelRecipients.test.js"
@@ -1273,14 +1291,17 @@
     "functions/lib/stock/movementGuard.js": {
       "directTests": [],
       "transitiveTests": [
+        "functions/lib/receptionValorisation/__tests__/receptionBdc.test.js",
         "tests/unit/movementImpact.test.js"
       ]
     },
     "functions/lib/stock/movementImpact.js": {
       "directTests": [
+        "functions/lib/receptionValorisation/__tests__/receptionBdc.test.js",
         "tests/unit/movementImpact.test.js"
       ],
       "transitiveTests": [
+        "functions/lib/receptionValorisation/__tests__/receptionBdc.test.js",
         "tests/unit/movementImpact.test.js"
       ]
     },
@@ -1289,6 +1310,8 @@
         "tests/unit/pmpDetail.test.js"
       ],
       "transitiveTests": [
+        "functions/lib/receptionValorisation/__tests__/prixLigne.test.js",
+        "functions/lib/receptionValorisation/__tests__/receptionBdc.test.js",
         "tests/unit/pmpDetail.test.js"
       ]
     },
@@ -1322,6 +1345,8 @@
         "tests/unit/valuationPMP.test.js"
       ],
       "transitiveTests": [
+        "functions/lib/receptionValorisation/__tests__/prixLigne.test.js",
+        "functions/lib/receptionValorisation/__tests__/receptionBdc.test.js",
         "tests/unit/valuationPMP.test.js"
       ]
     },
@@ -1404,6 +1429,8 @@
         "functions/lib/consoBons/__tests__/aggregateParcelle.test.js",
         "functions/lib/consoBons/__tests__/articleCategories.test.js",
         "functions/lib/consoBons/__tests__/bonsToConsoRows.test.js",
+        "functions/lib/receptionValorisation/__tests__/prixLigne.test.js",
+        "functions/lib/receptionValorisation/__tests__/receptionBdc.test.js",
         "functions/lib/stockRoles/__tests__/articleClassement.test.js",
         "tests/unit/articleCatalogMergeButton.test.js",
         "tests/unit/articleCatalogWiring.test.js",
@@ -1423,6 +1450,8 @@
         "functions/lib/consoBons/__tests__/aggregateParcelle.test.js",
         "functions/lib/consoBons/__tests__/articleCategories.test.js",
         "functions/lib/consoBons/__tests__/bonsToConsoRows.test.js",
+        "functions/lib/receptionValorisation/__tests__/prixLigne.test.js",
+        "functions/lib/receptionValorisation/__tests__/receptionBdc.test.js",
         "functions/lib/stockRoles/__tests__/articleClassement.test.js",
         "tests/unit/articleCatalogMergeButton.test.js",
         "tests/unit/articleCatalogWiring.test.js",
@@ -1831,10 +1860,12 @@
     },
     "public/lib/bdcReceptionUtils.js": {
       "directTests": [
-        "tests/unit/bdcReceptionUtils.test.js"
+        "tests/unit/bdcReceptionUtils.test.js",
+        "tests/unit/receptionCreatedMessage.test.js"
       ],
       "transitiveTests": [
-        "tests/unit/bdcReceptionUtils.test.js"
+        "tests/unit/bdcReceptionUtils.test.js",
+        "tests/unit/receptionCreatedMessage.test.js"
       ]
     },
     "public/lib/bdcWorkflow.js": {

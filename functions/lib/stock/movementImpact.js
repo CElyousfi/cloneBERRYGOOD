@@ -5,13 +5,18 @@
  * Réplique exacte de la condition appliquée par les sites d'appel de
  * `applyStockImpact(...)` dans functions/index.js :
  *
- *   1. create-movement (~8853) : impact immédiat SEULEMENT pour les types
- *      auto-validés (sortie / transfert / consommation), créés en status
- *      'valide_chef'. Les réceptions sont créées en 'en_attente_achats' SANS
- *      impact.
- *   2. validate-movement, réception (~8908-8951) : l'impact d'une réception
- *      n'est posé qu'après validation/valorisation Achats, quand le status
- *      passe à 'valide_chef'.
+ *   1. create-movement : TOUS les types, réceptions comprises, sont créés en
+ *      'valide_chef' avec impact stock IMMÉDIAT. L'impact y est appliqué SI ET
+ *      SEULEMENT SI `isImpactApplied` le dit — cette fonction n'est donc plus
+ *      une réplique de la condition, elle EST la condition.
+ *   1 bis. create-bl : depuis la suppression de l'étape Achats, la réception
+ *      issue d'un BDC est créée en 'valide_chef', valorisée automatiquement,
+ *      avec impact stock IMMÉDIAT.
+ *   2. validate-movement, réception : CHEMIN DE REPRISE des réceptions restées
+ *      en 'en_attente_achats' en production (62 au 27/08/2026 ; le compte
+ *      AUGMENTE tant que le correctif n'est pas déployé, puisque create-bl en
+ *      produisait encore). Leur impact n'est posé qu'à la validation, quand le
+ *      status passe à 'valide_chef'.
  *   3. validate-movement, chemin legacy (~8959-8985) : chef valide depuis
  *      'valide_mag' / 'valide_achats' → status 'valide_chef' → impact appliqué.
  *   4. reject-movement (~9002) : status 'rejete' → jamais d'impact.
@@ -22,9 +27,10 @@
  *      le recompte (cf. action migrate-auto-validate ~9211 qui confirme que
  *      valide_mag transfert/consommation est un statut impactant en prod).
  *
- * => Réception : impact posé SEULEMENT après validation Achats → statut final
- *    'valide_chef'. Les statuts intermédiaires 'en_attente_achats' /
- *    'valide_mag' / 'valide_achats' ne portent PAS d'impact pour une réception.
+ * => Réception : le statut porteur d'impact est 'valide_chef', posé désormais
+ *    DÈS LA CRÉATION. Les statuts 'en_attente_achats' / 'valide_mag' /
+ *    'valide_achats' ne portent PAS d'impact pour une réception — c'est ce qui
+ *    rend les réceptions bloquées repérables, et leur reprise calculable.
  *    sortie / transfert / consommation : impactants en live ('valide_chef') ET
  *    en import CANEVA ('valide_mag'), + chemin legacy 'valide_achats'.
  *    Un mouvement 'rejete' ou soft-deleted (deleted:true / status 'supprime')

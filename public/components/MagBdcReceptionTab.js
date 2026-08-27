@@ -147,7 +147,7 @@
             quantite_deja_recue: d ? d.qLiv : 0,
             reliquat: d ? d.reste : parseFloat(it.quantite) || 0,
             quantite_recue: '',
-            unite: it.unite || 'kg',
+            unite: it.unite || '',
             note: ''
           };
         });
@@ -226,7 +226,7 @@
         })
       }).then(r => r.json()).then(json => {
         if (json.success) {
-          alert('Bon de réception créé. En attente de valorisation Achats.');
+          alert(window.BdcReceptionUtils.buildReceptionCreatedMessage(json.reception_numero, json.valorisation));
           setShowForm(false);
           setSelectedBdc(null);
           loadData();

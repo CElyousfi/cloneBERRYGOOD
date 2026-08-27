@@ -33,6 +33,7 @@ const { validateBugReport } = require("./lib/bugReports/validateBugReport");
 const { isAdminProfile, validateStatusUpdate, sortReportsByCreatedDesc, isValidStatus, isFilterableStatus } = require("./lib/bugReports/bugStatus");
 const bugTriage = require("./lib/triage/bugTriage");
 const stockMovementGuard = require("./lib/stock/movementGuard");
+const receptionBdc = require("./lib/receptionValorisation/receptionBdc");
 const { planEncaissementWrites } = require("./lib/marcheLocalCaisse/applyEncaissements");
 const pointageValidationSM = require("./lib/pointageValidation/stateMachine");
 const { authorizeValidationAction } = require("./lib/validation/validationAccess");
@@ -7534,7 +7535,9 @@ exports.stockManagement = functions
           article: it.article || "",
           quantite_commandee: parseFloat(it.quantite_commandee) || 0,
           quantite_recue: parseFloat(it.quantite_recue) || 0,
-          unite: it.unite || "kg",
+          // Pas de « kg » fabriqué : 85,7 % des lignes de BDC n'ont pas d'unité,
+          // et l'inventer ici la transformait en critère de refus plus bas.
+          unite: it.unite || "",
           ecart: (parseFloat(it.quantite_recue) || 0) - (parseFloat(it.quantite_commandee) || 0),
           note: it.note || "",
         }));
@@ -7556,36 +7559,56 @@ exports.stockManagement = functions
           await db_firestore.collection("bl_scans").doc(scan_id).update({ bl_id: docRef.id, bl_numero: numero }).catch(() => {});
         }
 
-        // Create stock_movement of type reception (brouillon, needs achats+chef validation)
-        const brNumero = await getNextNumber("stock_reception", "BR");
-        const brItems = blItems.map((it) => {
-          const bdcItem = (bdc.items || []).find(bi => (bi.article || "").toLowerCase() === (it.article || "").toLowerCase());
-          return {
-            article_ref: it.article || "", article_nom: it.article || "",
-            quantite: it.quantite_recue || 0, unite: it.unite || "kg",
-            prix_unitaire: bdcItem ? (parseFloat(bdcItem.prix_unitaire) || 0) : 0,
-          };
-        }).filter((it) => it.quantite > 0);
-        if (brItems.length > 0) {
-          const magasin = req.body.magasin || bdc.ferme || "";
-          // Identité créateur du mouvement de réception : userId = uid du TOKEN
-          // (anti-spoof), profileId/name conservés. Cf. stockMovementGuard.
-          const brCreatedBy = { ...(created_by || {}), userId: authUser.uid };
-          await db_firestore.collection("stock_movements").add({
-            numero: brNumero, type: "reception",
-            date: date_reception || new Date().toISOString().split("T")[0],
-            lieu_source: null,
-            lieu_destination: { type: "magasin", id: magasin },
-            ferme: magasin, items: brItems,
-            ref_bl_fournisseur: numero_bl_fournisseur || "",
-            bdc_id: bdc_id, bl_id: docRef.id,
-            reception_libre: false, reception_libre_motif: "",
-            ref_bon_physique: "", sortie_type: null, scan_url: scan_url || null,
-            status: "en_attente_achats",
-            validations: { magasinier: { by: brCreatedBy.userId || "", name: brCreatedBy.name || "", at: Date.now() } },
-            rejection: null,
-            created_by: brCreatedBy, created_at: Date.now(), updated_at: Date.now(),
+        // Create stock_movement of type reception — valorisé et EN STOCK immédiatement.
+        //
+        // L'étape de validation Achats est supprimée : le BDC lié est déjà validé
+        // par le DG, et personne ne validait plus depuis le 5 juin (62 réceptions
+        // bloquées au 27/08/2026 — un compte qui AUGMENTE tant que ceci n'est pas
+        // déployé, leur marchandise jamais entrée en stock). Cf.
+        // docs/spec-reception-sans-validation-achats.md.
+        //
+        // Le prix n'est plus recopié du BDC ici : il est choisi par le module PUR
+        // receptionValorisation/prixLigne, qui descend la hiérarchie facture > bon_commande
+        // > bon_entree, refuse une unité divergente, et ne pose JAMAIS un prix à
+        // zéro par défaut — une ligne sans prix entre en stock NON valorisée, avec
+        // son motif tracé. Un stock valorisé à zéro ressemble à un vrai chiffre ;
+        // une absence assumée se voit et se corrige.
+        // Destination vérifiable AVANT d'écrire quoi que ce soit : la règle vit
+        // dans le module (resoudreMagasinDestination), on ne fait que refuser tôt
+        // avec un message utile plutôt que de laisser le module lever une 500.
+        if (!receptionBdc.resoudreMagasinDestination(req.body.magasin, bdc)) {
+          return res.status(400).json({
+            success: false,
+            error: "Magasin de destination introuvable : choisissez un magasin, ou renseignez la ferme du bon de commande.",
+            code: "destination_requise",
           });
+        }
+
+        const brNumero = await getNextNumber("stock_reception", "BR");
+        // Identité créateur du mouvement de réception : userId = uid du TOKEN
+        // (anti-spoof), profileId/name conservés. Cf. stockMovementGuard.
+        const brCreatedBy = { ...(created_by || {}), userId: authUser.uid };
+        // TOUTES les décisions (lignes retenues, prix, statut) sont prises dans le
+        // module pur, donc testées. Ici il ne reste que deux gestes : écrire, et
+        // appliquer l'impact stock. La source `facture` n'est pas encore branchée
+        // sur Firestore (lot suivant) ; le module l'accepte déjà.
+        const brMovement = receptionBdc.construireMouvementReception({
+          numero: brNumero,
+          blItems,
+          bdc,
+          magasinDemande: req.body.magasin,
+          bdcId: bdc_id,
+          blId: docRef.id,
+          date: date_reception,
+          refBlFournisseur: numero_bl_fournisseur,
+          scanUrl: scan_url,
+          createdBy: brCreatedBy,
+        });
+        // null = aucune ligne réellement reçue → aucune réception à créer.
+        if (brMovement) {
+          await db_firestore.collection("stock_movements").add(brMovement);
+          // Entrée en stock immédiate : c'est ce que l'étape Achats retenait.
+          await applyStockImpact(brMovement);
         }
 
         // Update BDC delivery_status — réutilise received/ordered calculés avant la création du
@@ -7594,7 +7617,13 @@ exports.stockManagement = functions
         const deliveryStatus = bdcReceptionGuard.deriveDeliveryStatus(ordered, received);
         await db_firestore.collection("purchase_orders").doc(bdc_id).update({ delivery_status: deliveryStatus, updated_at: Date.now() });
 
-        return res.json({ success: true, id: docRef.id, numero, delivery_status: deliveryStatus });
+        // `numero` est celui du BL. Le numéro du bon de RÉCEPTION (BR) est distinct :
+        // l'exposer séparément évite d'annoncer « Réception BL-0042 créée ».
+        return res.json({
+          success: true, id: docRef.id, numero, delivery_status: deliveryStatus,
+          reception_numero: brMovement ? brMovement.numero : null,
+          valorisation: brMovement ? brMovement.valorisation : null,
+        });
       }
 
       // ========== STOCK LEVELS ==========
@@ -11153,12 +11182,11 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
         return null;
       }
 
-      // --- Helper: check if movement needs multi-level validation ---
-      // Seules les réceptions restent en attente (valorisation + validation Achats avant impact).
-      // Sorties, transferts et consommations sont auto-validés (impact stock immédiat à la création).
-      function movementNeedsMultiValidation(type) {
-        return type === "reception";
-      }
+      // `movementNeedsMultiValidation(type)` vivait ici. Supprimée : elle
+      // n'était appelée nulle part, et affirmait que les réceptions restent en
+      // attente de validation Achats — exactement l'inverse de ce que fait
+      // désormais le code. Un helper mort qui contredit le comportement réel est
+      // pire qu'absent : il se lit comme une règle.
 
       // --- UPLOAD SCAN for stock movements ---
       if (action === "upload-scan" && req.method === "POST") {
@@ -11455,7 +11483,7 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
       // --- CREATE MOVEMENT ---
       if (action === "create-movement" && req.method === "POST") {
         const { type, date, lieu_source, lieu_destination, ferme, items, ref_bl_fournisseur,
-          bdc_id, bl_id, reception_libre, reception_libre_motif, ref_bon_physique,
+          bdc_id, bl_id, ref_bon_physique,
           sortie_type, scan_url, fournisseur_nom, beneficiaire, created_by,
           motif_rebut, justificatif_url } = req.body;
 
@@ -11469,8 +11497,22 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
         if (type === "sortie" && !["retour_fournisseur", "pret", "rebut"].includes(sortie_type)) {
           return res.status(400).json({ success: false, error: "sortie_type requis: retour_fournisseur, pret, rebut" });
         }
-        if (type === "reception" && reception_libre && !reception_libre_motif) {
-          return res.status(400).json({ success: false, error: "Motif obligatoire pour réception libre" });
+        // La réception libre est SUPPRIMÉE : toute réception doit être rattachée à
+        // un bon de commande, comme create-bl l'exige déjà. Sans BDC il n'existe
+        // aucune source de prix, donc aucune valorisation possible — la
+        // marchandise entrait en stock sans jamais compter dans les coûts.
+        //
+        // Mesure production avant fermeture : 2 réceptions sans bdc_id créées dans
+        // l'application (BR-2026-0003 et BR-2026-0006, du 6 au 11 juin 2026),
+        // aucune depuis, contre 64 via bon de commande jusqu'au 24 août.
+        //
+        // Message actionnable, pas un 400 sec : l'écran vers lequel aller est nommé.
+        if (type === "reception" && !bdc_id) {
+          return res.status(400).json({
+            success: false,
+            error: "Une réception doit être rattachée à un bon de commande. Utilisez l'onglet « BDC à réceptionner » pour saisir la livraison à partir du BDC concerné.",
+            code: "bdc_requis",
+          });
         }
 
         // Identité créateur : on force userId = uid du TOKEN (anti-spoof), en
@@ -11493,7 +11535,13 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
           article_ref: it.article_ref || it.article || "",
           article_nom: it.article_nom || it.article || "",
           quantite: parseFloat(it.quantite) || 0,
-          unite: it.unite || "kg",
+          // Aucune unité fabriquée — MÊME règle que create-bl. Inventer "kg" ici
+          // faisait pire qu'une absence : le module comparait alors deux unités
+          // CONNUES et différentes (BDC en L contre "kg" inventé) et refusait le
+          // prix pour divergence. Les deux chemins de création d'une réception
+          // rendaient des résultats différents pour la MÊME livraison — la
+          // divergence silencieuse que ce lot existe pour rendre impossible.
+          unite: it.unite || "",
         }));
 
         if (type === "reception") {
@@ -11532,12 +11580,35 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
         }
 
         const singleValidation = !!req.body.single_validation;
-        // Réception : TOUJOURS en attente de valorisation + validation Achats (aucun impact à la création),
-        //   y compris la réception libre (le raccourci single_validation ne s'applique plus aux réceptions).
-        // Sortie / transfert / consommation : auto-validés, impact stock immédiat à la création.
+        // TOUS les types sont auto-validés, impact stock immédiat à la création.
+        //
+        // Les réceptions le sont depuis la suppression de l'étape Achats : ce
+        // chemin les créait en `en_attente_achats`, c'est-à-dire hors stock tant
+        // qu'un profil Achats ne les validait pas — ce que plus personne ne
+        // faisait. C'était la même impasse que create-bl, par une autre porte.
         const isReception = type === "reception";
-        const needsMulti = isReception;
-        const initialStatus = isReception ? "en_attente_achats" : "valide_chef";
+
+        // Valorisation : MÊME décision que create-bl, même module pur. Une seule
+        // règle de prix dans le dépôt, aucune divergence silencieuse possible
+        // entre les deux chemins de création d'une réception.
+        let receptionItems = movItems;
+        let receptionValorisation = null;
+        if (isReception) {
+          // Source de prix = le BDC lié, s'il y en a un. Une réception sans BDC
+          // n'a aucune source : ses lignes entrent en stock NON valorisées, avec
+          // leur motif. Jamais un zéro par défaut.
+          let bdcSource = null;
+          if (bdc_id) {
+            const bdcSnapForPrix = await db_firestore.collection("purchase_orders").doc(bdc_id).get();
+            if (bdcSnapForPrix.exists) bdcSource = bdcSnapForPrix.data();
+          }
+          const valoMov = receptionBdc.valoriserItemsReception(movItems, bdcSource);
+          receptionItems = valoMov.items;
+          receptionValorisation = valoMov.resume;
+        }
+        // Statut de création d'une réception : la constante testée du module,
+        // jamais une chaîne en dur ici.
+        const initialStatus = isReception ? receptionBdc.STATUT_RECEPTION_A_LA_CREATION : "valide_chef";
 
         const movData = {
           numero, type,
@@ -11545,12 +11616,13 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
           lieu_source: lieu_source || null,
           lieu_destination: lieu_destination || null,
           ferme: ferme || "",
-          items: movItems,
+          items: receptionItems,
           ref_bl_fournisseur: ref_bl_fournisseur || "",
           bdc_id: bdc_id || null,
           bl_id: bl_id || null,
-          reception_libre: !!reception_libre,
-          reception_libre_motif: reception_libre_motif || "",
+          // `reception_libre` / `reception_libre_motif` ne sont plus écrits : la
+          // réception libre est supprimée. Les documents existants les conservent
+          // (les effacer serait une migration de données, et ils n'encombrent personne).
           single_validation: singleValidation,
           ref_bon_physique: ref_bon_physique || "",
           sortie_type: sortie_type || null,
@@ -11563,6 +11635,8 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
           validations: {
             magasinier: { by: movCreatedBy.userId || "", name: movCreatedBy.name || "", at: Date.now() }
           },
+          // Traçabilité de la valorisation automatique (réceptions uniquement).
+          valorisation: receptionValorisation,
           rejection: null,
           created_by: movCreatedBy,
           created_at: Date.now(),
@@ -11571,12 +11645,17 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
 
         const docRef = await db_firestore.collection("stock_movements").add(movData);
 
-        // For single-validation types (transfert, consommation), apply stock impact immediately
-        if (!needsMulti) {
+        // L'impact est appliqué EXACTEMENT quand `isImpactApplied` affirme qu'il
+        // l'est — la même fonction pure dont rebuildBalances se sert pour
+        // recompter les soldes. Écrire un mouvement que cette fonction déclare
+        // impactant sans appliquer l'impact (ou l'inverse) ferait diverger les
+        // soldes du grand livre en silence. Ici la question ne se pose plus : le
+        // code applique ce que le prédicat dit, il ne le redevine pas.
+        if (isImpactApplied(movData)) {
           await applyStockImpact(movData);
         }
 
-        return res.json({ success: true, id: docRef.id, numero, status: initialStatus });
+        return res.json({ success: true, id: docRef.id, numero, status: initialStatus, valorisation: receptionValorisation });
       }
 
       // --- LIST MOVEMENTS ---
@@ -11628,7 +11707,19 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
           return res.status(400).json({ success: false, error: "Mouvement rejeté, impossible de valider" });
         }
 
-        // --- Réception en attente : validation + valorisation par Achats (1 étape) ---
+        // --- CHEMIN DE REPRISE — NE PAS SUPPRIMER ---
+        //
+        // Plus aucune réception n'est CRÉÉE en `en_attente_achats` (create-bl les
+        // crée désormais en `valide_chef`, valorisées, stock appliqué). Mais 59
+        // réceptions sont restées dans ce statut en production — 62 au
+        // 27/08/2026, depuis le 5 juin, avec leurs 90 lignes TOUTES déjà
+        // valorisées et leur marchandise jamais entrée en stock. Le compte
+        // continue de monter jusqu'au déploiement : ne pas le lire comme figé.
+        //
+        // Retirer ce bloc les enfermerait dans un statut mort : plus aucune action
+        // ne pourrait les faire entrer en stock, et leur reprise (partie D du
+        // spec, GATED car elle modifie le stock réel) deviendrait impossible.
+        // À supprimer seulement quand il n'en restera aucune.
         if (mov.status === "en_attente_achats") {
           if (mov.type !== "reception") {
             return res.status(400).json({ success: false, error: "Statut en_attente_achats réservé aux réceptions" });
@@ -11780,7 +11871,9 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
         // Champs éditables uniquement (whitelist) — pas de status / created_by / import_source / impact.
         const EDITABLE = [
           "date", "lieu_source", "lieu_destination", "ferme", "ref_bl_fournisseur",
-          "fournisseur_nom", "reception_libre_motif", "ref_bon_physique", "beneficiaire",
+          // `reception_libre_motif` retiré : plus aucun chemin n'écrit ce champ.
+          // Les 2 documents historiques qui le portent le gardent tel quel.
+          "fournisseur_nom", "ref_bon_physique", "beneficiaire",
           "sortie_type", "motif_rebut", "justificatif_url", "scan_url",
         ];
         const update = { updated_at: Date.now() };

@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:0b8ea2b506b98bb5 -->
-# Code Map — Modules lib (209)
+<!-- sourceFingerprint: sha256:b85ef5b4ab3e8441 -->
+# Code Map — Modules lib (211)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
 
@@ -140,6 +140,8 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/productivity/pdfParser.js | — | extractPdfText, extractWeekAndCampaign, parseProductivityPdf, parseWithClaude, buildPrompt |
 | functions/lib/productivity/ranker.js | — | percentileThreshold, enrichTreatment, enrichTreatments, buildFarmSummary |
 | functions/lib/productivity/refetchPipeline.js | — | refetchProductivityReports |
+| functions/lib/receptionValorisation/prixLigne.js | — | SOURCES_PRIORITE, MOTIF, cleArticle, normaliserSource, prixPondereSource, resolvePrixLigne, valoriserLignes |
+| functions/lib/receptionValorisation/receptionBdc.js | — | STATUT_RECEPTION_A_LA_CREATION, cleArticle, lignesDepuisBl, sourcesPrixDepuisBdc, resoudreMagasinDestination, valoriserItemsReception, construireItemsReception, construireMouvementReception |
 | functions/lib/sentinel/sentinelRecipients.js | — | filterSentinelRecipients |
 | functions/lib/stock/articleHistoryIndex.js | — | buildArticleHistoryIndex, sliceArticleHistory, isStockLieu, STOCK_LIEU_TYPES |
 | functions/lib/stock/bcDate.js | — | ISO_DATE_RE, HISTORY_ACTION, isRealIsoDate, validateBcDate, campagneChange, buildDateUpdate |
@@ -176,7 +178,7 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | public/lib/articleCategories.js | ArticleCategories | CATEGORIES_ARTICLE, LABEL_VIDE, SUFFIXE_HORS_LISTE, optionsCategorie, estCanonique |
 | public/lib/authResilience.js | AuthResilience | action, reason, profile, 5000, 10000, 20000, decideAuthState, isNewAppVersion, retryDelayMs |
 | public/lib/bcScanMatch.js | BcScanMatch | VARIETY_ALIASES, CULTURE_TOKENS, normalizeLabel, extractSecteurs, extractVariete, extractCulture, et, aliasMatch, matchParcelle |
-| public/lib/bdcReceptionUtils.js | BdcReceptionUtils | computeDeliveryData, resolveDeliveryDataOrError, filterReceptionsForBdc, computeReceptionRowsWithReliquat, computeReceptionEcart, clampReceivedQty |
+| public/lib/bdcReceptionUtils.js | BdcReceptionUtils | computeDeliveryData, resolveDeliveryDataOrError, filterReceptionsForBdc, computeReceptionRowsWithReliquat, computeReceptionEcart, clampReceivedQty, buildReceptionCreatedMessage |
 | public/lib/bdcWorkflow.js | BdcWorkflow | DIRECT_DG_FARMS, requiresChefValidation, nextStatusOnSubmit, bypassReason, chefProfileForFerme |
 | public/lib/caisseUtils.js | CaisseUtils | EXPENSE_TYPES, INCOME_TYPES, OP_EXPENSE_TYPES, OP_INCOME_TYPES, TRANSFER_TYPES, QUICK_PERIODS, QUICK_TYPES, ANOMALY_CODES, MONTANT_ANOMALY_THRESHOLD, DESCRIPTION_MIN_LENGTH, ANALYTIQUE_PLACEHOLDER, MONTANT_ATYPIQUE_FACTOR, MONTANT_ATYPIQUE_WINDOW_DAYS, MONTANT_ATYPIQUE_MIN_SAMPLE, DOUBLON_MAX_DATE_DELTA_DAYS, DOUBLON_LEVENSHTEIN_THRESHOLD, DOUBLON_DESC_PREFIX_LEN, DESCRIPTION_GENERIC_REGEX, BAHIA_MARKER, AVANCE_KEYWORD_REGEX, detectCaisseAnomalies, computeTotals, quickPeriodToDateRange, searchTransactions, filterByQuickType, AXE_NON_RENSEIGNE, filterByAxes, distinctAxeValues, detectAnomaliesBatch, extractBeneficiaire, aggregateAvances, COMPTE_CLIENT_PREFIX, isCompteClientCaisse, computeCompteClientTotals |
 | public/lib/campagneBudgetPivot.js | CampagneBudgetPivot | indexBudgets, buildBudgetPivot, ecartCell |
