@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:fb21ec59718cc385 -->
-# Code Map — Modules lib (207)
+<!-- sourceFingerprint: sha256:9ae4011f21b37307 -->
+# Code Map — Modules lib (208)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
 
@@ -163,8 +163,8 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/stockFiles/reminders.js | — | computeMissingFarms, buildReminderText, buildEscalationText, createStockFileReminders |
 | functions/lib/stockMerge/articleMerge.js | — | normalizeArticleName, normalizeCategorie, groupDuplicates, buildArticleIndex, resolveArticleTarget, rememberArticle, isMovementOpen, isBdcOpen, BDC_CLOSED_STATUSES |
 | functions/lib/stockRoles/articleClassement.js | — | fichesAClasserParNom, referencesAClasserParNom |
-| functions/lib/stockRoles/articlePermissions.js | — | peutModifierArticle, ROLE_CATALOGUE, ROLE_SUPERVISEUR, REFUS |
-| functions/lib/stockRoles/index.js | — | peutModifierArticle, fichesAClasserParNom, referencesAClasserParNom, ROLE_CATALOGUE, ROLE_SUPERVISEUR, REFUS |
+| functions/lib/stockRoles/articlePermissions.js | — | peutModifierArticle, peutFusionnerArticles, ROLE_CATALOGUE, ROLE_SUPERVISEUR, REFUS |
+| functions/lib/stockRoles/index.js | — | peutModifierArticle, peutFusionnerArticles, fichesAClasserParNom, referencesAClasserParNom, ROLE_CATALOGUE, ROLE_SUPERVISEUR, REFUS |
 | functions/lib/suppliers/supplierValidation.js | — | validateSupplier, normalizeIf, normalizeIce, normalizePhone, isValidIf, isValidIce, isValidPhone, isNonEmpty |
 | functions/lib/triage/bugTriage.js | — | MODULES, SEVERITIES, TRIAGE_MODEL, SYSTEM_PROMPT, TRIAGE_TOOL, shortId, shouldNotifyResolved, buildResolvedMessage, buildResolvedDGMessage, buildRecentBugsBlock, buildSystemPrompt, buildTextBlock, buildUserContent, isValidTriage, parseTriage, callClaude |
 | functions/lib/validation/validationAccess.js | — | CAPORAL_FERME_BY_PROFILE, genericRoleFor, fermeForCaporalProfile, authorizeValidationAction |
@@ -172,6 +172,7 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/valorisation/consoValorisation.js | — | canon, canonUnite, isTonne, normalizeQte, familleBucket, resolvePmp, aggregateConsoValorisee, SYNONYMES |
 | functions/lib/valorisation/fermeParcelle.js | — | deriveFermeFromParcelle |
 | public/lib/analytiqueUtils.js | AnalytiqueUtils | opLabel, opKey, buildAnalytiquePivot, resolveGroupeFamille, resolveGbCode, buildAnalytiquePivotByFamille, GB_GROUPE_MAP, GROUPE_ORDER, GB_ORDER |
+| public/lib/articleCategories.js | ArticleCategories | CATEGORIES_ARTICLE, LABEL_VIDE, SUFFIXE_HORS_LISTE, optionsCategorie, estCanonique |
 | public/lib/authResilience.js | AuthResilience | action, reason, profile, 5000, 10000, 20000, decideAuthState, isNewAppVersion, retryDelayMs |
 | public/lib/bcScanMatch.js | BcScanMatch | VARIETY_ALIASES, CULTURE_TOKENS, normalizeLabel, extractSecteurs, extractVariete, extractCulture, et, aliasMatch, matchParcelle |
 | public/lib/bdcReceptionUtils.js | BdcReceptionUtils | computeDeliveryData, resolveDeliveryDataOrError, filterReceptionsForBdc, computeReceptionRowsWithReliquat, computeReceptionEcart, clampReceivedQty |

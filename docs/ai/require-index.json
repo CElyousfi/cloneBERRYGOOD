@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:e2f18e6b243e8632",
+    "sourceFingerprint": "sha256:0aeee980058a2168",
     "stats": {
-      "targetFiles": 270,
+      "targetFiles": 271,
       "targetFilesWithDirectTests": 157,
       "targetFilesWithTransitiveTests": 178,
-      "testFilesScanned": 230
+      "testFilesScanned": 233
     }
   },
   "index": {
@@ -1403,6 +1403,7 @@
         "functions/lib/consoBons/__tests__/articleCategories.test.js",
         "functions/lib/consoBons/__tests__/bonsToConsoRows.test.js",
         "functions/lib/stockRoles/__tests__/articleClassement.test.js",
+        "tests/unit/articleCatalogMergeButton.test.js",
         "tests/unit/articleCatalogWiring.test.js",
         "tests/unit/articleMerge.test.js",
         "tests/unit/bcScan.test.js",
@@ -1416,23 +1417,29 @@
       ],
       "transitiveTests": [
         "functions/lib/stockRoles/__tests__/articleClassement.test.js",
+        "tests/unit/articleCatalogMergeButton.test.js",
         "tests/unit/articleCatalogWiring.test.js"
       ]
     },
     "functions/lib/stockRoles/articlePermissions.js": {
       "directTests": [
+        "functions/lib/stockRoles/__tests__/articleFusionPermissions.test.js",
         "functions/lib/stockRoles/__tests__/articlePermissions.test.js"
       ],
       "transitiveTests": [
+        "functions/lib/stockRoles/__tests__/articleFusionPermissions.test.js",
         "functions/lib/stockRoles/__tests__/articlePermissions.test.js",
+        "tests/unit/articleCatalogMergeButton.test.js",
         "tests/unit/articleCatalogWiring.test.js"
       ]
     },
     "functions/lib/stockRoles/index.js": {
       "directTests": [
+        "tests/unit/articleCatalogMergeButton.test.js",
         "tests/unit/articleCatalogWiring.test.js"
       ],
       "transitiveTests": [
+        "tests/unit/articleCatalogMergeButton.test.js",
         "tests/unit/articleCatalogWiring.test.js"
       ]
     },
@@ -1478,6 +1485,7 @@
     },
     "functions/lib/valorisation/consoValorisation.js": {
       "directTests": [
+        "tests/unit/articleCategories.test.js",
         "tests/unit/classer-article-cablage.test.js",
         "tests/unit/consoValorisation.test.js"
       ],
@@ -1485,6 +1493,7 @@
         "functions/lib/consoBons/__tests__/aggregateParcelle.test.js",
         "functions/lib/consoBons/__tests__/articleCategories.test.js",
         "functions/lib/consoBons/__tests__/bonsToConsoRows.test.js",
+        "tests/unit/articleCategories.test.js",
         "tests/unit/classer-article-cablage.test.js",
         "tests/unit/consoValorisation.test.js"
       ]
@@ -1774,6 +1783,10 @@
         "tests/unit/campagneExportBackend.test.js",
         "tests/unit/campagneExportUtils.test.js"
       ]
+    },
+    "public/lib/articleCategories.js": {
+      "directTests": [],
+      "transitiveTests": []
     },
     "public/lib/authResilience.js": {
       "directTests": [

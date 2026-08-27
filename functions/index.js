@@ -8959,9 +8959,14 @@ exports.stockManagement = functions
 
       // --- SUGGEST DUPLICATES (groupes par nom normalisé, active=true, >=2) ---
       if (action === "suggest-article-duplicates") {
+        // Rôle résolu SERVEUR (jamais depuis le body), règle PURE partagée avec
+        // `merge-articles` : `achats` OU `dg`. La garde était en dur sur
+        // `achats`, un profil qu'aucun humain n'utilise — la fusion des ~105
+        // paires de doublons n'a donc jamais pu être lancée en production.
         const callerRole = await resolveCallerRole(authUser);
-        if (callerRole !== "achats") {
-          return res.status(403).json({ success: false, error: "Réservé au responsable achats" });
+        const suggestDupPerm = stockRoles.peutFusionnerArticles(callerRole);
+        if (!suggestDupPerm.ok) {
+          return res.status(403).json({ success: false, error: suggestDupPerm.raison });
         }
         const snap = await db_firestore.collection("articles_catalog").where("active", "==", true).get();
         const articles = snap.docs.map(d => {
@@ -8975,10 +8980,14 @@ exports.stockManagement = functions
       // --- MERGE ARTICLES (preview | execute) ---
       if (action === "merge-articles" && req.method === "POST") {
         const { master_ref, doublon_refs, mode, by } = req.body || {};
-        // Rôle : responsable achats seulement — résolu depuis le token Firebase (anti-spoof body)
+        // Rôle : `achats` OU `dg` — résolu depuis le token Firebase (anti-spoof
+        // body), via la MÊME règle pure que `suggest-article-duplicates`. Le
+        // message disait « Seul le responsable achats » alors que la fusion est
+        // une écriture au catalogue, ouverte au DG comme update-article.
         const callerRole = await resolveCallerRole(authUser);
-        if (callerRole !== "achats") {
-          return res.status(403).json({ success: false, error: "Seul le responsable achats peut fusionner des articles" });
+        const mergeArticlesPerm = stockRoles.peutFusionnerArticles(callerRole);
+        if (!mergeArticlesPerm.ok) {
+          return res.status(403).json({ success: false, error: mergeArticlesPerm.raison });
         }
         if (!master_ref || !Array.isArray(doublon_refs) || doublon_refs.length === 0) {
           return res.status(400).json({ success: false, error: "master_ref et doublon_refs[] requis" });

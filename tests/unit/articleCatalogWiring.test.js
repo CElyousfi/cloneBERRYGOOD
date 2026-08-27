@@ -373,6 +373,65 @@ test('validate-delete-article — rôle résolu SERVEUR avant le active:false', 
   assert.doesNotMatch(h, /req\.body[^\n]*(profileId|role)\b/);
 });
 
+// ───────────────────────────────────────────────────────────────────────────
+// 3bis. FUSION DE DOUBLONS — garde élargie au DG (2026-08-27)
+// ───────────────────────────────────────────────────────────────────────────
+//
+// Les deux actions de fusion étaient verrouillées en dur sur `achats`, profil
+// qu'aucun humain n'utilise : l'outil, pourtant livré et testé, n'a JAMAIS pu
+// être exécuté en production. Ces tests tiennent les deux bords :
+//  - la garde existe toujours et refuse les autres profils (l'élargissement
+//    n'est pas une ouverture) ;
+//  - elle passe par la règle PURE, donc retirer `dg` fait rougir le module.
+
+for (const nomAction of ['suggest-article-duplicates', 'merge-articles']) {
+  test(nomAction + ' — rôle résolu SERVEUR, garde pure, 403 avec return', () => {
+    const h = handlerSource(nomAction);
+    assert.match(h, /const callerRole = await resolveCallerRole\(authUser\);/);
+    // La séquence COMPLÈTE : la règle pure décide, et le `return` est DANS la
+    // garde. Sans le `return`, la fusion s'exécuterait après la réponse 403.
+    assert.match(
+      h,
+      /stockRoles\.peutFusionnerArticles\(callerRole\);\s*\n\s*if \(![A-Za-z]+Perm\.ok\) \{\s*\n\s*return res\.status\(403\)/,
+      'la garde doit déléguer à la règle pure et retourner immédiatement'
+    );
+    // Le message rendu à l'appelant EST celui de la règle (« …achats ou au
+    // DG ») : un message en dur redeviendrait faux au premier changement de
+    // périmètre, et c'est exactement ce mensonge qui a coûté ce ticket.
+    assert.doesNotMatch(h, /Seul le responsable achats peut fusionner/);
+    assert.doesNotMatch(h, /error: "Réservé au responsable achats"/);
+    assert.match(h, /return res\.status\(403\)\.json\(\{ success: false, error: [A-Za-z]+Perm\.raison \}\)/);
+    // Aucune comparaison de rôle en dur ne subsiste à côté de la règle pure :
+    // elle rouvrirait le verrou `achats` sans faire rougir le module.
+    assert.doesNotMatch(h, /callerRole !== "/);
+    // Le rôle ne vient JAMAIS du body (faille historique de create-article).
+    assert.doesNotMatch(h, /req\.body[^\n]*(profileId|role)\b/);
+    // Un seul resolveCallerRole : deux variables = risque que la garde
+    // s'appuie sur la mauvaise.
+    assert.equal((h.match(/resolveCallerRole\(authUser\)/g) || []).length, 1);
+  });
+}
+
+test('merge-articles — la garde précède TOUTE écriture de fusion', () => {
+  const h = handlerSource('merge-articles');
+  const iGarde = h.indexOf('stockRoles.peutFusionnerArticles');
+  const iExecute = h.indexOf('mode === "execute"');
+  assert.ok(iGarde > -1 && iExecute > -1 && iGarde < iExecute, 'garde avant le mode execute');
+  // Aucun écrit Firestore avant la garde.
+  assert.doesNotMatch(h.slice(0, iGarde), /\.(set|update|delete|add|commit)\(/);
+});
+
+test('la règle de fusion autorise exactement achats + dg', () => {
+  // Contrepartie EXÉCUTABLE des assertions de source ci-dessus : le câblage
+  // pointe la bonne fonction, et cette fonction a le bon périmètre.
+  const { peutFusionnerArticles } = require('../../functions/lib/stockRoles');
+  assert.strictEqual(peutFusionnerArticles('dg').ok, true, 'le DG doit pouvoir fusionner');
+  assert.strictEqual(peutFusionnerArticles('achats').ok, true);
+  for (const r of ['magasinier', 'finance', 'audit_interne', null, undefined]) {
+    assert.strictEqual(peutFusionnerArticles(r).ok, false, 'profil ' + String(r));
+  }
+});
+
 test('les trois actions gardées appellent resolveCallerRole exactement une fois', () => {
   // Deux appels dans un même handler = deux variables, donc le risque qu'une
   // garde s'appuie sur la mauvaise. Une seule source de vérité par handler.

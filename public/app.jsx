@@ -47513,7 +47513,7 @@ ${rejetHtml}
             const [showCreate, setShowCreate] = useState(false);
             const [createForm, setCreateForm] = useState({ reference:'', nom:'', unite:'U', prix_ht:0, taux_tva:20, prix_ttc:0, categorie:'', sous_categorie:'', type:'', reference_technique:'', multi_ferme:false });
             // --- Fusion de doublons ---
-            const isAchats = currentProfile === 'achats';
+            const peutFusionner = currentProfile === 'achats' || currentProfile === 'dg';
             const [showMerge, setShowMerge] = useState(false);
             const [mergeGroups, setMergeGroups] = useState(null); // null = pas chargé
             const [mergeLoading, setMergeLoading] = useState(false);
@@ -47621,7 +47621,8 @@ ${rejetHtml}
                     <div><label style={labelStyle}>Taux TVA (%)</label><select value={String(parseFloat(form.taux_tva)||0)} onChange={e=>{ const v=e.target.value; setForm(f=>({...f, taux_tva:v, prix_ttc:calcTTC(f.prix_ht,v)})); }} style={fieldStyle}><option value="0">0%</option><option value="10">10%</option><option value="20">20%</option></select></div>
                     <div><label style={labelStyle}>Prix TTC (MAD)</label><input value={form.prix_ttc} disabled style={{...fieldStyle,fontFamily:'monospace',background:'#f8f8f8',color:'#888'}} /></div>
                     <div><label style={labelStyle}>Unité</label><select value={form.unite} onChange={e=>setForm(f=>({...f,unite:e.target.value}))} style={fieldStyle}><option value="U">Unité</option><option value="KG">KG</option><option value="L">Litre</option><option value="M">Mètre</option><option value="ML">ML</option><option value="T">Tonne</option><option value="Sac">Sac</option><option value="Bidon">Bidon</option><option value="Pièce">Pièce</option></select></div>
-                    <div><label style={labelStyle}>Catégorie</label><input list="cat-list-edit" value={form.categorie} onChange={e=>setForm(f=>({...f,categorie:e.target.value}))} style={fieldStyle} /><datalist id="cat-list-edit">{allCats.map(c=><option key={c} value={c} />)}</datalist></div>
+                    {/* Liste FERMÉE (window.ArticleCategories) : le texte libre a produit Engrais/engrais, phyto, PHYTO-SANITAIRE… Une valeur hors liste reste proposée TELLE QUELLE, jamais réécrite en douce. */}
+                    <div><label style={labelStyle}>Catégorie</label><select value={form.categorie||''} onChange={e=>setForm(f=>({...f,categorie:e.target.value}))} style={fieldStyle}>{(window.ArticleCategories ? window.ArticleCategories.optionsCategorie(form.categorie) : []).map(o=><option key={o.label} value={o.value}>{o.label}</option>)}</select></div>
                     <div><label style={labelStyle}>Sous-catégorie</label><input value={form.sous_categorie} onChange={e=>setForm(f=>({...f,sous_categorie:e.target.value}))} style={fieldStyle} /></div>
                     <div><label style={labelStyle}>Type</label><select value={form.type} onChange={e=>setForm(f=>({...f,type:e.target.value}))} style={fieldStyle}><option value="">—</option><option value="Stockable">Stockable</option><option value="Consommable">Consommable</option><option value="Service">Service</option></select></div>
                     <div style={{display:'flex',alignItems:'center',gap:8,gridColumn:'1/-1'}}><input type="checkbox" checked={form.multi_ferme} onChange={e=>setForm(f=>({...f,multi_ferme:e.target.checked}))} /><label style={{fontSize:12}}>Multi-ferme</label></div>
@@ -47643,7 +47644,7 @@ ${rejetHtml}
                             <button onClick={()=>setShowCreate(true)} style={{background:'#2980b9',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontWeight:600,fontSize:12,display:'flex',alignItems:'center',gap:6}}>
                                 <i className="fa-solid fa-plus"></i>Ajouter un produit
                             </button>
-                            {isAchats && (
+                            {peutFusionner && (
                             <button onClick={loadDuplicates} style={{background:'#e67e22',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontWeight:600,fontSize:12,display:'flex',alignItems:'center',gap:6}}>
                                 <i className="fa-solid fa-code-merge"></i>Fusionner doublons
                             </button>

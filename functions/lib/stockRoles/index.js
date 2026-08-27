@@ -7,6 +7,9 @@
  *
  * - `peutModifierArticle` : la règle de rôle (`achats` ou `dg`), extraite du
  *   monolithe SANS être modifiée — ni élargie, ni restreinte.
+ * - `peutFusionnerArticles` : même population, pour la fusion de doublons
+ *   (`suggest-article-duplicates` / `merge-articles`), qui était verrouillée
+ *   en dur sur `achats` et donc inexécutable par le DG.
  * - `fichesAClasserParNom` : toutes les fiches actives d'un même nom normalisé,
  *   parce que le catalogue contient des doublons et qu'en reclasser une seule
  *   laisse l'article « à classer ».
@@ -14,6 +17,7 @@
 
 const {
   peutModifierArticle,
+  peutFusionnerArticles,
   ROLE_CATALOGUE,
   ROLE_SUPERVISEUR,
   REFUS,
@@ -22,6 +26,7 @@ const { fichesAClasserParNom, referencesAClasserParNom } = require('./articleCla
 
 module.exports = {
   peutModifierArticle,
+  peutFusionnerArticles,
   fichesAClasserParNom,
   referencesAClasserParNom,
   ROLE_CATALOGUE,

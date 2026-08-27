@@ -1362,88 +1362,90 @@
         </div>
     </div>
     <!-- Local-only UI test bypass (no-op except on localhost?testui=1). See public/lib/local-test-bypass.js -->
-    <script src="lib/local-test-bypass.js?v=mtap2u81"></script>
+    <script src="lib/local-test-bypass.js?v=mtb7jgvz"></script>
     <!-- Pure auth/version decision helpers — loaded NON-defer so window.AuthResilience
          exists before app.js (deferred) runs its checkVersion IIFE. See public/lib/authResilience.js -->
-    <script src="lib/authResilience.js?v=mtap2u81"></script>
-    <script defer src="lib/caisseUtils.js?v=mtap2u81"></script>
-    <script defer src="lib/encaissementsCanevas.js?v=mtap2u81"></script>
-    <script defer src="lib/growthUtils.js?v=mtap2u81"></script>
-    <script defer src="lib/meteoCalc.js?v=mtap2u81"></script>
-    <script defer src="lib/inflightDedup.js?v=mtap2u81"></script>
-    <script defer src="lib/bdcWorkflow.js?v=mtap2u81"></script>
-    <script defer src="lib/stockMovementGuard.js?v=mtap2u81"></script>
-    <script defer src="lib/paieUtils.js?v=mtap2u81"></script>
+    <script src="lib/authResilience.js?v=mtb7jgvz"></script>
+    <script defer src="lib/caisseUtils.js?v=mtb7jgvz"></script>
+    <script defer src="lib/encaissementsCanevas.js?v=mtb7jgvz"></script>
+    <script defer src="lib/growthUtils.js?v=mtb7jgvz"></script>
+    <script defer src="lib/meteoCalc.js?v=mtb7jgvz"></script>
+    <script defer src="lib/inflightDedup.js?v=mtb7jgvz"></script>
+    <script defer src="lib/bdcWorkflow.js?v=mtb7jgvz"></script>
+    <script defer src="lib/stockMovementGuard.js?v=mtb7jgvz"></script>
+    <!-- Liste canonique des catégories d'article (select fermé de la fiche article). -->
+    <script defer src="lib/articleCategories.js?v=mtb7jgvz"></script>
+    <script defer src="lib/paieUtils.js?v=mtb7jgvz"></script>
     <!-- Modèle de coût M.O — consomme PaieUtils par INJECTION, donc l'ordre des
          <script> n'a pas d'importance ici (rien n'est lu au chargement). -->
         <!-- Plafond de journées déclarables. PUR, INJECTÉ dans coutMainOeuvre :
          l'ordre des <script> est indifférent, rien n'est lu au chargement. -->
-    <script defer src="lib/plafondDeclaration.js?v=mtap2u81"></script>
-<script defer src="lib/coutMainOeuvre.js?v=mtap2u81"></script>
+    <script defer src="lib/plafondDeclaration.js?v=mtb7jgvz"></script>
+<script defer src="lib/coutMainOeuvre.js?v=mtb7jgvz"></script>
         <!-- Lecture du fichier de paie + rapprochement. PURS, sans dépendance :
          l'ordre des <script> est indifférent, rien n'est lu au chargement. -->
-    <script defer src="lib/lecturePaieExcel.js?v=mtap2u81"></script>
-    <script defer src="lib/rapprochementPaie.js?v=mtap2u81"></script>
+    <script defer src="lib/lecturePaieExcel.js?v=mtb7jgvz"></script>
+    <script defer src="lib/rapprochementPaie.js?v=mtb7jgvz"></script>
     <!-- Ventilation d'UNE parcelle quinzaine par quinzaine. PURE, sans
          dépendance : l'ordre des <script> est indifférent. -->
-    <script defer src="lib/campagneParcelleQuinzaine.js?v=mtap2u81"></script>
-<script defer src="lib/quinzaineUtils.js?v=mtap2u81"></script>
-    <script defer src="lib/analytiqueUtils.js?v=mtap2u81"></script>
-    <script defer src="lib/paieDataCache.js?v=mtap2u81"></script>
-    <script defer src="lib/primesImportParse.js?v=mtap2u81"></script>
-    <script defer src="lib/primesV2.js?v=mtap2u81"></script>
-    <script defer src="lib/recolteKpiUtils.js?v=mtap2u81"></script>
-    <script defer src="lib/inventaireUtils.js?v=mtap2u81"></script>
-    <script defer src="lib/campagneUtils.js?v=mtap2u81"></script>
-    <script defer src="lib/factureExportUtils.js?v=mtap2u81"></script>
-    <script defer src="lib/useStockLocations.js?v=mtap2u81"></script>
-    <script defer src="lib/stockDestinations.js?v=mtap2u81"></script>
-    <script defer src="lib/scanAttachmentUtils.js?v=mtap2u81"></script>
-    <script defer src="lib/scanClientUpload.js?v=mtap2u81"></script>
-    <script defer src="lib/scanHistoryDisplay.js?v=mtap2u81"></script>
-    <script defer src="lib/bdcReceptionUtils.js?v=mtap2u81"></script>
-    <script defer src="lib/parcelleGroupUtils.js?v=mtap2u81"></script>
-    <script defer src="lib/cultureUtils.js?v=mtap2u81"></script>
-    <script defer src="lib/campagneExportUtils.js?v=mtap2u81"></script>
-    <script defer src="lib/campagneBudgetPivot.js?v=mtap2u81"></script>
-    <script defer src="lib/campagneRythme.js?v=mtap2u81"></script>
-    <script defer src="lib/campagneBudgetQuinzaine.js?v=mtap2u81"></script>
-    <script defer src="components/BugReportButton.js?v=mtap2u81"></script>
-    <script defer src="components/BugReportsAdmin.js?v=mtap2u81"></script>
-    <script defer src="components/PointageValidationPanel.js?v=mtap2u81"></script>
-    <script defer src="components/PointageValidationView.js?v=mtap2u81"></script>
-    <script defer src="components/MagMappingConsoTab.js?v=mtap2u81"></script>
-    <script defer src="components/MagBonsCommandeTab.js?v=mtap2u81"></script>
-    <script defer src="components/MagBdcReceptionTab.js?v=mtap2u81"></script>
-    <script defer src="lib/imageDownscale.js?v=mtap2u81"></script>
-    <script defer src="lib/bcScanMatch.js?v=mtap2u81"></script>
-    <script defer src="components/MagBCScanModal.js?v=mtap2u81"></script>
-    <script defer src="components/MagBCTab.js?v=mtap2u81"></script>
-    <script defer src="components/ParcellesParamsTab.js?v=mtap2u81"></script>
-    <script defer src="components/PmpDetailPopup.js?v=mtap2u81"></script>
-    <script defer src="components/CaisseSaisieSub.js?v=mtap2u81"></script>
-    <script defer src="components/CaisseParametresSub.js?v=mtap2u81"></script>
-    <script defer src="components/CaisseRevueValidation.js?v=mtap2u81"></script>
-    <script defer src="components/CaisseDetailPopup.js?v=mtap2u81"></script>
-    <script defer src="components/InventaireMouvementsPopup.js?v=mtap2u81"></script>
-    <script defer src="components/FactureDetailPopup.js?v=mtap2u81"></script>
-    <script defer src="components/ScanAttachmentButton.js?v=mtap2u81"></script>
-    <script defer src="components/ConsoValoriseeTab.js?v=mtap2u81"></script>
-    <script defer src="components/PrimesFixesTab.js?v=mtap2u81"></script>
-    <script defer src="components/ParcellesGroupesPanel.js?v=mtap2u81"></script>
-    <script defer src="components/ParcellesReferentielTab.js?v=mtap2u81"></script>
-    <script defer src="lib/campagneRapprochement.js?v=mtap2u81"></script>
-    <script defer src="lib/campagneProduction.js?v=mtap2u81"></script>
-    <script defer src="components/RapprochementPaiePopup.js?v=mtap2u81"></script>
-    <script defer src="components/CampagneAnalytiqueTab.js?v=mtap2u81"></script>
-    <script defer src="components/MagStockFilesTab.js?v=mtap2u81"></script>
-    <script defer src="components/QuinzaineCampagneSelect.js?v=mtap2u81"></script>
-    <script defer src="components/PivotAnalytiqueGrid.js?v=mtap2u81"></script>
-    <script defer src="components/AffectationAnalytiqueTable.js?v=mtap2u81"></script>
-    <script defer src="components/QuinzaineRecapCards.js?v=mtap2u81"></script>
-    <script defer src="components/CampagneBudgetTab.js?v=mtap2u81"></script>
-    <script defer src="lib/emargementPdf.js?v=mtap2u81"></script>
-    <script defer src="lib/emargementExcel.js?v=mtap2u81"></script>
-    <script defer src="app.js?v=mtap2u81"></script>
+    <script defer src="lib/campagneParcelleQuinzaine.js?v=mtb7jgvz"></script>
+<script defer src="lib/quinzaineUtils.js?v=mtb7jgvz"></script>
+    <script defer src="lib/analytiqueUtils.js?v=mtb7jgvz"></script>
+    <script defer src="lib/paieDataCache.js?v=mtb7jgvz"></script>
+    <script defer src="lib/primesImportParse.js?v=mtb7jgvz"></script>
+    <script defer src="lib/primesV2.js?v=mtb7jgvz"></script>
+    <script defer src="lib/recolteKpiUtils.js?v=mtb7jgvz"></script>
+    <script defer src="lib/inventaireUtils.js?v=mtb7jgvz"></script>
+    <script defer src="lib/campagneUtils.js?v=mtb7jgvz"></script>
+    <script defer src="lib/factureExportUtils.js?v=mtb7jgvz"></script>
+    <script defer src="lib/useStockLocations.js?v=mtb7jgvz"></script>
+    <script defer src="lib/stockDestinations.js?v=mtb7jgvz"></script>
+    <script defer src="lib/scanAttachmentUtils.js?v=mtb7jgvz"></script>
+    <script defer src="lib/scanClientUpload.js?v=mtb7jgvz"></script>
+    <script defer src="lib/scanHistoryDisplay.js?v=mtb7jgvz"></script>
+    <script defer src="lib/bdcReceptionUtils.js?v=mtb7jgvz"></script>
+    <script defer src="lib/parcelleGroupUtils.js?v=mtb7jgvz"></script>
+    <script defer src="lib/cultureUtils.js?v=mtb7jgvz"></script>
+    <script defer src="lib/campagneExportUtils.js?v=mtb7jgvz"></script>
+    <script defer src="lib/campagneBudgetPivot.js?v=mtb7jgvz"></script>
+    <script defer src="lib/campagneRythme.js?v=mtb7jgvz"></script>
+    <script defer src="lib/campagneBudgetQuinzaine.js?v=mtb7jgvz"></script>
+    <script defer src="components/BugReportButton.js?v=mtb7jgvz"></script>
+    <script defer src="components/BugReportsAdmin.js?v=mtb7jgvz"></script>
+    <script defer src="components/PointageValidationPanel.js?v=mtb7jgvz"></script>
+    <script defer src="components/PointageValidationView.js?v=mtb7jgvz"></script>
+    <script defer src="components/MagMappingConsoTab.js?v=mtb7jgvz"></script>
+    <script defer src="components/MagBonsCommandeTab.js?v=mtb7jgvz"></script>
+    <script defer src="components/MagBdcReceptionTab.js?v=mtb7jgvz"></script>
+    <script defer src="lib/imageDownscale.js?v=mtb7jgvz"></script>
+    <script defer src="lib/bcScanMatch.js?v=mtb7jgvz"></script>
+    <script defer src="components/MagBCScanModal.js?v=mtb7jgvz"></script>
+    <script defer src="components/MagBCTab.js?v=mtb7jgvz"></script>
+    <script defer src="components/ParcellesParamsTab.js?v=mtb7jgvz"></script>
+    <script defer src="components/PmpDetailPopup.js?v=mtb7jgvz"></script>
+    <script defer src="components/CaisseSaisieSub.js?v=mtb7jgvz"></script>
+    <script defer src="components/CaisseParametresSub.js?v=mtb7jgvz"></script>
+    <script defer src="components/CaisseRevueValidation.js?v=mtb7jgvz"></script>
+    <script defer src="components/CaisseDetailPopup.js?v=mtb7jgvz"></script>
+    <script defer src="components/InventaireMouvementsPopup.js?v=mtb7jgvz"></script>
+    <script defer src="components/FactureDetailPopup.js?v=mtb7jgvz"></script>
+    <script defer src="components/ScanAttachmentButton.js?v=mtb7jgvz"></script>
+    <script defer src="components/ConsoValoriseeTab.js?v=mtb7jgvz"></script>
+    <script defer src="components/PrimesFixesTab.js?v=mtb7jgvz"></script>
+    <script defer src="components/ParcellesGroupesPanel.js?v=mtb7jgvz"></script>
+    <script defer src="components/ParcellesReferentielTab.js?v=mtb7jgvz"></script>
+    <script defer src="lib/campagneRapprochement.js?v=mtb7jgvz"></script>
+    <script defer src="lib/campagneProduction.js?v=mtb7jgvz"></script>
+    <script defer src="components/RapprochementPaiePopup.js?v=mtb7jgvz"></script>
+    <script defer src="components/CampagneAnalytiqueTab.js?v=mtb7jgvz"></script>
+    <script defer src="components/MagStockFilesTab.js?v=mtb7jgvz"></script>
+    <script defer src="components/QuinzaineCampagneSelect.js?v=mtb7jgvz"></script>
+    <script defer src="components/PivotAnalytiqueGrid.js?v=mtb7jgvz"></script>
+    <script defer src="components/AffectationAnalytiqueTable.js?v=mtb7jgvz"></script>
+    <script defer src="components/QuinzaineRecapCards.js?v=mtb7jgvz"></script>
+    <script defer src="components/CampagneBudgetTab.js?v=mtb7jgvz"></script>
+    <script defer src="lib/emargementPdf.js?v=mtb7jgvz"></script>
+    <script defer src="lib/emargementExcel.js?v=mtb7jgvz"></script>
+    <script defer src="app.js?v=mtb7jgvz"></script>
 </body>
 </html>

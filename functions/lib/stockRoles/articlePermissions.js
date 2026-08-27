@@ -55,8 +55,35 @@ function peutModifierArticle(role) {
   return { ok: false, raison: REFUS };
 }
 
+/**
+ * Décide si `role` peut inspecter (`suggest-article-duplicates`) et exécuter
+ * (`merge-articles`) une fusion de fiches en doublon.
+ *
+ * MÊME POPULATION que `peutModifierArticle` — `achats` ou `dg` — et c'est
+ * volontaire : fusionner deux fiches, c'est écrire au catalogue (le master
+ * absorbe prix et soldes, les doublons deviennent des pierres tombales). Un
+ * export DÉDIÉ plutôt qu'un alias, parce que les deux droits pourraient
+ * légitimement diverger un jour ; la délégation garantit qu'ils ne divergent
+ * pas PAR ACCIDENT.
+ *
+ * Élargi au `dg` le 2026-08-27 (demande explicite d'Omar) : la garde était en
+ * dur sur `achats`, un profil qu'aucun humain n'utilise au quotidien. La
+ * fusion des ~105 paires de doublons n'avait donc JAMAIS pu être exécutée en
+ * production, et les prix restaient dispersés entre fiches jumelles.
+ *
+ * Le rôle DOIT être celui résolu SERVEUR (`resolveCallerRole`), jamais lu dans
+ * le body.
+ *
+ * @param {*} role profileId résolu serveur.
+ * @returns {Verdict}
+ */
+function peutFusionnerArticles(role) {
+  return peutModifierArticle(role);
+}
+
 module.exports = {
   peutModifierArticle,
+  peutFusionnerArticles,
   ROLE_CATALOGUE,
   ROLE_SUPERVISEUR,
   REFUS,
