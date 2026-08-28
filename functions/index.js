@@ -57,6 +57,8 @@ const bcScan = require("./lib/stock/bcScan");
 // Journal de précision du scan (observation pure — ne change rien au scanner).
 const bcScanJournal = require("./lib/stock/bcScanJournal");
 const bcDate = require("./lib/stock/bcDate");
+const bcDoublons = require("./lib/stock/bcDoublons");
+const bcSuppression = require("./lib/stock/bcSuppression");
 const stockFilesRecord = require("./lib/stockFiles/recordSubmission");
 const { createStockFileReminders } = require("./lib/stockFiles/reminders");
 const { STOCK_FILE_ALLOWED_MIME, STOCK_FILE_ALLOWED_FORMATS_LABEL } = require("./lib/stockFiles/allowedMime");
@@ -7812,7 +7814,10 @@ exports.stockManagement = functions
         if (type) query = query.where("type", "==", type);
         if (ferme) query = query.where("ferme", "==", ferme);
         const snap = await query.get();
-        const bcs = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        // Les bons soft-deleted (`delete-bc`) sortent de la liste : sans ce
+        // filtre, un doublon supprimé resterait affiché, mouvements annulés.
+        const bcs = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+          .filter((bc) => bc.deleted !== true);
         return res.json({ success: true, bcs });
       }
 
@@ -7877,7 +7882,6 @@ exports.stockManagement = functions
           }
         }
 
-        const numero = await getNextNumber("consumption_voucher", "BC");
         const bcItems = bcSourceItems.map((it) => ({
           article: it.article || "", quantite: parseFloat(it.quantite) || 0, unite: it.unite || "kg",
           parcelle: it.parcelle || "", culture: it.culture || "", ferme: it.ferme || "",
@@ -7889,10 +7893,61 @@ exports.stockManagement = functions
         }));
         const allParcelles = [...new Set(bcItems.map(i => i.parcelle).filter(Boolean))];
         const allFermes = [...new Set(bcItems.map(i => i.ferme).filter(Boolean))];
+        // Date résolue UNE fois : le bon et ses mouvements de stock doivent
+        // porter la même (deux `new Date()` peuvent enjamber minuit).
+        const bcDateValue = date || new Date().toISOString().split("T")[0];
+
+        // --- GARDE ANTI-DOUBLON (lib/stock/bcDoublons) ---
+        // Le magasinier soumet deux fois le même scan : mesuré 2 fois sur 49
+        // bons en production (BC-2026-0032/0033, BC-2026-0039/0040), à 23 et 29
+        // secondes d'intervalle, avec le MÊME `scan_url`. On bloque, on nomme le
+        // bon existant, et le magasinier peut forcer — le forçage est tracé.
+        //
+        // Fenêtre BORNÉE aux 200 bons les plus récents, comme `scan-bc` : un
+        // scan complet de l'historique à chaque création se dégraderait avec le
+        // temps. Comparaison faite APRÈS l'éclatement des groupes de parcelles,
+        // sur les items tels qu'ils seront persistés, et AVANT `getNextNumber` —
+        // un bon refusé ne doit pas consommer de numéro de séquence.
+        const bcRecentsSnap = await db_firestore.collection("consumption_vouchers")
+          .orderBy("created_at", "desc").limit(200).get();
+        const bcRecents = bcRecentsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        const bcVerdict = bcDoublons.detecterDoublon(
+          { scan_url: scan_url || null, date: bcDateValue, items: bcItems },
+          bcRecents
+        );
+        const bcForceDemande = bcDoublons.forcageDemande(req.body && req.body.force_doublon);
+        if (bcVerdict.doublon && !bcForceDemande) {
+          return res.status(409).json({
+            success: false,
+            error: bcVerdict.message,
+            doublon: {
+              motif: bcVerdict.motif,
+              bon_id: bcVerdict.bon_id,
+              bon_numero: bcVerdict.bon_numero,
+            },
+          });
+        }
+        // Trace du forçage : construite SERVEUR à partir du token
+        // (resolveCallerRole), JAMAIS d'une identité lue dans le body.
+        let bcForceTrace = null;
+        if (bcVerdict.doublon && bcForceDemande) {
+          const bcForceRole = await resolveCallerRole(authUser);
+          bcForceTrace = bcDoublons.construireTraceForcage({
+            verdict: bcVerdict,
+            by: {
+              uid: (authUser && authUser.uid) || "",
+              profileId: bcForceRole || "",
+              name: (authUser && (authUser.name || authUser.email)) || "",
+            },
+            at: Date.now(),
+          });
+        }
+
+        const numero = await getNextNumber("consumption_voucher", "BC");
         const bcData = {
           numero, type,
           parcelle: allParcelles.join(", "), culture: "", ferme: allFermes.join(", "),
-          date: date || new Date().toISOString().split("T")[0],
+          date: bcDateValue,
           // motif : champ « Motif » du bon papier (ex. « Fertigation/Traitement »),
           // lu par le scan et éditable côté front. Ajout PUREMENT ADDITIF et
           // OPTIONNEL : aucune validation, absent du body -> "" (comportement
@@ -7904,6 +7959,12 @@ exports.stockManagement = functions
           scan_url: scan_url || null,
           created_by: created_by || {},
           created_at: Date.now(),
+          // Trace du forçage d'un doublon détecté (null si aucun forçage) : qui,
+          // quand, quel bon était jugé doublon, et pour quel motif.
+          doublon_force: bcForceTrace,
+          history: bcForceTrace
+            ? [{ action: bcDoublons.HISTORY_ACTION_FORCAGE, by: bcForceTrace.by, at: bcForceTrace.at, motif: bcForceTrace.motif, bon_doublon_numero: bcForceTrace.bon_doublon_numero }]
+            : [],
         };
         const docRef = await db_firestore.collection("consumption_vouchers").add(bcData);
 
@@ -7927,7 +7988,7 @@ exports.stockManagement = functions
           }));
           const movData = {
             numero: bcsNumero, type: "consommation",
-            date: date || new Date().toISOString().split("T")[0],
+            date: bcDateValue,
             lieu_source: lieuSource,
             lieu_destination: { type: "parcelle", id: parcelle },
             ferme: parcItems[0]?.ferme || "", items: bcsItems,
@@ -8018,6 +8079,72 @@ exports.stockManagement = functions
           campagne_changed: bcDateResult.campagne.changed,
           campagne_avant: bcDateResult.campagne.from,
           campagne_apres: bcDateResult.campagne.to,
+        });
+      }
+
+      // ========== SUPPRESSION D'UN BON DE CONSOMMATION ==========
+      // Il n'existait AUCUNE suppression de bon de consommation. Une suppression
+      // brute serait pire que rien : `create-bc` décrémente `stock_balances` au
+      // moment même de la création (mouvements BCS-…, type consommation, en
+      // `valide_mag`). Effacer le bon seul laisserait la consommation déduite
+      // pour toujours — le bon disparaît, le stock reste amputé.
+      //
+      // On suit donc la mécanique éprouvée de `delete-movement` : soft-delete
+      // (jamais de destruction) + `reverseStockImpact` sur les mouvements dont
+      // l'impact était matérialisé. Logique pure : lib/stock/bcSuppression.
+      if (action === "delete-bc" && req.method === "POST") {
+        // Rôle résolu SERVEUR (resolveCallerRole), jamais depuis le body.
+        // `achats` ou `dg` (stockRoles) : le magasinier ne défait pas son propre
+        // bon — même règle que les réceptions.
+        const bcDelRole = await resolveCallerRole(authUser);
+        const bcDelId = req.body && req.body.bc_id;
+        const bcDelRef = bcDelId && typeof bcDelId === "string"
+          ? db_firestore.collection("consumption_vouchers").doc(bcDelId) : null;
+        const bcDelSnap = bcDelRef ? await bcDelRef.get() : null;
+        const bcDelDoc = bcDelSnap && bcDelSnap.exists ? bcDelSnap.data() : null;
+
+        const bcDelCheck = bcSuppression.validerSuppression({
+          role: bcDelRole,
+          motif: req.body && req.body.motif,
+          bc: bcDelDoc,
+          exists: !!bcDelDoc,
+        });
+        if (!bcDelCheck.ok) {
+          return res.status(bcDelCheck.code).json({ success: false, error: bcDelCheck.error });
+        }
+
+        const bcDelActor = {
+          uid: (authUser && authUser.uid) || "",
+          profileId: bcDelRole || "",
+          name: (authUser && (authUser.name || authUser.email)) || "",
+        };
+        const bcDelMovSnap = await db_firestore.collection("stock_movements")
+          .where("bc_id", "==", bcDelId).get();
+        const bcDelMovs = bcDelMovSnap.docs.map((d) => ({ id: d.id, ref: d.ref, ...d.data() }));
+        const bcDelTri = bcSuppression.trierMouvements(bcDelMovs);
+        const bcDelPatch = bcSuppression.buildSuppressionUpdate({
+          bc: bcDelDoc, motif: bcDelCheck.motif, by: bcDelActor, at: Date.now(),
+        });
+
+        // 1) Annuler l'impact stock AVANT le soft-delete (le mouvement est encore
+        //    dans son état impactant ; reverseStockImpact applique l'inverse exact
+        //    de applyStockImpact). Un mouvement déjà supprimé est ignoré par
+        //    trierMouvements : le re-créditer serait un double comptage.
+        for (const mov of bcDelTri.aAnnuler) {
+          await reverseStockImpact(mov);
+        }
+        // 2) Puis marquer les mouvements, puis le bon.
+        for (const mov of bcDelTri.aMarquer) {
+          await mov.ref.update(bcDelPatch.movementUpdate);
+        }
+        await bcDelRef.update(bcDelPatch.bcUpdate);
+
+        return res.json({
+          success: true,
+          id: bcDelId,
+          numero: (bcDelDoc && bcDelDoc.numero) || "",
+          movements_deleted: bcDelTri.aMarquer.length,
+          movements_reversed: bcDelTri.aAnnuler.length,
         });
       }
 

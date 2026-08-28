@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:fab7a67ba17ef444",
+    "sourceFingerprint": "sha256:45c7b0440ba36e63",
     "stats": {
-      "targetFiles": 276,
-      "targetFilesWithDirectTests": 163,
-      "targetFilesWithTransitiveTests": 184,
-      "testFilesScanned": 243
+      "targetFiles": 280,
+      "targetFilesWithDirectTests": 166,
+      "targetFilesWithTransitiveTests": 187,
+      "testFilesScanned": 250
     }
   },
   "index": {
@@ -271,7 +271,8 @@
         "functions/lib/consoBons/__tests__/bonsToConsoRows.test.js",
         "tests/unit/bcScan.test.js",
         "tests/unit/bcScanMatch.test.js",
-        "tests/unit/campagneExportBackend.test.js"
+        "tests/unit/campagneExportBackend.test.js",
+        "tests/unit/fetchBonsSupprimes.test.js"
       ]
     },
     "functions/lib/campagneExport/index.js": {
@@ -348,7 +349,8 @@
       "transitiveTests": [
         "functions/lib/consoBons/__tests__/aggregateParcelle.test.js",
         "functions/lib/consoBons/__tests__/articleCategories.test.js",
-        "functions/lib/consoBons/__tests__/bonsToConsoRows.test.js"
+        "functions/lib/consoBons/__tests__/bonsToConsoRows.test.js",
+        "tests/unit/fetchBonsSupprimes.test.js"
       ]
     },
     "functions/lib/consoBons/cacheKeys.js": {
@@ -369,12 +371,17 @@
         "functions/lib/consoBons/__tests__/aggregateParcelle.test.js",
         "functions/lib/consoBons/__tests__/articleCategories.test.js",
         "functions/lib/consoBons/__tests__/bonsToConsoRows.test.js",
-        "functions/lib/consoBons/__tests__/fermeConso.test.js"
+        "functions/lib/consoBons/__tests__/fermeConso.test.js",
+        "tests/unit/fetchBonsSupprimes.test.js"
       ]
     },
     "functions/lib/consoBons/fetchBons.js": {
-      "directTests": [],
-      "transitiveTests": []
+      "directTests": [
+        "tests/unit/fetchBonsSupprimes.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/fetchBonsSupprimes.test.js"
+      ]
     },
     "functions/lib/consoBons/index.js": {
       "directTests": [],
@@ -658,7 +665,8 @@
         "tests/unit/bcDate.test.js",
         "tests/unit/bcScanJournal.test.js",
         "tests/unit/campagne-export-fail-loud.test.js",
-        "tests/unit/campagneUtilsBackend.test.js"
+        "tests/unit/campagneUtilsBackend.test.js",
+        "tests/unit/fetchBonsSupprimes.test.js"
       ]
     },
     "functions/lib/mappingConso/familles.js": {
@@ -1100,6 +1108,7 @@
         "functions/lib/consoBons/__tests__/articleCategories.test.js",
         "functions/lib/consoBons/__tests__/bonsToConsoRows.test.js",
         "functions/lib/consoBons/__tests__/fermeConso.test.js",
+        "tests/unit/fetchBonsSupprimes.test.js",
         "tests/unit/refParcelleFerme.test.js",
         "tests/unit/referentielSync.test.js"
       ]
@@ -1262,6 +1271,14 @@
         "tests/unit/bcDate.test.js"
       ]
     },
+    "functions/lib/stock/bcDoublons.js": {
+      "directTests": [
+        "tests/unit/bcDoublons.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/bcDoublons.test.js"
+      ]
+    },
     "functions/lib/stock/bcScan.js": {
       "directTests": [
         "tests/unit/bcScan.test.js",
@@ -1280,6 +1297,14 @@
         "tests/unit/bcScanJournal.test.js"
       ]
     },
+    "functions/lib/stock/bcSuppression.js": {
+      "directTests": [
+        "tests/unit/bcSuppression.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/bcSuppression.test.js"
+      ]
+    },
     "functions/lib/stock/locationsConfig.js": {
       "directTests": [
         "tests/unit/locationsConfig.test.js"
@@ -1292,6 +1317,7 @@
       "directTests": [],
       "transitiveTests": [
         "functions/lib/receptionValorisation/__tests__/receptionBdc.test.js",
+        "tests/unit/bcSuppression.test.js",
         "tests/unit/movementImpact.test.js"
       ]
     },
@@ -1302,6 +1328,7 @@
       ],
       "transitiveTests": [
         "functions/lib/receptionValorisation/__tests__/receptionBdc.test.js",
+        "tests/unit/bcSuppression.test.js",
         "tests/unit/movementImpact.test.js"
       ]
     },
@@ -1452,7 +1479,9 @@
         "tests/unit/articleMasterPick.test.js",
         "tests/unit/articleMerge.test.js",
         "tests/unit/bcScan.test.js",
-        "tests/unit/bcScanMatch.test.js"
+        "tests/unit/bcScanMatch.test.js",
+        "tests/unit/bcSuppression.test.js",
+        "tests/unit/fetchBonsSupprimes.test.js"
       ]
     },
     "functions/lib/stockMerge/masterSuggestion.js": {
@@ -1474,7 +1503,9 @@
         "tests/unit/articleMasterSuggestion.test.js",
         "tests/unit/articleMerge.test.js",
         "tests/unit/bcScan.test.js",
-        "tests/unit/bcScanMatch.test.js"
+        "tests/unit/bcScanMatch.test.js",
+        "tests/unit/bcSuppression.test.js",
+        "tests/unit/fetchBonsSupprimes.test.js"
       ]
     },
     "functions/lib/stockRoles/articleClassement.js": {
@@ -1484,7 +1515,8 @@
       "transitiveTests": [
         "functions/lib/stockRoles/__tests__/articleClassement.test.js",
         "tests/unit/articleCatalogMergeButton.test.js",
-        "tests/unit/articleCatalogWiring.test.js"
+        "tests/unit/articleCatalogWiring.test.js",
+        "tests/unit/bcSuppression.test.js"
       ]
     },
     "functions/lib/stockRoles/articlePermissions.js": {
@@ -1496,17 +1528,20 @@
         "functions/lib/stockRoles/__tests__/articleFusionPermissions.test.js",
         "functions/lib/stockRoles/__tests__/articlePermissions.test.js",
         "tests/unit/articleCatalogMergeButton.test.js",
-        "tests/unit/articleCatalogWiring.test.js"
+        "tests/unit/articleCatalogWiring.test.js",
+        "tests/unit/bcSuppression.test.js"
       ]
     },
     "functions/lib/stockRoles/index.js": {
       "directTests": [
         "tests/unit/articleCatalogMergeButton.test.js",
-        "tests/unit/articleCatalogWiring.test.js"
+        "tests/unit/articleCatalogWiring.test.js",
+        "tests/unit/bcSuppression.test.js"
       ],
       "transitiveTests": [
         "tests/unit/articleCatalogMergeButton.test.js",
-        "tests/unit/articleCatalogWiring.test.js"
+        "tests/unit/articleCatalogWiring.test.js",
+        "tests/unit/bcSuppression.test.js"
       ]
     },
     "functions/lib/suppliers/supplierValidation.js": {
@@ -1561,7 +1596,8 @@
         "functions/lib/consoBons/__tests__/bonsToConsoRows.test.js",
         "tests/unit/articleCategories.test.js",
         "tests/unit/classer-article-cablage.test.js",
-        "tests/unit/consoValorisation.test.js"
+        "tests/unit/consoValorisation.test.js",
+        "tests/unit/fetchBonsSupprimes.test.js"
       ]
     },
     "functions/lib/valorisation/fermeParcelle.js": {
@@ -1573,7 +1609,8 @@
         "functions/lib/consoBons/__tests__/articleCategories.test.js",
         "functions/lib/consoBons/__tests__/bonsToConsoRows.test.js",
         "functions/lib/consoBons/__tests__/fermeConso.test.js",
-        "tests/unit/fermeParcelle.test.js"
+        "tests/unit/fermeParcelle.test.js",
+        "tests/unit/fetchBonsSupprimes.test.js"
       ]
     },
     "functions/middleware/cache.js": {
@@ -1603,6 +1640,14 @@
       "transitiveTests": []
     },
     "public/components/AffectationAnalytiqueTable.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/BCDoublonDialog.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/BCDoublonDialog.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
@@ -1946,12 +1991,14 @@
     },
     "public/lib/campagneUtils.js": {
       "directTests": [
+        "tests/unit/bcDoublonFrontWiring.test.js",
         "tests/unit/campagnePeriodes.test.js",
         "tests/unit/campagneUtils.test.js",
         "tests/unit/campagneUtilsBackend.test.js",
         "tests/unit/magBCTabEditDate.test.js"
       ],
       "transitiveTests": [
+        "tests/unit/bcDoublonFrontWiring.test.js",
         "tests/unit/campagnePeriodes.test.js",
         "tests/unit/campagneUtils.test.js",
         "tests/unit/campagneUtilsBackend.test.js",

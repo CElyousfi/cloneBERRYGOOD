@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:34d1307e28c537f5 -->
-# Code Map — Modules lib (213)
+<!-- sourceFingerprint: sha256:3dc2921639dc93c8 -->
+# Code Map — Modules lib (215)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
 
@@ -145,8 +145,10 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/sentinel/sentinelRecipients.js | — | filterSentinelRecipients |
 | functions/lib/stock/articleHistoryIndex.js | — | buildArticleHistoryIndex, sliceArticleHistory, isStockLieu, STOCK_LIEU_TYPES |
 | functions/lib/stock/bcDate.js | — | ISO_DATE_RE, HISTORY_ACTION, isRealIsoDate, validateBcDate, campagneChange, buildDateUpdate |
+| functions/lib/stock/bcDoublons.js | — | MOTIF_SCAN, MOTIF_CONTENU, HISTORY_ACTION_FORCAGE, normaliserTexte, normaliserQuantite, signatureScan, signatureContenu, messageDoublon, detecterDoublon, forcageDemande, construireTraceForcage |
 | functions/lib/stock/bcScan.js | — | SIMILARITY_THRESHOLD, INCLUSION_THRESHOLD, AMBIGUITY_MARGIN, VARIETY_ALIASES, CULTURE_TOKENS, VARIETE_EST_CULTURE, extractCulture, ALLOWED_SCAN_MIME, EXT_TO_MIME, resolveScanMedia, normalizeLabel, toNumber, buildBcScanPrompt, sanitizeVocabList, buildVocabulaireSection, selectVocabArticles, VOCAB_MAX_ENTRIES, parseAiJson, flattenBcScan, diceCoefficient, matchArticle, extractSecteurs, extractVariete, aliasMatchParcelle, parcelleAliasDocId, nextParcelleAliasCount, matchParcelle |
 | functions/lib/stock/bcScanJournal.js | — | STATUTS, MAX_LIGNES, PALMARES_TAILLE, PERIODES_MAX, normalizeJournalLigne, buildJournalDocs, computeScanPrecision, periodeDe, moisDe, periodesEntre, periodesCouvertes |
+| functions/lib/stock/bcSuppression.js | — | HISTORY_ACTION, MOTIF_MIN, validerSuppression, trierMouvements, buildSuppressionUpdate |
 | functions/lib/stock/locationsConfig.js | — | ROLE_CONTROLE, authorizeSetLocations, buildLocationsPatch |
 | functions/lib/stock/movementGuard.js | — | IMPORT_CREATED_BY, VALIDATED_STATUS, isImportedMovement, isValidatedMovement, isDeletedMovement, isCreator, evaluateMutable, canEditMovement, canDeleteMovement, ADMIN_DELETE_ROLES, isAdminDeleter, evaluateAdminDelete, canAdminDeleteMovement, refusalMessage |
 | functions/lib/stock/movementImpact.js | — | isImpactApplied, IMPACT_STATUS |
@@ -167,8 +169,8 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/stockMerge/articleMerge.js | — | normalizeArticleName, groupDuplicates, verifierIntegriteFiche, buildArticleIndex, resolveArticleTarget, rememberArticle, isMovementOpen, isBdcOpen, BDC_CLOSED_STATUSES |
 | functions/lib/stockMerge/masterSuggestion.js | — | choisirMaster, pmpArticle, prixHtArticle, prixArticle, nbAchatsArticle, formatDh, cleDocument, REGLE_PMP, REGLE_PRIX_HT, REGLE_NB_ACHATS |
 | functions/lib/stockRoles/articleClassement.js | — | fichesAClasserParNom, referencesAClasserParNom |
-| functions/lib/stockRoles/articlePermissions.js | — | peutModifierArticle, peutFusionnerArticles, ROLE_CATALOGUE, ROLE_SUPERVISEUR, REFUS |
-| functions/lib/stockRoles/index.js | — | peutModifierArticle, peutFusionnerArticles, fichesAClasserParNom, referencesAClasserParNom, ROLE_CATALOGUE, ROLE_SUPERVISEUR, REFUS |
+| functions/lib/stockRoles/articlePermissions.js | — | peutModifierArticle, peutFusionnerArticles, peutSupprimerBonConso, ROLE_CATALOGUE, ROLE_SUPERVISEUR, REFUS |
+| functions/lib/stockRoles/index.js | — | peutModifierArticle, peutFusionnerArticles, peutSupprimerBonConso, fichesAClasserParNom, referencesAClasserParNom, ROLE_CATALOGUE, ROLE_SUPERVISEUR, REFUS |
 | functions/lib/suppliers/supplierValidation.js | — | validateSupplier, normalizeIf, normalizeIce, normalizePhone, isValidIf, isValidIce, isValidPhone, isNonEmpty |
 | functions/lib/triage/bugTriage.js | — | MODULES, SEVERITIES, TRIAGE_MODEL, SYSTEM_PROMPT, TRIAGE_TOOL, shortId, shouldNotifyResolved, buildResolvedMessage, buildResolvedDGMessage, buildRecentBugsBlock, buildSystemPrompt, buildTextBlock, buildUserContent, isValidTriage, parseTriage, callClaude |
 | functions/lib/validation/validationAccess.js | — | CAPORAL_FERME_BY_PROFILE, genericRoleFor, fermeForCaporalProfile, authorizeValidationAction |

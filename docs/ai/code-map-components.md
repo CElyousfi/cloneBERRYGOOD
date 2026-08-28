@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:7ea026100a248fcb -->
-# Code Map — Composants frontend (355)
+<!-- sourceFingerprint: sha256:a4136579369f5072 -->
+# Code Map — Composants frontend (357)
 
 Chaque composant React de public/app.jsx et public/components/, avec son emplacement exact et le tab qui le monte — à consulter AVANT toute recherche dans app.jsx.
 
@@ -42,6 +42,8 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | AuthenticatedApp | public/app.jsx:68284 | — |
 | BackupManagementPanel | public/app.jsx:63763 | — |
 | BaremesPaiePanel | public/app.jsx:26715 | — |
+| BCD_explication | public/components/BCDoublonDialog.jsx:50 | — |
+| BCDoublonDialog | public/components/BCDoublonDialog.jsx:57 | — |
 | BudgetVsReelTab | public/app.jsx:58414 | fin_budget |
 | BugReportButtonComponent | public/components/BugReportButton.jsx:38 | — |
 | BugReportsAdminComponent | public/components/BugReportsAdmin.jsx:117 | — |

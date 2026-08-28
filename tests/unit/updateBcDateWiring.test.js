@@ -37,7 +37,11 @@ const SRC = fs.readFileSync(path.join(__dirname, '../../functions/index.js'), 'u
 function handlerSource() {
   const start = SRC.indexOf('if (action === "update-bc-date"');
   assert.notEqual(start, -1, 'action update-bc-date absente de functions/index.js');
-  const next = SRC.indexOf('// ========== STOCK DASHBOARD ==========', start);
+  // Borne = le marqueur de la section SUIVANTE (`delete-bc`, ajouté par le
+  // ticket sb/bc-doublons-garde). Élargir cette borne ferait entrer le handler
+  // voisin dans les `doesNotMatch` ci-dessous, qui rougiraient sur du code
+  // parfaitement légitime — et pousserait à affaiblir les assertions.
+  const next = SRC.indexOf('// ========== SUPPRESSION D\'UN BON DE CONSOMMATION ==========', start);
   assert.notEqual(next, -1, 'fin du handler introuvable');
   return SRC.slice(start, next);
 }

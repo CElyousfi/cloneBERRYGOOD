@@ -139,6 +139,9 @@
     // NOTE : ce useState est volontairement le DERNIER (les tests unitaires
     // adressent les états par index positionnel).
     const [analyse, setAnalyse] = useState({ done: 0, total: 0 });
+    // Doublon refusé par create-bc (409). Ajouté APRÈS `analyse` pour ne pas
+    // décaler les index positionnels utilisés par les tests existants.
+    const [doublonScan, setDoublonScan] = useState(null);
 
     // Miroir de la file lisible depuis la boucle d'analyse asynchrone : l'état
     // React n'y serait visible qu'au rendu suivant.
@@ -617,6 +620,26 @@
           if (!confirm('Stock insuffisant pour ' + it.article + ' (dispo: ' + dispo + '). Continuer quand meme ?')) return;
         }
       }
+      return saveEntry(entry, validItems, false);
+    };
+
+    /**
+     * Forçage d'un doublon refusé (409). Rejoue EXACTEMENT l'envoi mémorisé —
+     * re-dériver les lignes ici risquerait d'envoyer autre chose que ce que le
+     * serveur a jugé doublon. Le contrôle de stock n'est pas rejoué : il a déjà
+     * été arbitré au premier essai.
+     */
+    const forcerCreationDoublon = () => {
+      if (!doublonScan) return;
+      return saveEntry(doublonScan.entry, doublonScan.items || [], true);
+    };
+
+    /**
+     * Envoi effectif de `create-bc`. `force` porte l'échappatoire du magasinier
+     * face à la garde anti-doublon : sans elle, un 409 le laisserait devant un
+     * message d'erreur brut, sans issue et sans savoir quel bon fait obstacle.
+     */
+    const saveEntry = async (entry, validItems, force) => {
       setSaving(true);
       try {
         const by = { profileId: currentProfile, name: (profileData && profileData.name) || currentProfile };
@@ -640,10 +663,22 @@
             motif: entry.header.motif || '',
             authorized_by: by,
             created_by: by,
+            // Drapeau envoyé UNIQUEMENT sur forçage explicite : présent à chaque
+            // appel, il neutraliserait la garde anti-doublon en permanence.
+            ...(force ? { force_doublon: true } : {}),
           }),
         });
         const json = await resp.json();
+        if (json && !json.success && json.doublon) {
+          // 409 : on ouvre la fenêtre de doublon (numéro du bon existant +
+          // forçage explicite) au lieu d'un `alert` brut sans issue. On mémorise
+          // l'envoi tel quel pour pouvoir le rejouer à l'identique.
+          setDoublonScan({ ...json.doublon, message: json.error || '', entry, items: validItems });
+          setSaving(false);
+          return;
+        }
         if (!json || !json.success) { alert('Erreur: ' + ((json && json.error) || 'Echec')); setSaving(false); return; }
+        setDoublonScan(null);
         // Apprentissage des alias : best effort, ne bloque jamais.
         validItems
           .filter(i => (i.article_lu || '').trim() && i.article && i.article !== i.article_initial)
@@ -1031,6 +1066,14 @@
             )}
           </div>
         </div>
+        {/* Doublon refusé par create-bc (409). Garde explicite sur le global :
+            une référence nue crasherait TOUT le modal si le script n'est pas
+            chargé (cf. crashes #200). */}
+        {doublonScan && window.BCDoublonDialog && (
+          <window.BCDoublonDialog doublon={doublonScan} saving={saving}
+            onCancel={() => setDoublonScan(null)}
+            onForce={forcerCreationDoublon} />
+        )}
       </div>
     );
   }

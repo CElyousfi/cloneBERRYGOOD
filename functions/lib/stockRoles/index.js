@@ -18,6 +18,7 @@
 const {
   peutModifierArticle,
   peutFusionnerArticles,
+  peutSupprimerBonConso,
   ROLE_CATALOGUE,
   ROLE_SUPERVISEUR,
   REFUS,
@@ -27,6 +28,7 @@ const { fichesAClasserParNom, referencesAClasserParNom } = require('./articleCla
 module.exports = {
   peutModifierArticle,
   peutFusionnerArticles,
+  peutSupprimerBonConso,
   fichesAClasserParNom,
   referencesAClasserParNom,
   ROLE_CATALOGUE,

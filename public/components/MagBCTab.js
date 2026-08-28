@@ -198,6 +198,15 @@
     const [editDateValue, setEditDateValue] = useState('');
     const [editDateSaving, setEditDateSaving] = useState(false);
     const [editDateError, setEditDateError] = useState('');
+    // --- Doublon refusé par create-bc (409) -----------------------------
+    // NOUVEAUX useState AJOUTÉS EN FIN DE LISTE, jamais intercalés : les
+    // tests de rendu indexent les hooks par ordre de déclaration.
+    const [doublonBc, setDoublonBc] = useState(null);
+    // --- Suppression d'un bon (achats / dg) -----------------------------
+    const [deleteBc, setDeleteBc] = useState(null);
+    const [deleteMotif, setDeleteMotif] = useState('');
+    const [deleteSaving, setDeleteSaving] = useState(false);
+    const [deleteError, setDeleteError] = useState('');
     const isImportBC = bc => bc._isImport || (bc.numero || '').startsWith('IMP-') || bc.created_by?.userId === 'import_caneva';
     const loadBcs = () => {
       Promise.all([fetch('/api/stock?action=list-bc&type=' + type).then(r => r.json()).catch(() => ({
@@ -584,46 +593,132 @@
       // côté serveur (create-bc). Un repli muet ici a produit
       // 48 bons /48 en « engrais » et un onglet Pesticides vide ;
       // la classification vient désormais de l'article, pas du bon.
-      fetch('/api/stock?action=create-bc', {
+      return postBc(validItems, scanUrl, false);
+    };
+
+    /**
+     * Envoi effectif de `create-bc`. `force` n'est PAS un détail de
+     * signature : c'est l'échappatoire du magasinier face à la garde
+     * anti-doublon. Un refus 409 ouvre la fenêtre de doublon au lieu
+     * d'un `alert` brut — sinon le magasinier est dans une impasse,
+     * bloqué par un message qui ne nomme même pas le bon fautif.
+     */
+    const postBc = (validItems, scanUrl, force) => {
+      const by = {
+        profileId: currentProfile,
+        name: profileData?.name || currentProfile
+      };
+      const payload = {
+        type: type || '',
+        date: form.date,
+        lieu_source: {
+          type: form.lieu_source_type,
+          id: form.lieu_source_id
+        },
+        items: validItems.map(i => ({
+          article: i.article,
+          quantite: i.quantite,
+          unite: i.unite,
+          parcelle: i.parcelle,
+          parcelle_ref: i.parcelle_ref || '',
+          culture: i.culture,
+          ferme: i.ferme,
+          groupe_id: i.groupe_id || ''
+        })),
+        scan_url: scanUrl,
+        authorized_by: by,
+        created_by: by
+      };
+      // Drapeau envoyé UNIQUEMENT sur forçage explicite : présent à
+      // chaque appel, il neutraliserait la garde en permanence.
+      if (force) payload.force_doublon = true;
+      return fetch('/api/stock?action=create-bc', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          type: type || '',
-          date: form.date,
-          lieu_source: {
-            type: form.lieu_source_type,
-            id: form.lieu_source_id
-          },
-          items: validItems.map(i => ({
-            article: i.article,
-            quantite: i.quantite,
-            unite: i.unite,
-            parcelle: i.parcelle,
-            parcelle_ref: i.parcelle_ref || '',
-            culture: i.culture,
-            ferme: i.ferme,
-            groupe_id: i.groupe_id || ''
-          })),
-          scan_url: scanUrl,
-          authorized_by: {
-            profileId: currentProfile,
-            name: profileData?.name || currentProfile
-          },
-          created_by: {
-            profileId: currentProfile,
-            name: profileData?.name || currentProfile
-          }
-        })
+        body: JSON.stringify(payload)
       }).then(r => r.json()).then(json => {
         if (json.success) {
+          setDoublonBc(null);
           alert('Bon de consommation ' + json.numero + ' cree');
           clearBcDraft();
           setShowForm(false);
           loadBcs();
-        } else alert('Erreur: ' + (json.error || 'Echec'));
+          return;
+        }
+        if (json.doublon) {
+          // On mémorise de quoi REJOUER l'envoi tel quel : re-dériver
+          // les items au moment du forçage risquerait d'envoyer autre
+          // chose que ce que le serveur a jugé doublon.
+          setDoublonBc({
+            ...json.doublon,
+            message: json.error || '',
+            items: validItems,
+            scan_url: scanUrl
+          });
+          return;
+        }
+        setDoublonBc(null);
+        alert('Erreur: ' + (json.error || 'Echec'));
       }).catch(() => alert('Erreur reseau'));
+    };
+    const forcerCreationDoublon = () => {
+      if (!doublonBc) return;
+      return postBc(doublonBc.items || [], doublonBc.scan_url || null, true);
+    };
+
+    // --- Suppression d'un bon de consommation ---------------------------
+    // Réservée à `achats` et `dg` : le serveur (delete-bc) refuse les
+    // autres, un bouton visible pour eux ne mènerait qu'à un 403.
+    // Supprimer un bon ANNULE l'impact stock de ses mouvements : les
+    // quantités reviennent en stock. Le motif est exigé ICI aussi, pour
+    // ne pas envoyer une requête qui échouera de toute façon.
+    const canDeleteBc = currentProfile === 'achats' || currentProfile === 'dg';
+    const openDeleteBc = bc => {
+      setDeleteBc(bc);
+      setDeleteMotif('');
+      setDeleteError('');
+    };
+    const closeDeleteBc = () => {
+      setDeleteBc(null);
+      setDeleteError('');
+    };
+    const deleteMotifValide = (deleteMotif || '').trim().length >= 3;
+    const submitDeleteBc = async () => {
+      if (!deleteBc) return;
+      if (!deleteMotifValide) {
+        setDeleteError('Motif obligatoire (3 caractères minimum)');
+        return;
+      }
+      setDeleteSaving(true);
+      setDeleteError('');
+      try {
+        const r = await fetch('/api/stock?action=delete-bc', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            bc_id: deleteBc.id,
+            motif: deleteMotif.trim()
+          })
+        });
+        const j = await r.json();
+        if (!j.success) {
+          // Message serveur affiché TEL QUEL (403, bon introuvable,
+          // déjà supprimé…) — jamais reformulé côté client.
+          setDeleteError(j.error || 'Échec de la suppression');
+          setDeleteSaving(false);
+          return;
+        }
+        setDeleteBc(null);
+        setDetailBc(null);
+        loadBcs();
+      } catch (e) {
+        setDeleteError('Erreur réseau');
+      }
+      setDeleteSaving(false);
     };
 
     // --- Modification de la date d'un bon existant ----------------------
@@ -982,6 +1077,23 @@
           }
         }, /*#__PURE__*/React.createElement("i", {
           className: "fa-solid fa-pen"
+        })), isFirst && canDeleteBc && isEditableBc(bc) && /*#__PURE__*/React.createElement("button", {
+          onClick: e => {
+            e.stopPropagation();
+            openDeleteBc(bc);
+          },
+          title: "Supprimer le bon",
+          style: {
+            marginLeft: 6,
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            color: '#e74c3c',
+            fontSize: 11,
+            padding: 0
+          }
+        }, /*#__PURE__*/React.createElement("i", {
+          className: "fa-solid fa-trash"
         }))), /*#__PURE__*/React.createElement("td", {
           style: {
             fontSize: 12
@@ -1587,7 +1699,119 @@
         fontSize: 13,
         opacity: editDateSaving || !editDateValue ? 0.6 : 1
       }
-    }, editDateSaving ? 'Enregistrement...' : 'Confirmer la date')))), showCreateArticle && /*#__PURE__*/React.createElement("div", {
+    }, editDateSaving ? 'Enregistrement...' : 'Confirmer la date')))), doublonBc && window.BCDoublonDialog && /*#__PURE__*/React.createElement(window.BCDoublonDialog, {
+      doublon: doublonBc,
+      onCancel: () => setDoublonBc(null),
+      onForce: forcerCreationDoublon
+    }), deleteBc && /*#__PURE__*/React.createElement("div", {
+      className: "modal-overlay",
+      style: {
+        zIndex: 10002
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "modal-content",
+      style: {
+        maxWidth: 440,
+        width: '90vw'
+      }
+    }, /*#__PURE__*/React.createElement("h3", {
+      style: {
+        marginTop: 0,
+        color: '#a01d10'
+      }
+    }, /*#__PURE__*/React.createElement("i", {
+      className: "fa-solid fa-trash",
+      style: {
+        marginRight: 8
+      }
+    }), "Supprimer le bon"), /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 12,
+        color: 'var(--gray-400)',
+        marginBottom: 12
+      }
+    }, "Bon ", /*#__PURE__*/React.createElement("strong", {
+      style: {
+        color: 'var(--berry)'
+      }
+    }, deleteBc.numero || ''), " \u2014 date : ", /*#__PURE__*/React.createElement("strong", null, deleteBc.date || '—')), /*#__PURE__*/React.createElement("div", {
+      style: {
+        padding: '8px 10px',
+        borderRadius: 8,
+        background: '#fff4e5',
+        border: '1px solid #ffb74d',
+        color: '#8a4b00',
+        fontSize: 12,
+        marginBottom: 12
+      }
+    }, /*#__PURE__*/React.createElement("i", {
+      className: "fa-solid fa-triangle-exclamation",
+      style: {
+        marginRight: 6
+      }
+    }), "Les quantit\xE9s de ce bon ", /*#__PURE__*/React.createElement("strong", null, "reviennent en stock"), " : la consommation est annul\xE9e, et le bon dispara\xEEt des listes et des analyses."), /*#__PURE__*/React.createElement("label", {
+      style: {
+        fontSize: 12,
+        fontWeight: 600,
+        display: 'block',
+        marginBottom: 4
+      }
+    }, "Motif de la suppression *"), /*#__PURE__*/React.createElement("input", {
+      value: deleteMotif,
+      onChange: e => {
+        setDeleteMotif(e.target.value);
+        setDeleteError('');
+      },
+      placeholder: "Ex. : doublon de BC-2026-0032",
+      style: {
+        width: '100%',
+        padding: '8px 12px',
+        borderRadius: 8,
+        border: '1px solid #ddd',
+        fontSize: 13
+      }
+    }), deleteError && /*#__PURE__*/React.createElement("div", {
+      style: {
+        marginTop: 10,
+        padding: '8px 10px',
+        borderRadius: 8,
+        background: '#fdecea',
+        border: '1px solid #e74c3c',
+        color: '#a01d10',
+        fontSize: 12
+      }
+    }, deleteError), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: 'flex',
+        gap: 8,
+        justifyContent: 'flex-end',
+        marginTop: 16
+      }
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: closeDeleteBc,
+      style: {
+        padding: '8px 16px',
+        borderRadius: 8,
+        border: '1px solid #ddd',
+        background: '#fff',
+        cursor: 'pointer',
+        fontSize: 13
+      }
+    }, "Annuler"), /*#__PURE__*/React.createElement("button", {
+      onClick: submitDeleteBc,
+      disabled: deleteSaving || !deleteMotifValide,
+      style: {
+        padding: '8px 16px',
+        borderRadius: 8,
+        border: 'none',
+        background: '#e74c3c',
+        color: '#fff',
+        cursor: 'pointer',
+        fontWeight: 600,
+        fontSize: 13,
+        opacity: deleteSaving || !deleteMotifValide ? 0.6 : 1
+      }
+    }, deleteSaving ? 'Suppression...' : 'Supprimer ce bon')))), showCreateArticle && /*#__PURE__*/React.createElement("div", {
       className: "modal-overlay",
       style: {
         zIndex: 10001

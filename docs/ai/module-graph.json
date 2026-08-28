@@ -4,7 +4,7 @@
     "healthScore": {
       "subScores": {
         "classification": {
-          "detail": "238/383 fichiers classifiés",
+          "detail": "239/384 fichiers classifiés",
           "max": 40,
           "score": 25
         },
@@ -14,7 +14,7 @@
           "score": 27
         },
         "testCoverage": {
-          "detail": "71/172 modules avec ≥1 test",
+          "detail": "71/173 modules avec ≥1 test",
           "max": 30,
           "score": 12
         }
@@ -31,11 +31,11 @@
         "file": "public/components/CampagneAnalytiqueTab.jsx"
       },
       {
-        "commits": 46,
+        "commits": 44,
         "file": "public/app.jsx"
       },
       {
-        "commits": 28,
+        "commits": 31,
         "file": "functions/index.js"
       },
       {
@@ -64,13 +64,13 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:eae67faf923210ab",
+    "sourceFingerprint": "sha256:458f443db1c6a5ee",
     "stats": {
       "backendModules": 98,
       "cloudFunctions": 91,
       "coverageScore": 41,
       "domains": 10,
-      "extractedComponents": 30,
+      "extractedComponents": 31,
       "firestoreCollections": 61,
       "libHelpers": 44,
       "monolithSymbols": 120,
@@ -240,7 +240,7 @@
         ]
       },
       "confidence": "medium",
-      "coverageScore": 17,
+      "coverageScore": 14,
       "firestore": {
         "collections": [
           "bug_reports",
@@ -250,6 +250,7 @@
       },
       "frontend": {
         "components": [
+          "public/components/BCDoublonDialog.jsx",
           "public/components/BugReportButton.jsx",
           "public/components/BugReportsAdmin.jsx"
         ],
@@ -2431,6 +2432,10 @@
     "public/components/AffectationAnalytiqueTable.jsx": {
       "confidence": "high",
       "domain": "referentiel"
+    },
+    "public/components/BCDoublonDialog.jsx": {
+      "confidence": "medium",
+      "domain": "admin"
     },
     "public/components/BugReportButton.jsx": {
       "confidence": "medium",

@@ -22,14 +22,22 @@
 const { buildArticleCategoryIndex } = require('./bonsToConsoRows');
 
 /**
- * Lit tous les bons de consommation.
+ * Lit tous les bons de consommation NON SUPPRIMÉS.
+ *
+ * Le filtre `deleted !== true` est indispensable depuis l'action `delete-bc` :
+ * un bon supprimé a vu l'impact de ses mouvements de stock ANNULÉ. Le laisser
+ * ici le maintiendrait dans les analyses de consommation (coût/Ha, campagne)
+ * alors qu'il ne pèse plus rien sur les soldes — l'inventaire et l'analytique
+ * diraient deux choses différentes.
  *
  * @param {*} db instance Firestore injectée.
  * @returns {Promise<Array<Object>>} documents `{ id, ...data }`.
  */
 async function fetchBonsConsommation(db) {
   const snap = await db.collection('consumption_vouchers').get();
-  return snap.docs.map((d) => Object.assign({ id: d.id }, d.data()));
+  return snap.docs
+    .map((d) => Object.assign({ id: d.id }, d.data()))
+    .filter((bc) => bc.deleted !== true);
 }
 
 /**

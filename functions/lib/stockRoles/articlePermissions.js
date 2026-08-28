@@ -81,9 +81,33 @@ function peutFusionnerArticles(role) {
   return peutModifierArticle(role);
 }
 
+/**
+ * Décide si `role` peut SUPPRIMER un bon de consommation (`delete-bc`).
+ *
+ * MÊME POPULATION que `peutModifierArticle` — `achats` ou `dg` — et c'est la
+ * règle déjà en place pour les réceptions (`delete-movement`, chemin admin
+ * métier `isAdminDeleter`) : le magasinier ne défait pas son propre bon.
+ * Supprimer un bon annule des mouvements de stock déjà appliqués sur les
+ * soldes ; c'est une correction d'inventaire, pas une action de saisie.
+ *
+ * Export DÉDIÉ plutôt qu'un alias, pour la même raison que
+ * `peutFusionnerArticles` : les deux droits pourraient légitimement diverger un
+ * jour, la délégation garantit qu'ils ne divergent pas PAR ACCIDENT.
+ *
+ * Le rôle DOIT être celui résolu SERVEUR (`resolveCallerRole`), jamais lu dans
+ * le body.
+ *
+ * @param {*} role profileId résolu serveur.
+ * @returns {Verdict}
+ */
+function peutSupprimerBonConso(role) {
+  return peutModifierArticle(role);
+}
+
 module.exports = {
   peutModifierArticle,
   peutFusionnerArticles,
+  peutSupprimerBonConso,
   ROLE_CATALOGUE,
   ROLE_SUPERVISEUR,
   REFUS,
