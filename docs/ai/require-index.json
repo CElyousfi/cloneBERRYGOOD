@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:1845daeb9abc4226",
+    "sourceFingerprint": "sha256:ee7ba887725cbed0",
     "stats": {
-      "targetFiles": 274,
-      "targetFilesWithDirectTests": 160,
-      "targetFilesWithTransitiveTests": 181,
-      "testFilesScanned": 240
+      "targetFiles": 275,
+      "targetFilesWithDirectTests": 161,
+      "targetFilesWithTransitiveTests": 182,
+      "testFilesScanned": 242
     }
   },
   "index": {
@@ -1984,6 +1984,18 @@
       ],
       "transitiveTests": [
         "tests/unit/factureExportUtils.test.js"
+      ]
+    },
+    "public/lib/fusionMasse.js": {
+      "directTests": [
+        "tests/unit/articleMergeLot.test.js",
+        "tests/unit/articleMergePopupChoix.test.js",
+        "tests/unit/fusionMasse.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/articleMergeLot.test.js",
+        "tests/unit/articleMergePopupChoix.test.js",
+        "tests/unit/fusionMasse.test.js"
       ]
     },
     "public/lib/growthUtils.js": {

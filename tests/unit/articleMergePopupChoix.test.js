@@ -125,6 +125,13 @@ async function chargerDoublons(groups) {
     '  var setMergePreview = function () {};\n' +
     '  var setMergeGroups = function (g) { sink.groups = g; };\n' +
     '  var setMergeMasters = function (m) { sink.masters = m; };\n' +
+    // État de la fusion EN MASSE : `loadDuplicates` doit le remettre à zéro à
+    // chaque rechargement, sinon un lot chiffré resterait exécutable sur des
+    // groupes qui n'existent plus.
+    '  var setMergeSelection = function (s) { sink.selection = s; };\n' +
+    '  var setMergeApercu = function (a) { sink.apercu = a; };\n' +
+    '  var setMergeProgress = function (p) { sink.progress = p; };\n' +
+    '  var setMergeRapport = function (r) { sink.rapport = r; };\n' +
     '  var alert = function (m) { sink.alert = m; };\n' +
     '  var fetch = function (url) {\n' +
     '    sink.url = url;\n' +
@@ -209,9 +216,14 @@ function rendreGroupe(group, masters) {
     '  var setMergePreview = function () {};\n' +
     '  var previewMerge = function () {};\n' +
     '  var executeMerge = function () {};\n' +
+    // Fusion en masse : la case à cocher du groupe lit la logique pure.
+    '  var mergeSelection = {};\n' +
+    '  var basculerSelection = function () {};\n' +
+    '  var FM = window.FusionMasse;\n' +
     '  return (<div>' + extraireBlocGroupe() + '</div>);\n' +
     '};\n';
   const sandbox = { window: {}, console, isFinite, parseFloat };
+  sandbox.window.FusionMasse = require('../../public/lib/fusionMasse.js');
   sandbox.window.React = { createElement, Fragment: 'Fragment' };
   sandbox.React = sandbox.window.React;
   vm.createContext(sandbox);

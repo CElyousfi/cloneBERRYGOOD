@@ -47520,11 +47520,33 @@ ${rejetHtml}
             const [mergeMasters, setMergeMasters] = useState({}); // normalized -> master_ref
             const [mergePreview, setMergePreview] = useState(null); // { normalized, data }
             const [mergeBusy, setMergeBusy] = useState(false);
+            // --- Fusion EN MASSE (sélection multiple) ---
+            // Omar a traité 20 groupes à l'unité ; il en reste 85. C'est le VOLUME
+            // qui pose problème, pas la mécanique : on réutilise `merge-articles`
+            // groupe par groupe, sans rien réécrire côté fusion.
+            const [mergeSelection, setMergeSelection] = useState({}); // normalized -> coché
+            const [mergeApercu, setMergeApercu] = useState(null); // { signature, total }
+            const [mergeProgress, setMergeProgress] = useState(null); // { phase, fait, total }
+            const [mergeRapport, setMergeRapport] = useState(null);
 
             const actor = () => ({ uid: currentProfile, profileId: currentProfile, name: profileData?.name||currentProfile, email: profileData?.email||'' });
 
+            // Logique PURE d'orchestration (public/lib/fusionMasse.js) : sélection
+            // fail-closed, adressage par docId, signature du lot chiffré, comptes
+            // rendus. Rien de tout ça ne vit dans le monolithe.
+            const FM = window.FusionMasse || {};
+            const mergeLotComplet = FM.construireLot
+                ? FM.construireLot(mergeGroups||[], mergeMasters, mergeSelection)
+                : { lot: [], ignores: [] };
+            const mergeLot = mergeLotComplet.lot;
+            const mergeIgnores = mergeLotComplet.ignores;
+            // L'aperçu ne vaut QUE pour le lot qu'il a chiffré : dès que la sélection
+            // ou un master change, la signature diverge et la fusion se réinterdit.
+            const mergeApercuAJour = !!(mergeApercu && FM.signatureLot && mergeApercu.signature === FM.signatureLot(mergeLot));
+
             const loadDuplicates = () => {
                 setShowMerge(true); setMergeLoading(true); setMergeGroups(null); setMergeMasters({}); setMergePreview(null);
+                setMergeSelection({}); setMergeApercu(null); setMergeProgress(null); setMergeRapport(null);
                 fetch('/api/stock?action=suggest-article-duplicates&profileId='+encodeURIComponent(currentProfile))
                 .then(r=>r.json()).then(j=>{
                     // Présélection = le maître SUGGÉRÉ par le serveur (règle pure
@@ -47562,6 +47584,85 @@ ${rejetHtml}
                 setMergeBusy(true);
                 fetch('/api/stock?action=merge-articles', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ master_ref: masterRef, doublon_refs: doublonRefs, mode:'execute', by: actor() }) })
                 .then(r=>r.json()).then(j=>{ if(j.success){ alert('Fusion effectuée : '+(j.counts?.movements||0)+' mouvement(s), '+(j.counts?.balances||0)+' solde(s), '+(j.counts?.bdc||0)+' BDC réassignés.'); setMergePreview(null); load(); loadDuplicates(); } else alert('Erreur: '+j.error); }).catch(()=>alert('Erreur réseau')).finally(()=>setMergeBusy(false));
+            };
+
+            // Coche / décoche un groupe. Un groupe non sélectionnable (aucun article
+            // à conserver déterminé) ne peut pas entrer dans le lot : fail-closed,
+            // une fusion en masse ne devine jamais un master.
+            const basculerSelection = (group) => {
+                if(!FM.estSelectionnable || !FM.estSelectionnable(group, mergeMasters)) return;
+                setMergeApercu(null);
+                setMergeSelection(s => { const n = {...s}; if(n[group.normalized]) delete n[group.normalized]; else n[group.normalized] = true; return n; });
+            };
+
+            const toutSelectionner = (tout) => {
+                setMergeApercu(null);
+                if(!tout){ setMergeSelection({}); return; }
+                const cles = FM.clesSelectionnables ? FM.clesSelectionnables(mergeGroups||[], mergeMasters) : [];
+                const n = {}; cles.forEach(c => { n[c] = true; }); setMergeSelection(n);
+            };
+
+            // APERÇU GLOBAL — obligatoire avant toute écriture. Un `merge-articles`
+            // en mode `preview` par groupe (la MÊME action que la fusion unitaire),
+            // puis addition des chiffres SERVEUR : l'écran n'invente aucun nombre.
+            // Chaque preview scanne cinq collections : la progression est affichée,
+            // sinon 85 aperçus font conclure au plantage.
+            const apercuLot = async () => {
+                if(mergeLot.length===0){ alert('Sélectionnez au moins un groupe fusionnable.'); return; }
+                setMergeBusy(true); setMergeApercu(null); setMergeRapport(null);
+                setMergeProgress({ phase:'apercu', fait:0, total:mergeLot.length, courant:'' });
+                const entrees = [];
+                for(let i=0;i<mergeLot.length;i++){
+                    const e = mergeLot[i];
+                    setMergeProgress({ phase:'apercu', fait:i, total:mergeLot.length, courant:e.normalized });
+                    let j;
+                    try {
+                        j = await fetch('/api/stock?action=merge-articles', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ master_ref: e.master_ref, doublon_refs: e.doublon_refs, mode:'preview', by: actor() }) }).then(r=>r.json());
+                    } catch(err) { j = { success:false, error:'erreur réseau' }; }
+                    if(!j || !j.success){
+                        alert('Aperçu interrompu sur « '+e.normalized+' » : '+((j&&j.error)||'erreur inconnue')+'\nAucune écriture n\'a eu lieu.');
+                        setMergeProgress(null); setMergeBusy(false); return;
+                    }
+                    entrees.push({ normalized:e.normalized, doublon_refs:e.doublon_refs, preview:j.preview });
+                }
+                setMergeApercu({ signature: FM.signatureLot(mergeLot), total: FM.agregerApercu(entrees) });
+                setMergeProgress(null); setMergeBusy(false);
+            };
+
+            // EXÉCUTION SÉQUENTIELLE, un groupe après l'autre, via `merge-articles`
+            // en mode `execute` — mécanique inchangée. ARRÊT à la première anomalie :
+            // les fusions déjà passées sont acquises (chacune a son audit
+            // `article_merges` avec snapshot de rollback) et le compte rendu dit
+            // lesquelles, sinon un échec à mi-parcours laisse le lot dans le flou.
+            const executerLot = async () => {
+                if(!mergeApercuAJour){ alert('Prévisualisez le lot avant de fusionner (la sélection a changé depuis le dernier aperçu).'); return; }
+                const t = mergeApercu.total;
+                if(!confirm('Fusionner '+t.groupes+' groupe(s) de doublons ?\n'
+                    +'• '+t.fiches_desactivees+' fiche(s) désactivée(s)\n'
+                    +'• '+t.soldes_agreges+' solde(s) agrégé(s) vers le master\n'
+                    +'• '+t.mouvements+' mouvement(s) et '+t.bdc+' BDC ouvert(s) réassignés\n'
+                    +'Les doublons sont désactivés (réversible).')) return;
+                setMergeBusy(true); setMergeRapport(null); setMergePreview(null);
+                const resultats = [];
+                for(let i=0;i<mergeLot.length;i++){
+                    const e = mergeLot[i];
+                    setMergeProgress({ phase:'execution', fait:i, total:mergeLot.length, courant:e.normalized });
+                    let j;
+                    try {
+                        j = await fetch('/api/stock?action=merge-articles', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ master_ref: e.master_ref, doublon_refs: e.doublon_refs, mode:'execute', by: actor() }) }).then(r=>r.json());
+                    } catch(err) { j = { success:false, error:'erreur réseau' }; }
+                    if(!j || !j.success){
+                        resultats.push({ normalized:e.normalized, ok:false, error:(j&&j.error)||'erreur inconnue' });
+                        break;
+                    }
+                    resultats.push({ normalized:e.normalized, ok:true, doublon_refs:e.doublon_refs, counts:j.counts||{} });
+                    setMergeProgress({ phase:'execution', fait:i+1, total:mergeLot.length, courant:'' });
+                }
+                const rapport = FM.resumerExecution(mergeLot, resultats, mergeIgnores);
+                setMergeProgress(null); setMergeBusy(false);
+                // `loadDuplicates` remet le compte rendu à zéro : on le repose APRÈS,
+                // sinon Omar perdrait le bilan du lot qu'il vient de lancer.
+                load(); loadDuplicates(); setMergeRapport(rapport);
             };
 
             const load = () => { setLoading(true); fetch('/api/stock?action=list-articles'+(filterCat?'&categorie='+encodeURIComponent(filterCat):'')).then(r=>r.json()).then(j=>{ if(j.success) setArticles(j.articles||[]); }).finally(()=>setLoading(false)); };
@@ -47808,13 +47909,89 @@ ${rejetHtml}
                                                 <i className="fa-solid fa-circle-info" style={{marginRight:6,color:'#e67e22'}}></i>
                                                 {mergeGroups.length} groupe(s) de doublons. Choisissez l'article MASTER (à conserver) ; les autres seront fusionnés et désactivés.
                                             </div>
+                                            {/* ── FUSION EN MASSE ────────────────────────────────────────
+                                                Sélection multiple + aperçu global obligatoire + exécution
+                                                séquentielle. La mécanique de fusion elle-même reste celle de
+                                                `merge-articles`, appelée groupe par groupe. */}
+                                            <div style={{border:'1px solid #d5dbe0',borderRadius:10,padding:'12px 14px',background:'#fbfcfd'}}>
+                                                <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+                                                    <label style={{display:'flex',alignItems:'center',gap:6,fontSize:12,fontWeight:600,color:'#2c3e50',cursor:'pointer'}}>
+                                                        <input type="checkbox" disabled={mergeBusy}
+                                                            checked={mergeLot.length>0 && FM.clesSelectionnables && mergeLot.length===FM.clesSelectionnables(mergeGroups, mergeMasters).length}
+                                                            onChange={e=>toutSelectionner(e.target.checked)} />
+                                                        Tout sélectionner
+                                                    </label>
+                                                    <span style={{fontSize:12,color:'#555'}}>
+                                                        <strong>{mergeLot.length}</strong> groupe(s) sélectionné(s)
+                                                        {FM.clesSelectionnables && (mergeGroups.length - FM.clesSelectionnables(mergeGroups, mergeMasters).length) > 0 && (
+                                                            <span style={{color:'#c0392b'}}> · {mergeGroups.length - FM.clesSelectionnables(mergeGroups, mergeMasters).length} non sélectionnable(s) (master à choisir)</span>
+                                                        )}
+                                                    </span>
+                                                    <button onClick={apercuLot} disabled={mergeBusy || mergeLot.length===0} style={{marginLeft:'auto',padding:'7px 14px',borderRadius:8,border:'1px solid #e67e22',background:'#fff',color:'#e67e22',cursor:(mergeBusy||mergeLot.length===0)?'not-allowed':'pointer',fontSize:12,fontWeight:600}}>
+                                                        Aperçu global du lot
+                                                    </button>
+                                                    <button onClick={executerLot} disabled={mergeBusy || !mergeApercuAJour} title={!mergeApercuAJour?'Faites l\'aperçu global du lot d\'abord':''} style={{padding:'7px 16px',borderRadius:8,border:'none',background:(mergeBusy||!mergeApercuAJour)?'#bbb':'#27ae60',color:'#fff',cursor:(mergeBusy||!mergeApercuAJour)?'not-allowed':'pointer',fontSize:12,fontWeight:700}}>
+                                                        <i className="fa-solid fa-layer-group" style={{marginRight:6}}></i>Fusionner le lot
+                                                    </button>
+                                                </div>
+                                                {mergeProgress && (
+                                                    <div style={{marginTop:10,fontSize:12,color:'#2c3e50'}}>
+                                                        <i className="fa-solid fa-spinner fa-spin" style={{marginRight:8,color:'#e67e22'}}></i>
+                                                        {mergeProgress.phase==='execution' ? 'Fusion en cours' : 'Aperçu en cours'} : <strong>{mergeProgress.fait} / {mergeProgress.total}</strong>
+                                                        {mergeProgress.courant ? ' — « '+mergeProgress.courant+' »' : ''}
+                                                        <div style={{marginTop:6,height:6,background:'#e8ecef',borderRadius:4,overflow:'hidden'}}>
+                                                            <div style={{height:'100%',width:(mergeProgress.total?Math.round(100*mergeProgress.fait/mergeProgress.total):0)+'%',background:mergeProgress.phase==='execution'?'#27ae60':'#e67e22'}}></div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                {mergeApercuAJour && !mergeProgress && (
+                                                    <div style={{marginTop:10,background:'#fff',border:'1px solid #e3e8ec',borderRadius:8,padding:'10px 12px',fontSize:12,color:'#2c3e50'}}>
+                                                        <div style={{fontWeight:700,marginBottom:4}}>Aperçu global — ce que la fusion du lot va faire</div>
+                                                        <div>• <strong>{mergeApercu.total.groupes}</strong> groupe(s) fusionné(s)</div>
+                                                        <div>• <strong>{mergeApercu.total.fiches_desactivees}</strong> fiche(s) désactivée(s)</div>
+                                                        <div>• <strong>{mergeApercu.total.soldes_agreges}</strong> solde(s) agrégé(s) vers le master</div>
+                                                        <div>• <strong>{mergeApercu.total.mouvements}</strong> mouvement(s) ouvert(s) et <strong>{mergeApercu.total.bdc}</strong> BDC ouvert(s) réassignés</div>
+                                                        {mergeIgnores.length>0 && (
+                                                            <div style={{marginTop:6,color:'#c0392b'}}>{mergeIgnores.length} groupe(s) coché(s) seront ignorés (master non déterminé).</div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                                {mergeRapport && !mergeProgress && (
+                                                    <div style={{marginTop:10,background:mergeRapport.arret_anomalie?'rgba(231,76,60,0.06)':'rgba(39,174,96,0.07)',border:'1px solid '+(mergeRapport.arret_anomalie?'rgba(231,76,60,0.3)':'rgba(39,174,96,0.3)'),borderRadius:8,padding:'10px 12px',fontSize:12,color:'#2c3e50'}}>
+                                                        <div style={{fontWeight:700,marginBottom:4}}>
+                                                            {mergeRapport.arret_anomalie ? 'Lot interrompu à la première anomalie' : 'Lot fusionné'}
+                                                        </div>
+                                                        <div>• <strong>{mergeRapport.groupes_fusionnes}</strong> groupe(s) fusionné(s), <strong>{mergeRapport.fiches_desactivees}</strong> fiche(s) désactivée(s)</div>
+                                                        <div>• <strong>{mergeRapport.soldes_agreges}</strong> solde(s) agrégé(s), {mergeRapport.mouvements} mouvement(s) et {mergeRapport.bdc} BDC réassignés</div>
+                                                        {mergeRapport.non_fusionnes.length>0 && (
+                                                            <div style={{marginTop:6}}>
+                                                                <div style={{fontWeight:600,color:'#c0392b'}}>Non fusionnés ({mergeRapport.non_fusionnes.length}) :</div>
+                                                                <ul style={{margin:'4px 0 0 16px',padding:0}}>
+                                                                    {mergeRapport.non_fusionnes.map((g,i)=>(<li key={i}>« {g.normalized} » — {g.raison}</li>))}
+                                                                </ul>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
                                             {mergeGroups.map(group => {
                                                 const masterRef = mergeMasters[group.normalized];
                                                 const isPreviewing = mergePreview && mergePreview.normalized===group.normalized;
                                                 const pv = isPreviewing ? mergePreview.data : null;
+                                                // Sélectionnable UNIQUEMENT si un article à conserver est
+                                                // déterminé (fail-closed) : sans master, la case est
+                                                // désactivée et le groupe ne peut pas entrer dans le lot.
+                                                const selectionnable = FM.estSelectionnable ? FM.estSelectionnable(group, mergeMasters) : false;
+                                                const coche = !!mergeSelection[group.normalized];
                                                 return (
-                                                <div key={group.normalized} style={{border:'1px solid #eee',borderRadius:10,padding:14}}>
-                                                    <div style={{fontSize:11,color:'#999',marginBottom:8,fontStyle:'italic'}}>« {group.normalized} »</div>
+                                                <div key={group.normalized} style={{border:'1px solid '+(coche?'rgba(39,174,96,0.5)':'#eee'),borderRadius:10,padding:14,background:coche?'rgba(39,174,96,0.03)':'#fff'}}>
+                                                    <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
+                                                        <input type="checkbox" checked={coche} disabled={!selectionnable || mergeBusy}
+                                                            title={selectionnable ? 'Inclure ce groupe dans la fusion en masse' : (FM.raisonNonSelectionnable ? FM.raisonNonSelectionnable(group, mergeMasters) : 'Choisissez l\'article à conserver')}
+                                                            onChange={()=>basculerSelection(group)} />
+                                                        <span style={{fontSize:11,color:'#999',fontStyle:'italic'}}>« {group.normalized} »</span>
+                                                        {!selectionnable && <span style={{fontSize:10,color:'#c0392b'}}>non sélectionnable en masse</span>}
+                                                    </div>
                                                     {/* La suggestion vient du serveur (règle pure) et s'EXPLIQUE : Omar
                                                         confirme d'un coup d'œil au lieu de faire confiance à l'aveugle.
                                                         Groupe non décidable -> aucune présélection, arbitrage humain. */}

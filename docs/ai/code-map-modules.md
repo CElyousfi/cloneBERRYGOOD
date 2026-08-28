@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:b85ef5b4ab3e8441 -->
-# Code Map — Modules lib (211)
+<!-- sourceFingerprint: sha256:9b6c61851e02450a -->
+# Code Map — Modules lib (212)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
 
@@ -195,6 +195,7 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | public/lib/emargementPdf.js | EmargementPdf | genSansCnss, genAvecCnss, genTransporteurs, genBulletins, genBulletinsAr |
 | public/lib/encaissementsCanevas.js | EncaissementsCanevas | ENCAISSEMENTS_SCHEMA, round2, slugifyClient, normalizeReference, parseFrNumber, parseDate, parseEncaissements, buildModeleAoA, buildModeleWorkbook |
 | public/lib/factureExportUtils.js | FactureExportUtils | STANDARD_TVA_RATES, TVA_SNAP_EPS, CAMPAIGN_START_MONTH, TAXABLE_TVA_RATE, TAXABLE_PRODUCT_PATTERNS, ANOMALIE_TVA_B, INFO_TVA_NON_SAISIE, fxRound2, parseFactureDate, campaignBounds, isWithinPeriod, campaignYearOf, listAvailableCampaigns, reconciliationEpsilon, normalizeDesignation, matchProduitTaxable, deriveTauxLigne, parseSaisiTaux, resolveTauxLigne, deriveTauxTva, buildFactureLines, RECAP_COL, RECAP_NB_COLS, buildRecapStatutRows |
+| public/lib/fusionMasse.js | FusionMasse | docIdFiche, masterDuGroupe, doublonsDuGroupe, estSelectionnable, raisonNonSelectionnable, clesSelectionnables, construireLot, signatureLot, agregerApercu, resumerExecution |
 | public/lib/growthUtils.js | GrowthUtils | rows, error, FRAMBOISE_CULTURE, ALL_VARIETES, MAX_LENGTH_CM, framboiseParcelles, varietesFramboise, buildGrowthSeries, validateMeasurement, normalizeCheckpoints |
 | public/lib/imageDownscale.js | ImageDownscale | computeTargetSize, downscaleToDataUrl |
 | public/lib/inflightDedup.js | InflightDedup | — voir fichier — |
