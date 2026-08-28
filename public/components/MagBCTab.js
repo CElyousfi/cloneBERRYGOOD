@@ -2008,10 +2008,27 @@
       }
     }, creatingArt ? 'Création...' : 'Créer l\'article')))), detailBc && (() => {
       const bc = detailBc;
+      // Fenêtre de plausibilité [2000-01-01, 2100-01-01) en ms : sert à
+      // trancher l'unité d'un horodatage numérique SANS deviner. En base,
+      // created_at est un nombre de MILLISECONDES (ex. 1787672414121), mais
+      // d'autres horodatages du dépôt sont en SECONDES. Hors de la fenêtre
+      // dans les deux unités (0, NaN, valeur aberrante) → on n'affiche rien,
+      // plutôt qu'une date de 1970, de l'an 58000 ou un « Invalid Date ».
+      const TS_MIN_MS = 946684800000; // 2000-01-01T00:00:00Z
+      const TS_MAX_MS = 4102444800000; // 2100-01-01T00:00:00Z
+      const msFromNumber = n => {
+        if (n >= TS_MIN_MS && n < TS_MAX_MS) return n;
+        if (n * 1000 >= TS_MIN_MS && n * 1000 < TS_MAX_MS) return n * 1000;
+        return null;
+      };
       const fmtTs = v => {
         if (!v) return null;
         try {
           if (typeof v === 'string') return v.length > 10 ? new Date(v).toLocaleString('fr-FR') : v;
+          if (typeof v === 'number') {
+            const ms = msFromNumber(v);
+            return ms == null ? null : new Date(ms).toLocaleString('fr-FR');
+          }
           if (v.seconds != null) return new Date(v.seconds * 1000).toLocaleString('fr-FR');
           if (v._seconds != null) return new Date(v._seconds * 1000).toLocaleString('fr-FR');
           if (v instanceof Date) return v.toLocaleString('fr-FR');
@@ -2116,7 +2133,7 @@
         style: {
           marginBottom: 16
         }
-      }, infoRow('Date', bc.date), infoRow('Lieu départ', bc.lieu_source?.id || bc.lieu_source_id), infoRow('Ferme', bc.ferme), infoRow('Type', bc.type), infoRow('Créé par', bc.created_by?.name), infoRow('Créé le', fmtTs(bc.created_at)), infoRow('Autorisé par', bc.authorized_by?.name)), items.length > 0 && /*#__PURE__*/React.createElement("div", {
+      }, infoRow('Date', bc.date), infoRow('Lieu départ', bc.lieu_source?.id || bc.lieu_source_id), infoRow('Ferme', bc.ferme), infoRow('Type', bc.type), infoRow('Créé par', bc.created_by?.name), infoRow('Saisi le', fmtTs(bc.created_at)), infoRow('Autorisé par', bc.authorized_by?.name)), items.length > 0 && /*#__PURE__*/React.createElement("div", {
         style: {
           marginBottom: 16
         }

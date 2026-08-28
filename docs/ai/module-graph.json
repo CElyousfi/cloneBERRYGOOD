@@ -31,11 +31,11 @@
         "file": "public/components/CampagneAnalytiqueTab.jsx"
       },
       {
-        "commits": 44,
+        "commits": 45,
         "file": "public/app.jsx"
       },
       {
-        "commits": 31,
+        "commits": 30,
         "file": "functions/index.js"
       },
       {
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:458f443db1c6a5ee",
+    "sourceFingerprint": "sha256:eac1f9245df728d1",
     "stats": {
       "backendModules": 98,
       "cloudFunctions": 91,
@@ -144,7 +144,7 @@
       },
       "gitCoupling": [
         {
-          "coCommits": 5,
+          "coCommits": 6,
           "domain": null,
           "file": "public/components/MagBCScanModal.js",
           "note": "probabilistic",
@@ -153,14 +153,14 @@
         {
           "coCommits": 5,
           "domain": null,
-          "file": "public/components/MagBdcReceptionTab.js",
+          "file": "functions/index.js",
           "note": "probabilistic",
           "windowDays": 90
         },
         {
-          "coCommits": 4,
+          "coCommits": 5,
           "domain": null,
-          "file": "functions/index.js",
+          "file": "public/components/MagBdcReceptionTab.js",
           "note": "probabilistic",
           "windowDays": 90
         },
@@ -182,6 +182,20 @@
           "coCommits": 3,
           "domain": null,
           "file": "public/app.jsx",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 3,
+          "domain": null,
+          "file": "public/components/MagBCTab.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 3,
+          "domain": null,
+          "file": "public/components/MagBCTab.jsx",
           "note": "probabilistic",
           "windowDays": 90
         }
