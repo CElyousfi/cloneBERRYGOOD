@@ -25,6 +25,9 @@ const caisseEntites = require("./lib/caisse/entites");
 const { validateSupplier } = require("./lib/suppliers/supplierValidation");
 const stockCaneva = require("./lib/stockCaneva");
 const articleMerge = require("./lib/stockMerge/articleMerge");
+// LIBELLÉ CANONIQUE d'une catégorie d'article — SEULE règle de normalisation de
+// catégorie du dépôt (copie backend verrouillée de public/lib/articleCategories.js).
+const articleCategories = require("./lib/stockMerge/articleCategories");
 // Droits d'écriture sur le catalogue d'articles (règle PURE, cf. lib/stockRoles).
 const stockRoles = require("./lib/stockRoles");
 const { resolveCallerRole, resolveCallerProfile } = require("./lib/auth/resolveRole");
@@ -8437,7 +8440,12 @@ exports.stockManagement = functions
           const target = articleMerge.resolveArticleTarget(sqlIndex, docId, nom);
           const data = {
             nom,
-            categorie: articleMerge.normalizeCategorie(row.categorie),
+            // LIBELLÉ CANONIQUE à l'enregistrement (et NON la minuscule d'avant) :
+            // la source SQL renvoie `engrais`/`pesticides`, qui repeuplaient le
+            // catalogue de variantes à chaque réimport. La formule du docId,
+            // elle, reste sur la catégorie BRUTE (cf. ci-dessus) : le réimport
+            // retrouve donc la fiche et se contente de corriger son libellé.
+            categorie: articleCategories.categorieCanonique(row.categorie),
             sous_categorie: row.sous_categorie || "",
             unite: row.unite || "KG",
             prix_ref: row.prix_ref ? Math.round(row.prix_ref * 100) / 100 : null,
@@ -8498,7 +8506,9 @@ exports.stockManagement = functions
           const data = {
             nom, reference: ref,
             reference_technique: (art.reference_technique || "").trim(),
-            categorie: articleMerge.normalizeCategorie(art.categorie),
+            // LIBELLÉ CANONIQUE — cf. import-articles-sql. C'est ce chemin qui a
+            // posé `IMMOBILISATIONS` (11 fiches) et `PHYTO-SANITAIRE` (2).
+            categorie: articleCategories.categorieCanonique(art.categorie),
             sous_categorie: (art.sous_categorie || "").trim(),
             unite: (art.unite || "U").trim(),
             prix_ht: art.prix_ht || 0, taux_tva: art.taux_tva || 0, prix_ttc: art.prix_ttc || 0,
@@ -8797,10 +8807,11 @@ exports.stockManagement = functions
         }
         const classerNom = article == null ? "" : String(article).trim();
         if (!classerNom) return res.status(400).json({ success: false, error: "Nom d'article requis" });
-        // Convention d'écriture du catalogue (minuscules) — la même que
-        // create-article, pour ne pas recréer la divergence Engrais/engrais qui
-        // a produit les doublons.
-        const classerCat = articleMerge.normalizeCategorie(categorie, "");
+        // LIBELLÉ CANONIQUE — la même règle que create-article et les imports.
+        // Le bandeau envoie `engrais` / `pesticide` : écrits tels quels, ils
+        // fabriquaient une orthographe de plus à chaque classement (`pesticide`
+        // au singulier n'existe nulle part ailleurs au catalogue).
+        const classerCat = articleCategories.categorieCanonique(categorie);
         // Le classement n'ouvre PAS l'écriture d'une catégorie quelconque : la
         // porte du DG est « ranger dans l'une des deux familles de l'écran ».
         if (consoValorisationLib.familleBucket(classerCat) === "autre") {
@@ -8874,7 +8885,7 @@ exports.stockManagement = functions
         const now = Date.now();
         const createData = {
           reference, nom, unite: unite || "U", prix_ht: prix_ht || 0, taux_tva: taux_tva || 20,
-          prix_ttc: prix_ttc || 0, categorie: articleMerge.normalizeCategorie(categorie, ""), sous_categorie: sous_categorie || "",
+          prix_ttc: prix_ttc || 0, categorie: articleCategories.categorieCanonique(categorie), sous_categorie: sous_categorie || "",
           type: type || "", reference_technique: reference_technique || "", multi_ferme: multi_ferme || false,
           active: true, invisible: false, updated_at: now, created_by: created_by || {}
         };

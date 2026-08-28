@@ -52,7 +52,7 @@ const ROOT = path.join(__dirname, '../..');
 const INDEX_SRC = fs.readFileSync(path.join(ROOT, 'functions/index.js'), 'utf8');
 const POINTAGE_SRC = fs.readFileSync(path.join(ROOT, 'functions/pointageService.js'), 'utf8');
 const { CONSO_PARCELLE_CACHE_PREFIX } = require('../../functions/lib/consoBons/cacheKeys');
-const { normalizeCategorie } = require('../../functions/lib/stockMerge/articleMerge');
+const { categorieCanonique } = require('../../functions/lib/stockMerge/articleCategories');
 const { familleBucket } = require('../../functions/lib/valorisation/consoValorisation');
 
 /**
@@ -225,18 +225,24 @@ test('classer-article : la catégorie est BORNÉE, et la borne précède la lect
 test('la borne de catégorie mesure le bon EFFET (test pur, pas une ligne de source)', () => {
   // Le test ci-dessus vérifie qu'une ligne est là ; celui-ci vérifie qu'elle
   // fait ce qu'on croit — sur les DEUX fonctions réellement composées par
-  // l'action : normalizeCategorie (convention d'écriture) puis familleBucket.
-  assert.strictEqual(familleBucket(normalizeCategorie('divers', '')), 'autre', 'divers → refusé');
-  assert.strictEqual(familleBucket(normalizeCategorie('amendement', '')), 'autre');
-  assert.strictEqual(familleBucket(normalizeCategorie('', '')), 'autre', 'catégorie vide → refusée');
-  assert.strictEqual(familleBucket(normalizeCategorie(null, '')), 'autre');
+  // l'action : categorieCanonique (règle d'écriture) puis familleBucket.
+  assert.strictEqual(familleBucket(categorieCanonique('divers')), 'autre', 'divers → refusé');
+  assert.strictEqual(familleBucket(categorieCanonique('amendement')), 'autre');
+  assert.strictEqual(familleBucket(categorieCanonique('')), 'autre', 'catégorie vide → refusée');
+  assert.strictEqual(familleBucket(categorieCanonique(null)), 'autre');
   // …et les deux familles de l'écran passent, quelle que soit la casse saisie.
   for (const v of ['engrais', 'Engrais', 'ENGRAIS']) {
-    assert.strictEqual(familleBucket(normalizeCategorie(v, '')), 'engrais', v);
+    assert.strictEqual(familleBucket(categorieCanonique(v)), 'engrais', v);
   }
   for (const v of ['pesticide', 'Pesticides', 'PESTICIDE']) {
-    assert.strictEqual(familleBucket(normalizeCategorie(v, '')), 'pesticide', v);
+    assert.strictEqual(familleBucket(categorieCanonique(v)), 'pesticide', v);
   }
+
+  // Ce qui est ÉCRIT est le libellé canonique, pas la valeur reçue du bandeau :
+  // `engrais` / `pesticide` écrits tels quels fabriquaient une orthographe de
+  // plus à chaque classement (sb/categorie-canonique-import).
+  assert.strictEqual(categorieCanonique('engrais'), 'Engrais');
+  assert.strictEqual(categorieCanonique('pesticide'), 'Pesticides');
 });
 
 test('classer-article : nom sans fiche → 404 AVEC return, AVANT toute écriture', () => {

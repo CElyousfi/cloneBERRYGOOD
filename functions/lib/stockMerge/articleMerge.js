@@ -201,23 +201,21 @@ function isBdcOpen(bdc) {
   return !BDC_CLOSED_STATUSES.includes(bdc.status)
 }
 
-/**
- * Normalise une CATÉGORIE d'article pour l'enregistrement.
- * Le catalogue portait deux conventions concurrentes (`Engrais` / `engrais`)
- * selon le chemin d'import : c'est CETTE divergence qui a produit deux docId
- * pour un même article. On fige une seule convention à l'écriture.
- * ⚠️ N'est JAMAIS appliquée au calcul du docId (cf. resolveArticleTarget) :
- * changer la formule d'identifiant recréerait une vague de doublons.
- * @param {*} categorie Valeur brute.
- * @param {string} [defaut] Valeur si vide (défaut : 'autre').
- * @returns {string} Catégorie normalisée (minuscules, espaces réduits).
- */
-function normalizeCategorie(categorie, defaut) {
-  const fallback = defaut === undefined ? 'autre' : defaut
-  if (categorie == null) return fallback
-  const s = String(categorie).toLowerCase().replace(/\s+/g, ' ').trim()
-  return s || fallback
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// `normalizeCategorie` A ÉTÉ RETIRÉE (ticket sb/categorie-canonique-import).
+//
+// Elle mettait la catégorie EN MINUSCULES à l'écriture. Le catalogue portait
+// donc `Engrais` (liste fermée de la fiche article) ET `engrais` (import) pour
+// la même famille — 53 fiches `active === true` hors liste canonique sur 1019,
+// mesurées le 2026-08-28. La règle de normalisation de catégorie du dépôt est désormais
+// UNIQUE : `categorieCanonique` dans ./articleCategories.js, qui rend le
+// LIBELLÉ CANONIQUE. Ne pas réintroduire une seconde règle ici : c'est la
+// divergence silencieuse entre deux règles concurrentes qui a produit les
+// doublons que ce module passe son temps à rattraper.
+// ⚠️ Comme avant, cette normalisation n'entre JAMAIS dans le calcul du docId
+// (cf. resolveArticleTarget) : changer la formule d'identifiant recréerait une
+// vague de doublons.
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * @typedef {Object} ArticleIndex
@@ -331,7 +329,6 @@ function rememberArticle(idx, id, nom) {
 
 module.exports = {
   normalizeArticleName,
-  normalizeCategorie,
   groupDuplicates,
   verifierIntegriteFiche,
   buildArticleIndex,

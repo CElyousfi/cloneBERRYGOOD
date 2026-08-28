@@ -69,14 +69,14 @@ test('import-articles-sql — la formule du docId reste sur la catégorie BRUTE'
     /const docId = Buffer\.from\(`\$\{nom\}\|\$\{row\.categorie \|\| ""\}`\)/,
     'la formule du docId ne doit pas être normalisée'
   );
-  assert.doesNotMatch(h, /Buffer\.from\([^)]*normalizeCategorie/);
+  assert.doesNotMatch(h, /Buffer\.from\([^)]*categorieCanonique/);
   assert.doesNotMatch(h, /Buffer\.from\([^)]*toLowerCase/);
 });
 
 test('import-articles-excel — la formule du docId reste sur la catégorie BRUTE', () => {
   const h = handlerSource('import-articles-excel');
   assert.match(h, /Buffer\.from\(`\$\{nom\}\|\$\{art\.categorie \|\| ""\}`\)/);
-  assert.doesNotMatch(h, /Buffer\.from\([^)]*normalizeCategorie/);
+  assert.doesNotMatch(h, /Buffer\.from\([^)]*categorieCanonique/);
   assert.doesNotMatch(h, /Buffer\.from\([^)]*toLowerCase/);
 });
 
@@ -109,8 +109,11 @@ test('import-articles-sql — le nom normalisé décide de créer ou de mettre �
   // Une fiche créée entre dans l'index : sans cela, deux lignes du MÊME import
   // ne différant que par la casse de la catégorie créeraient deux fiches.
   assert.match(h, /if \(target\.isNew\) articleMerge\.rememberArticle\(sqlIndex, target\.id, nom\);/);
-  // La catégorie est normalisée À L'ENREGISTREMENT.
-  assert.match(h, /categorie: articleMerge\.normalizeCategorie\(row\.categorie\)/);
+  // La catégorie est ramenée à son LIBELLÉ CANONIQUE à l'enregistrement — et
+  // par la règle UNIQUE du dépôt. La minuscule d'avant repeuplait le catalogue
+  // de `engrais`/`pesticides` à chaque réimport.
+  assert.match(h, /categorie: articleCategories\.categorieCanonique\(row\.categorie\)/);
+  assert.doesNotMatch(h, /normalizeCategorie/);
 });
 
 test('import-articles-excel — le nom normalisé décide de créer ou de mettre à jour', () => {
@@ -126,7 +129,8 @@ test('import-articles-excel — le nom normalisé décide de créer ou de mettre
   assert.match(h, /const existing = existingMap\[target\.id\];/);
   assert.match(h, /if \(!target\.isNew \|\| xlsReactivation\) \{/);
   assert.match(h, /if \(target\.isNew\) articleMerge\.rememberArticle\(xlsIndex, target\.id, nom\);/);
-  assert.match(h, /categorie: articleMerge\.normalizeCategorie\(art\.categorie\)/);
+  assert.match(h, /categorie: articleCategories\.categorieCanonique\(art\.categorie\)/);
+  assert.doesNotMatch(h, /normalizeCategorie/);
 });
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -194,7 +198,8 @@ test('create-article — résout par nom normalisé AVANT de créer une fiche', 
   const iReturn = h.indexOf('return res.json({');
   const iSet = h.indexOf('.doc(reference).set(');
   assert.ok(iReturn > -1 && iSet > -1 && iReturn < iSet, 'le set de création suit le return');
-  assert.match(h, /categorie: articleMerge\.normalizeCategorie\(categorie, ""\)/);
+  assert.match(h, /categorie: articleCategories\.categorieCanonique\(categorie\)/);
+  assert.doesNotMatch(h, /normalizeCategorie/);
 });
 
 test('create-article — la mise à jour d’une fiche existante ne touche NI nom NI reference', () => {
@@ -559,4 +564,116 @@ test('les trois actions gardées appellent resolveCallerRole exactement une fois
       nom + ' : un seul resolveCallerRole'
     );
   }
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// 4. UNE SEULE RÈGLE DE CATÉGORIE DANS LE DÉPÔT
+// ───────────────────────────────────────────────────────────────────────────
+//
+// Deux règles concurrentes (`normalizeCategorie` en minuscules d'un côté, la
+// liste canonique de l'autre) sont exactement ce qui a produit `Engrais` ET
+// `engrais` au catalogue. `normalizeCategorie` a donc été RETIRÉE : tous les
+// chemins d'écriture passent par `articleCategories.categorieCanonique`.
+//
+// ── PORTÉE EXACTE DE CES ASSERTIONS, ET SA LIMITE ─────────────────────────
+// Ce fichier lit un SOURCE : il prouve qu'une ligne est écrite, pas qu'elle
+// s'exécute. Mesuré : insérer `delete data.categorie;` avant l'écriture de
+// `import-articles-sql` laisse la suite ENTIÈREMENT VERTE — l'import
+// n'écrirait plus aucune catégorie alors que la ligne
+// `categorie: articleCategories.categorieCanonique(row.categorie)` reste bien
+// présente et satisfait l'assertion. Fermer ce trou demande un test contre
+// l'emulator Firestore, hors périmètre de ce lot et sciemment non fait.
+// La leçon opérationnelle est celle du test `classer-article` plus bas :
+// ancrer chaque assertion sur le BLOC qui écrit, jamais sur le handler entier.
+
+test('functions/index.js n’appelle plus AUCUNE normalisation de catégorie concurrente', () => {
+  assert.doesNotMatch(
+    SRC,
+    /normalizeCategorie/,
+    'normalizeCategorie a été retirée : une seule règle de catégorie (categorieCanonique)'
+  );
+  // …et le module qui la portait ne l'exporte plus.
+  const articleMerge = require('../../functions/lib/stockMerge/articleMerge');
+  assert.equal(articleMerge.normalizeCategorie, undefined);
+});
+
+test('les QUATRE chemins d’écriture du catalogue posent le libellé CANONIQUE', () => {
+  // Trois imports/créations + le classement depuis le bandeau Campagne. En
+  // oublier un suffit à repeupler le catalogue de variantes.
+  for (const nomAction of ['import-articles-sql', 'import-articles-excel', 'create-article']) {
+    const h = handlerSource(nomAction);
+    assert.match(
+      h,
+      /categorie: articleCategories\.categorieCanonique\(/,
+      nomAction + ' : la catégorie écrite doit être canonique'
+    );
+  }
+  const classer = handlerSource('classer-article');
+  assert.match(classer, /const classerCat = articleCategories\.categorieCanonique\(categorie\);/);
+
+  // ⚠️ ANCRAGE SUR LE BLOC D'ÉCRITURE, JAMAIS SUR LE HANDLER ENTIER.
+  // `categorie: classerCat,` apparaît DEUX fois dans ce handler : dans le
+  // `classerBatch.update(...)` (ce qui part réellement en base) et dans l'écho
+  // de la réponse HTTP. Une assertion posée sur tout le handler est satisfaite
+  // par l'un OU par l'autre — chacun couvre l'autre, et elle ne peut donc plus
+  // échouer sur l'écriture. Mesuré : remplacer la valeur ÉCRITE par
+  // `String(categorie || '')` laissait la suite entièrement VERTE, alors que le
+  // DG classant un article depuis le bandeau posait `pesticide` au singulier
+  // (la 21e orthographe que ce lot supprime) sur TOUTES ses fiches homonymes,
+  // en silence — la borne `familleBucket`, elle, est calculée sur `classerCat`
+  // et continuait de passer.
+  const iBoucle = classer.indexOf('for (let i = 0; i < classerCibles.length');
+  const iCommit = classer.indexOf('await classerBatch.commit()');
+  assert.ok(iBoucle > -1 && iCommit > -1 && iBoucle < iCommit, 'boucle d’écriture par chunks introuvable');
+  const ecriture = classer.slice(iBoucle, iCommit);
+
+  // La cible de l'update est bien une fiche du catalogue…
+  assert.match(
+    ecriture,
+    /classerBatch\.update\(db_firestore\.collection\("articles_catalog"\)\.doc\(refId\), \{/,
+    'écriture catalogue introuvable dans la boucle'
+  );
+  // …et la SEULE catégorie écrite est `classerCat`, la valeur canonique qui a
+  // franchi la borne. `deepEqual` sur la liste complète des clés `categorie:`
+  // du bloc tient les deux bords : substituer la valeur ET en ajouter une
+  // seconde font rougir.
+  assert.deepEqual(
+    ecriture.match(/categorie: [^,\n]+/g) || [],
+    ['categorie: classerCat'],
+    'la valeur ÉCRITE doit être `classerCat`, jamais la valeur brute du body'
+  );
+
+  // NOTE : l'écho de la réponse HTTP (`categorie: classerCat` dans le
+  // `res.json`) n'est DÉLIBÉRÉMENT pas asserté ici. L'asserter recouplerait les
+  // deux occurrences et ce test redeviendrait satisfiable sans l'écriture —
+  // exactement le défaut qu'on vient de corriger. L'écho est cosmétique :
+  // l'écran recharge la conso après le classement.
+
+  // Le module est bien requis (sinon les assertions ci-dessus viseraient une
+  // référence indéfinie, et TOUTES les Cloud Functions tomberaient au runtime).
+  assert.match(SRC, /const articleCategories = require\("\.\/lib\/stockMerge\/articleCategories"\);/);
+});
+
+test('la règle de catégorie backend est bien celle testée, et ne requiert JAMAIS public/', () => {
+  // Contrepartie EXÉCUTABLE + garde anti-crash : `require('../public/…')`
+  // depuis functions/ ferait échouer le chargement de TOUTES les Cloud
+  // Functions en production (Firebase ne déploie que functions/), sans qu'aucun
+  // test local ne le voie.
+  const fsMod = require('node:fs');
+  const src = fsMod.readFileSync(
+    path.join(__dirname, '../../functions/lib/stockMerge/articleCategories.js'),
+    'utf8'
+  );
+  // Assertion sur le CODE seul : l'en-tête du module cite volontairement le
+  // `require('../public/…')` interdit pour expliquer pourquoi il l'est.
+  const codeSeul = src
+    .split('\n')
+    .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+    .join('\n');
+  assert.doesNotMatch(codeSeul, /require\(/, 'le backend ne doit requérir NI public/ ni quoi que ce soit');
+
+  const { categorieCanonique } = require('../../functions/lib/stockMerge/articleCategories');
+  assert.equal(categorieCanonique('engrais'), 'Engrais');
+  assert.equal(categorieCanonique('Divers'), 'Divers');
+  assert.equal(categorieCanonique(''), '');
 });

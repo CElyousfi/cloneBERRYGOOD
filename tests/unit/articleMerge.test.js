@@ -216,18 +216,24 @@ test('réassignation: clé construite depuis ref ET nom, vide ignorée', () => {
 // catalogue) : c'est la résolution qui empêche la création d'un second doc.
 // ───────────────────────────────────────────────────────────────────────────
 
-test('normalizeCategorie: minuscules + espaces réduits, défaut « autre »', () => {
-  assert.equal(M.normalizeCategorie('Engrais'), 'engrais');
-  assert.equal(M.normalizeCategorie('engrais'), 'engrais');
-  assert.equal(M.normalizeCategorie('  PESTICIDES  '), 'pesticides');
-  assert.equal(M.normalizeCategorie('Petit   Outillage'), 'petit outillage');
-  assert.equal(M.normalizeCategorie(null), 'autre');
-  assert.equal(M.normalizeCategorie(''), 'autre');
-  assert.equal(M.normalizeCategorie('   '), 'autre');
-  // défaut explicite (create-article conservait '' quand la catégorie est absente)
-  assert.equal(M.normalizeCategorie(undefined, ''), '');
-  // les deux conventions de la base convergent sur UNE seule valeur
-  assert.equal(M.normalizeCategorie('Engrais'), M.normalizeCategorie('engrais'));
+test('normalizeCategorie a été RETIRÉE : une seule règle de catégorie dans le dépôt', () => {
+  // Elle écrivait la catégorie en MINUSCULES, ce qui repeuplait le catalogue de
+  // `engrais` / `pesticides` à chaque import (53 fiches hors liste canonique
+  // sur 1019 `active === true`, mesurées le 2026-08-28). La règle unique vit désormais dans
+  // functions/lib/stockMerge/articleCategories.js. Réexporter une normalisation
+  // de catégorie ici recréerait deux règles concurrentes — la divergence même
+  // qui a produit les doublons.
+  assert.equal(M.normalizeCategorie, undefined);
+  assert.equal(
+    Object.keys(M).filter((k) => /categorie/i.test(k)).length,
+    0,
+    'articleMerge ne doit exposer AUCUNE règle de catégorie'
+  );
+
+  // Contrepartie : la règle unique, elle, converge bien les deux conventions.
+  const { categorieCanonique } = require('../../functions/lib/stockMerge/articleCategories.js');
+  assert.equal(categorieCanonique('Engrais'), categorieCanonique('engrais'));
+  assert.equal(categorieCanonique('engrais'), 'Engrais');
 });
 
 test('buildArticleIndex: n’indexe QUE les fiches actives, garde merged_into', () => {

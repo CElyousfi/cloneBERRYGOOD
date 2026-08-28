@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:9b6c61851e02450a -->
-# Code Map — Modules lib (212)
+<!-- sourceFingerprint: sha256:34d1307e28c537f5 -->
+# Code Map — Modules lib (213)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
 
@@ -163,7 +163,8 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/stockFiles/farmDetection.js | — | detectFarmFromCaption |
 | functions/lib/stockFiles/recordSubmission.js | — | COLLECTION, VALID_FARMS, FARM_LABELS, isValidFarm, todayInCasablanca, addDaysStr, emptyFarmState, emptySubmissionDoc, recordSubmission |
 | functions/lib/stockFiles/reminders.js | — | computeMissingFarms, buildReminderText, buildEscalationText, createStockFileReminders |
-| functions/lib/stockMerge/articleMerge.js | — | normalizeArticleName, normalizeCategorie, groupDuplicates, verifierIntegriteFiche, buildArticleIndex, resolveArticleTarget, rememberArticle, isMovementOpen, isBdcOpen, BDC_CLOSED_STATUSES |
+| functions/lib/stockMerge/articleCategories.js | — | CATEGORIES_ARTICLE, SYNONYMES_CATEGORIE, categorieCanonique, estCategorieCanonique |
+| functions/lib/stockMerge/articleMerge.js | — | normalizeArticleName, groupDuplicates, verifierIntegriteFiche, buildArticleIndex, resolveArticleTarget, rememberArticle, isMovementOpen, isBdcOpen, BDC_CLOSED_STATUSES |
 | functions/lib/stockMerge/masterSuggestion.js | — | choisirMaster, pmpArticle, prixHtArticle, prixArticle, nbAchatsArticle, formatDh, cleDocument, REGLE_PMP, REGLE_PRIX_HT, REGLE_NB_ACHATS |
 | functions/lib/stockRoles/articleClassement.js | — | fichesAClasserParNom, referencesAClasserParNom |
 | functions/lib/stockRoles/articlePermissions.js | — | peutModifierArticle, peutFusionnerArticles, ROLE_CATALOGUE, ROLE_SUPERVISEUR, REFUS |
