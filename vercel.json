@@ -3,6 +3,7 @@
   "buildCommand": "npm run build:vercel",
   "outputDirectory": "dist-vercel",
   "framework": null,
+  "installCommand": "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install --no-audit --no-fund",
   "rewrites": [
     {
       "source": "/api/bdp-introspect",

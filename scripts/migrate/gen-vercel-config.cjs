@@ -26,6 +26,9 @@ const cfg={
   buildCommand:'npm run build:vercel',
   outputDirectory:'dist-vercel',
   framework:null,
+  // playwright n'est utile qu'aux tests locaux : on évite le téléchargement
+  // des navigateurs (~300 Mo) pendant l'install Vercel.
+  installCommand:'PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install --no-audit --no-fund',
   rewrites,
   headers:[
     { source:'/app.modular.js', headers:[{key:'Cache-Control',value:'public, max-age=31536000, immutable'}] },
