@@ -122,22 +122,51 @@ function actionBlock(src, nom) {
 // 1. La règle de rôle est déléguée au module pur, sur les DEUX actions.
 // --------------------------------------------------------------------------
 
-test('update-article : la garde de rôle passe par stockRoles.peutModifierArticle(role)', () => {
+test('update-article : la garde de rôle passe par le module pur, avec le rôle résolu SERVEUR', () => {
   const block = actionBlock(stripComments(INDEX_SRC), 'update-article');
+  //
+  // ── MODIFICATION CONSCIENTE (2026-08-29, ticket sb/unite-conversion) ──────
+  // Ce test exigeait `peutModifierArticle(updateArticleRole)` SANS second
+  // argument, précisément pour empêcher un tri de champs qui aurait fait
+  // tomber l'édition de fiche du DG en 403.
+  //
+  // La garde devient `peutModifierChampsArticle(role, updates)`. Ce qui a
+  // changé n'est PAS ce que ce test protégeait : `achats`/`dg` ne sont
+  // toujours pas triés par champ — la nouvelle fonction délègue d'abord à
+  // `peutModifierArticle` et s'arrête là si elle passe. Le contenu d'`updates`
+  // ne sert QU'À un rôle qui n'avait AUCUN droit sur le catalogue : le
+  // magasinier, à qui l'on ouvre `unite_consommation` et
+  // `stock_par_unite_consommation` (il n'a pas accès à Stock › Articles et
+  // c'est lui qui connaît le poids d'un fût).
+  //
+  // L'intention d'origine est donc conservée, mais VÉRIFIÉE PAR EXÉCUTION plus
+  // bas plutôt que par l'absence d'un argument : c'est le formulaire complet
+  // qui doit passer pour le DG, et cette propriété-là est plus forte.
   assert.match(
     block,
-    /stockRoles\.peutModifierArticle\s*\(\s*updateArticleRole\s*\)/,
-    'update-article doit appeler stockRoles.peutModifierArticle avec le rôle résolu SERVEUR.'
+    /stockRoles\.peutModifierChampsArticle\s*\(\s*updateArticleRole\s*,\s*updates\s*\)/,
+    'update-article doit appeler le module pur avec le rôle résolu SERVEUR et le contenu réel d\'`updates`.'
   );
-  // La garde ne doit RIEN savoir du contenu de `updates` : le formulaire de
-  // Stock › Articles envoie les 11 champs d'un bloc, et le `dg` y a droit
-  // depuis toujours. Passer `updates` à la règle serait le premier pas vers un
-  // tri de champs qui ferait tomber ce formulaire en 403.
+  // La décision ne se prend JAMAIS sur une déclaration du client (un champ
+  // `req.body.champs` que le client remplirait lui-même).
   assert.ok(
-    !/peutModifierArticle\s*\([^)]*,/.test(block),
-    'la règle de rôle ne doit prendre QUE le rôle : lui passer `updates` rouvrirait la porte '
-      + 'à un bridage par champ, qui casserait l\'édition de fiche par le DG.'
+    !/peutModifierChampsArticle\s*\([^)]*req\.body/.test(block),
+    'la garde ne doit pas décider sur une valeur lue dans le body.'
   );
+
+  // LA PROPRIÉTÉ PROTÉGÉE, vérifiée sur le code réel : le formulaire ENTIER de
+  // Stock › Articles passe pour `dg` et `achats`. Un bridage par champ, même
+  // réintroduit ailleurs, fait rougir ici.
+  const { peutModifierChampsArticle } = require('../../functions/lib/stockRoles');
+  const formulaireEntier = {
+    nom: 'x', reference: 'x', reference_technique: 'x', unite: 'KG', prix_ht: 1,
+    taux_tva: 20, prix_ttc: 1.2, categorie: 'Engrais', sous_categorie: '', type: 'Stockable', multi_ferme: false,
+  };
+  assert.strictEqual(peutModifierChampsArticle('dg', formulaireEntier).ok, true);
+  assert.strictEqual(peutModifierChampsArticle('achats', formulaireEntier).ok, true);
+  // …et le magasinier n'entre QUE par les deux champs de conversion.
+  assert.strictEqual(peutModifierChampsArticle('magasinier', formulaireEntier).ok, false);
+  assert.strictEqual(peutModifierChampsArticle('magasinier', { unite_consommation: 'L', stock_par_unite_consommation: 1.32 }).ok, true);
 });
 
 test('classer-article : MÊME règle de rôle qu\'update-article', () => {

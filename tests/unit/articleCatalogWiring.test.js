@@ -260,12 +260,19 @@ test('update-article — rôle résolu SERVEUR, 403 avec return, avant toute éc
   // comptaient restent tenues ici : (a) c'est bien le rôle résolu SERVEUR qui
   // décide, (b) le `return` est DANS la garde, sinon l'update s'exécuterait
   // quand même après la réponse.
+  //
+  // MISE À JOUR CONSCIENTE n°2 (ticket sb/unite-conversion) : la garde devient
+  // `peutModifierChampsArticle(role, updates)`, qui décide AUSSI sur le contenu
+  // réel d'`updates` — c'est ce qui ouvre au magasinier les deux seuls champs
+  // de conversion d'unité. `achats`/`dg` restent NON bridés (test suivant).
+  // L'argument `updates` est verrouillé ici : la décision ne doit jamais se
+  // prendre sur une déclaration du client (`req.body.champs`, par exemple).
   assert.match(
     h,
-    /const updateArticlePerm = stockRoles\.peutModifierArticle\(updateArticleRole\);\s*\n\s*if \(!updateArticlePerm\.ok\) \{\s*\n\s*return res\.status\(403\)/
+    /const updateArticlePerm = stockRoles\.peutModifierChampsArticle\(updateArticleRole, updates\);\s*\n\s*if \(!updateArticlePerm\.ok\) \{\s*\n\s*return res\.status\(403\)/
   );
   // La garde précède l'écriture.
-  const iGarde = h.indexOf('stockRoles.peutModifierArticle');
+  const iGarde = h.indexOf('stockRoles.peutModifierChampsArticle');
   const iWrite = h.indexOf('.update(clean)');
   assert.ok(iGarde > -1 && iWrite > -1 && iGarde < iWrite, 'garde avant écriture');
   // Aucun rôle/profil lu depuis le body — c'était la faille de create-article.
@@ -301,6 +308,45 @@ test('update-article — un DG envoyant le formulaire COMPLET est accepté', () 
   // …et la garde refuse toujours les autres.
   assert.strictEqual(peutModifierArticle('magasinier').ok, false);
   assert.strictEqual(peutModifierArticle(null).ok, false);
+
+  // Le DG envoyant le formulaire ENTIER passe la garde RÉELLEMENT câblée —
+  // celle qui décide sur le contenu d'`updates`. C'est le bridage par champ qui
+  // avait été introduit puis retiré : il doit rester impossible de le
+  // ré-introduire sans faire rougir ce test.
+  const { peutModifierChampsArticle } = require('../../functions/lib/stockRoles');
+  const formulaireEntier = {};
+  for (const c of champs) formulaireEntier[c] = 'x';
+  assert.strictEqual(peutModifierChampsArticle('dg', formulaireEntier).ok, true);
+  assert.strictEqual(peutModifierChampsArticle('achats', formulaireEntier).ok, true);
+
+  // …et le bridage ne peut pas non plus revenir PAR UN AUTRE CHEMIN : un
+  // second `return res.status(403)` posé après la garde (« si le rôle n'est
+  // pas achats et que `updates` contient un prix… ») rebriderait le DG sans
+  // qu'aucune règle pure ne bouge. Le handler n'a donc DROIT QU'À UN SEUL 403,
+  // celui du module.
+  const refus403 = h.match(/return res\.status\(403\)/g) || [];
+  assert.strictEqual(refus403.length, 1, 'un seul refus 403, rendu par le module pur');
+});
+
+test('update-article — le magasinier n\'entre QUE par les deux champs de conversion', () => {
+  // Droit NOUVEAU (2026-08-29) pour un rôle qui n'avait AUCUN accès au
+  // catalogue : il n'a pas l'écran Stock › Articles, mais c'est lui qui sait
+  // qu'un fût d'acide nitrique de 25 L pèse 33 kg.
+  const { peutModifierChampsArticle } = require('../../functions/lib/stockRoles');
+  const h = handlerSource('update-article');
+  const m = h.match(/const allowed = \[([^\]]+)\]/);
+  const champs = m[1].split(',').map((s) => s.trim().replace(/^"|"$/g, ''));
+  // Les deux champs doivent être RÉELLEMENT écrits par l'action, sinon le
+  // magasinier reçoit un 200 sans que rien ne change.
+  assert.ok(champs.includes('unite_consommation'), 'unite_consommation absente de `allowed`');
+  assert.ok(champs.includes('stock_par_unite_consommation'), 'facteur absent de `allowed`');
+  assert.strictEqual(peutModifierChampsArticle('magasinier', { unite_consommation: 'L', stock_par_unite_consommation: 1.32 }).ok, true);
+  // …et un champ de plus fait tomber TOUTE la requête.
+  assert.strictEqual(peutModifierChampsArticle('magasinier', { unite_consommation: 'L', prix_ht: 0 }).ok, false);
+  assert.strictEqual(peutModifierChampsArticle('magasinier', { prix_ht: 0 }).ok, false);
+  // Le facteur écrit est NORMALISÉ par le module pur : un facteur illisible
+  // devient `null`, jamais une chaîne stockée telle quelle.
+  assert.match(h, /clean\.stock_par_unite_consommation = uniteConso\.lireFacteur\(clean\.stock_par_unite_consommation\);/);
 });
 
 test('update-article — l’identité de `updated_by` vient du TOKEN, pas du body', () => {

@@ -47689,7 +47689,10 @@ ${rejetHtml}
                 }).catch(e => setImportResult({ type:'error', message: e.message })).finally(() => setImporting(false));
             };
 
-            const openDetail = (a) => { setSelectedArticle(a); setEditMode(false); setEditForm({ nom:a.nom, reference:a.reference||'', reference_technique:a.reference_technique||'', unite:a.unite||'U', prix_ht:a.prix_ht||0, taux_tva:a.taux_tva||20, prix_ttc:a.prix_ttc||0, categorie:a.categorie||'', sous_categorie:a.sous_categorie||'', type:a.type||'', multi_ferme:a.multi_ferme||false }); };
+            // unite_consommation / stock_par_unite_consommation : conversion
+            // « unité de consommation → unité de stock » (public/lib/uniteConsoUtils.js).
+            // Optionnelles : absentes, on consomme dans l'unité de stock et rien ne change.
+            const openDetail = (a) => { setSelectedArticle(a); setEditMode(false); setEditForm({ nom:a.nom, reference:a.reference||'', reference_technique:a.reference_technique||'', unite:a.unite||'U', prix_ht:a.prix_ht||0, taux_tva:a.taux_tva||20, prix_ttc:a.prix_ttc||0, categorie:a.categorie||'', sous_categorie:a.sous_categorie||'', type:a.type||'', multi_ferme:a.multi_ferme||false, unite_consommation:a.unite_consommation||'', stock_par_unite_consommation:(a.stock_par_unite_consommation===null||a.stock_par_unite_consommation===undefined)?'':String(a.stock_par_unite_consommation) }); };
             const closeDetail = () => { setSelectedArticle(null); setEditMode(false); };
 
             const handleUpdate = () => {
@@ -47741,6 +47744,24 @@ ${rejetHtml}
                     <div><label style={labelStyle}>Sous-catégorie</label><input value={form.sous_categorie} onChange={e=>setForm(f=>({...f,sous_categorie:e.target.value}))} style={fieldStyle} /></div>
                     <div><label style={labelStyle}>Type</label><select value={form.type} onChange={e=>setForm(f=>({...f,type:e.target.value}))} style={fieldStyle}><option value="">—</option><option value="Stockable">Stockable</option><option value="Consommable">Consommable</option><option value="Service">Service</option></select></div>
                     <div style={{display:'flex',alignItems:'center',gap:8,gridColumn:'1/-1'}}><input type="checkbox" checked={form.multi_ferme} onChange={e=>setForm(f=>({...f,multi_ferme:e.target.checked}))} /><label style={{fontSize:12}}>Multi-ferme</label></div>
+                    {/* Conversion « unité de consommation → unité de stock ».
+                        Composant PARTAGÉ avec l'écran de saisie d'un bon
+                        (public/components/ArticleConversionFields.jsx) : c'est lui
+                        qui porte la phrase « 1 L = 1,32 KG », seule formulation
+                        non ambiguë du facteur. À l'ÉDITION seulement — la
+                        création d'article (`create-article`) n'écrit pas encore
+                        ces champs, les afficher là ferait croire à une saisie
+                        enregistrée. */}
+                    {isEdit && window.ArticleConversionFields && (
+                        <div style={{gridColumn:'1/-1'}}>
+                            <window.ArticleConversionFields
+                                uniteStock={form.unite}
+                                uniteConsommation={form.unite_consommation}
+                                facteur={form.stock_par_unite_consommation}
+                                onChange={patch=>setForm(f=>({...f, ...patch}))}
+                            />
+                        </div>
+                    )}
                 </div>
             );
 

@@ -51,6 +51,9 @@ const { deriveFermeFromParcelle } = require("./lib/valorisation/fermeParcelle");
 // BEE ONE `sql_mirror_consommation` est tarie depuis avril 2026.
 const consoBons = require("./lib/consoBons");
 const parcelleGroupSplit = require("./lib/parcelleGroupes/split");
+// Conversion « unité de consommation → unité de stock » (Acide Nitrique acheté
+// au KG, dosé au L). Module PUR, fail-closed : jamais de facteur deviné.
+const uniteConso = require("./lib/uniteConso");
 const locationsConfig = require("./lib/stock/locationsConfig");
 const scanAttachment = require("./lib/stock/scanAttachment");
 const bcScan = require("./lib/stock/bcScan");
@@ -7882,7 +7885,7 @@ exports.stockManagement = functions
           }
         }
 
-        const bcItems = bcSourceItems.map((it) => ({
+        const bcItemsSaisis = bcSourceItems.map((it) => ({
           article: it.article || "", quantite: parseFloat(it.quantite) || 0, unite: it.unite || "kg",
           parcelle: it.parcelle || "", culture: it.culture || "", ferme: it.ferme || "",
           // parcelle_ref : clé stable BEE ONE envoyée par le front, jusqu'ici
@@ -7891,6 +7894,45 @@ exports.stockManagement = functions
           parcelle_ref: it.parcelle_ref || "",
           groupe_id: it.groupe_id || "", groupe_label: it.groupe_label || "",
         }));
+
+        // --- CONVERSION D'UNITÉ (lib/uniteConso) ---------------------------
+        // Mesuré en production : 87 lignes sur 648 sont saisies dans une unité
+        // qui n'est PAS celle où le stock est tenu (Acide Nitrique acheté au KG,
+        // dosé au L). Jusqu'ici le système retirait « 5 L » d'un solde en kilos.
+        // La quantité DÉDUITE est donc désormais convertie vers l'unité de
+        // stock quand la fiche article porte `unite_consommation` +
+        // `stock_par_unite_consommation` (« 1 L = 1,32 KG »).
+        //
+        // ⚠️ PORTÉE STRICTEMENT LIMITÉE AU SOLDE DE STOCK. La VALORISATION
+        // (lib/consoBons/bonsToConsoRows.js → lib/valorisation/consoValorisation.js)
+        // lit toujours la quantité SAISIE et la multiplie par un PMP exprimé
+        // dans l'unité de stock : pour 5 L d'acide nitrique, le solde est juste
+        // mais le coût reste sous-estimé de 32 %. Chantier séparé, au backlog
+        // (validé par Omar) — ne pas lire ce bloc comme si le coût suivait.
+        //
+        // FAIL-CLOSED, et sans blocage (décision d'Omar) : sans conversion
+        // exploitable, la ligne est déduite TELLE QUELLE — comportement
+        // strictement identique à avant — mais marquée `conversion_manquante`
+        // et remontée dans `lignes_non_convertibles`, pour être signalée au
+        // magasinier et rester repérable après coup. Aucun facteur n'est
+        // deviné : une densité est propre au produit.
+        const bcCatalogSnap = await db_firestore.collection("articles_catalog").where("active", "==", true).get();
+        const bcIndexUnites = uniteConso.indexerArticles(bcCatalogSnap.docs.map((d) => d.data()));
+        const bcConversion = uniteConso.analyserLignes(bcItemsSaisis, bcIndexUnites);
+        const bcItems = bcItemsSaisis.map((it, i) => {
+          const v = bcConversion.lignes[i];
+          // Le bon conserve la saisie du magasinier (`quantite`/`unite`) : c'est
+          // ce qui est écrit sur le bon papier. La quantité en unité de stock
+          // est AJOUTÉE à côté, jamais substituée.
+          return Object.assign({}, it, {
+            unite_stock: v.converti ? v.unite_stock : it.unite,
+            quantite_stock: v.converti ? v.quantite_stock : it.quantite,
+            conversion_facteur: v.facteur,
+            conversion_appliquee: v.converti,
+            conversion_manquante: !v.convertible,
+            conversion_motif: v.convertible ? "" : v.motif,
+          });
+        });
         const allParcelles = [...new Set(bcItems.map(i => i.parcelle).filter(Boolean))];
         const allFermes = [...new Set(bcItems.map(i => i.ferme).filter(Boolean))];
         // Date résolue UNE fois : le bon et ses mouvements de stock doivent
@@ -7961,6 +8003,12 @@ exports.stockManagement = functions
           created_at: Date.now(),
           // Trace du forçage d'un doublon détecté (null si aucun forçage) : qui,
           // quand, quel bon était jugé doublon, et pour quel motif.
+          // Lignes dont l'unité de saisie diffère de l'unité de stock SANS
+          // conversion exploitable sur la fiche : déduites telles quelles, mais
+          // consignées ici pour rester repérables après coup (même esprit que
+          // les « articles non valorisés » de l'écran Campagne). Vide dans le
+          // cas normal.
+          lignes_non_convertibles: bcConversion.non_convertibles,
           doublon_force: bcForceTrace,
           history: bcForceTrace
             ? [{ action: bcDoublons.HISTORY_ACTION_FORCAGE, by: bcForceTrace.by, at: bcForceTrace.at, motif: bcForceTrace.motif, bon_doublon_numero: bcForceTrace.bon_doublon_numero }]
@@ -7982,9 +8030,19 @@ exports.stockManagement = functions
         }
         for (const [parcelle, parcItems] of Object.entries(itemsByParcelle)) {
           const bcsNumero = await getNextNumber("stock_consommation", "BCS");
+          // Le MOUVEMENT de stock (et donc le solde) est en unité de STOCK :
+          // c'est tout l'objet du ticket. Une ligne sans conversion exploitable
+          // garde sa quantité et son unité de saisie — comportement d'avant —
+          // et porte `conversion_manquante` pour rester repérable.
           const bcsItems = parcItems.map((it) => ({
             article_ref: it.article || "", article_nom: it.article || "",
-            quantite: it.quantite || 0, unite: it.unite || "kg",
+            quantite: it.conversion_appliquee ? it.quantite_stock : (it.quantite || 0),
+            unite: it.conversion_appliquee ? it.unite_stock : (it.unite || "kg"),
+            quantite_saisie: it.quantite || 0,
+            unite_saisie: it.unite || "kg",
+            conversion_facteur: it.conversion_facteur === undefined ? null : it.conversion_facteur,
+            conversion_appliquee: !!it.conversion_appliquee,
+            conversion_manquante: !!it.conversion_manquante,
           }));
           const movData = {
             numero: bcsNumero, type: "consommation",
@@ -8009,7 +8067,14 @@ exports.stockManagement = functions
           await Promise.all(balPromises);
         }
 
-        return res.json({ success: true, id: docRef.id, numero });
+        // `lignes_non_convertibles` est renvoyé pour que l'écran de saisie le
+        // dise TOUT DE SUITE au magasinier, en nommant l'article et les deux
+        // unités : le bon est créé, mais la déduction s'est faite dans l'unité
+        // de saisie faute de conversion sur la fiche.
+        return res.json({
+          success: true, id: docRef.id, numero,
+          lignes_non_convertibles: bcConversion.non_convertibles,
+        });
       }
 
       // ========== MODIFICATION DE LA DATE D'UN BON DE CONSOMMATION ==========
@@ -8886,15 +8951,41 @@ exports.stockManagement = functions
         // `lib/stockRoles` (testable) ; elle n'a été ni élargie ni restreinte.
         // Le message de refus, lui, est corrigé : il disait « Réservé au
         // responsable achats » alors que le DG passait.
+        //
+        // AJOUT 2026-08-29 (ticket sb/unite-conversion) : le MAGASINIER entre
+        // dans cette action, mais sur DEUX CHAMPS SEULEMENT —
+        // `unite_consommation` et `stock_par_unite_consommation`. C'est lui qui
+        // sait qu'un fût d'acide nitrique de 25 L pèse 33 kg, et c'est lui que
+        // la ligne non convertible bloque au quotidien ; il n'a en revanche
+        // aucun accès à l'écran Stock › Articles.
+        // ⚠️ La décision se prend sur le CONTENU RÉEL de `updates`, jamais sur
+        // une déclaration du client : un magasinier qui joindrait `prix_ht` est
+        // refusé en bloc. `achats`/`dg` ne sont PAS bridés par champ (cf. le
+        // pavé d'en-tête de lib/stockRoles/articlePermissions.js : ce bridage a
+        // déjà été tenté et retiré).
         const updateArticleRole = await resolveCallerRole(authUser);
-        const updateArticlePerm = stockRoles.peutModifierArticle(updateArticleRole);
+        const updateArticlePerm = stockRoles.peutModifierChampsArticle(updateArticleRole, updates);
         if (!updateArticlePerm.ok) {
           return res.status(403).json({ success: false, error: updateArticlePerm.raison });
         }
         if (!id) return res.status(400).json({ success: false, error: "ID requis" });
-        const allowed = ["nom", "reference", "reference_technique", "unite", "prix_ht", "taux_tva", "prix_ttc", "categorie", "sous_categorie", "type", "multi_ferme"];
+        // `unite_consommation` / `stock_par_unite_consommation` : conversion
+        // « unité de consommation → unité de stock » (lib/uniteConso). Le
+        // facteur se lit « 1 <unite_consommation> = X <unite> ».
+        const allowed = ["nom", "reference", "reference_technique", "unite", "prix_ht", "taux_tva", "prix_ttc", "categorie", "sous_categorie", "type", "multi_ferme", "unite_consommation", "stock_par_unite_consommation"];
         const clean = {};
         for (const k of allowed) { if (updates && updates[k] !== undefined) clean[k] = updates[k]; }
+        // La conversion est NORMALISÉE ici, à l'écriture, et une seule fois :
+        // un facteur illisible (« abc », 0, négatif) est écrit `null` plutôt
+        // que stocké tel quel. Une fiche ne doit jamais porter un facteur que
+        // le module de conversion refusera silencieusement à la lecture — sinon
+        // l'écran affiche une conversion et le stock en applique une autre.
+        if (clean.unite_consommation !== undefined) {
+          clean.unite_consommation = clean.unite_consommation === null ? null : String(clean.unite_consommation).trim();
+        }
+        if (clean.stock_par_unite_consommation !== undefined) {
+          clean.stock_par_unite_consommation = uniteConso.lireFacteur(clean.stock_par_unite_consommation);
+        }
         clean.updated_at = Date.now();
         // TRAÇABILITÉ : l'identité vient du TOKEN, pas du body. Le client peut
         // enrichir (nom affiché), mais ni se renommer ni s'effacer : sans ces

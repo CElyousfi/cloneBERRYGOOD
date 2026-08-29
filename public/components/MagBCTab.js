@@ -212,6 +212,16 @@
     // de rendu indexent les hooks par position.
     const [deleteConfirmBc, setDeleteConfirmBc] = useState(null);
     const [deleteNumeroSaisi, setDeleteNumeroSaisi] = useState('');
+    // --- Conversion d'unité d'un article (magasinier / achats / dg) -----
+    // ENCORE ET TOUJOURS EN FIN DE LISTE : cf. l'avertissement plus haut,
+    // les tests de rendu indexent les hooks par position.
+    const [conversionArticle, setConversionArticle] = useState(null);
+    const [conversionForm, setConversionForm] = useState({
+      unite_consommation: '',
+      stock_par_unite_consommation: ''
+    });
+    const [conversionSaving, setConversionSaving] = useState(false);
+    const [conversionError, setConversionError] = useState('');
     const isImportBC = bc => bc._isImport || (bc.numero || '').startsWith('IMP-') || bc.created_by?.userId === 'import_caneva';
     const loadBcs = () => {
       Promise.all([fetch('/api/stock?action=list-bc&type=' + type).then(r => r.json()).catch(() => ({
@@ -263,15 +273,17 @@
         if (json.success) setStocks(json.stocks || []);
       }).catch(() => {});
     }, []);
+    // ⚠️ LISTE COMPLÈTE, DOUBLONS COMPRIS. Elle était dédoublonnée par nom
+    // ici même, ce qui rendait le front AVEUGLE aux ~105 paires de fiches
+    // jumelles du catalogue : deux fiches « Acide Nitrique » en désaccord
+    // sur la conversion faisaient afficher « = 6.6 KG déduits » pendant
+    // que le serveur, lui, voyait l'ambiguïté et déduisait 5 L d'un stock
+    // en kilos. Le dédoublonnage ne sert qu'à l'AFFICHAGE de la liste de
+    // suggestions (catalogueArticlesAffichage), jamais à décider.
     useEffect(() => {
       fetch('/api/stock?action=list-articles').then(r => r.json()).then(j => {
         if (j.success) {
-          const seen = new Set();
-          setCatalogueArticles((j.articles || []).filter(a => {
-            if (seen.has(a.nom)) return false;
-            seen.add(a.nom);
-            return true;
-          }));
+          setCatalogueArticles(j.articles || []);
         }
       }).catch(() => {});
     }, []);
@@ -313,6 +325,68 @@
       const a = catalogueArticles.find(x => (x.nom || '').toLowerCase() === (article || '').toLowerCase());
       return a && a.unite ? (a.unite || '').toLowerCase() : null;
     };
+    // Liste d'AFFICHAGE uniquement : une seule entrée par nom dans les
+    // suggestions, sinon le magasinier voit la même ligne deux fois.
+    // ⚠️ Ne JAMAIS s'en servir pour décider quoi que ce soit (conversion,
+    // fiches à corriger) : c'est précisément ce dédoublonnage, appliqué
+    // trop tôt, qui masquait les fiches jumelles au front.
+    const catalogueArticlesAffichage = (() => {
+      const seen = new Set();
+      return catalogueArticles.filter(a => {
+        if (seen.has(a.nom)) return false;
+        seen.add(a.nom);
+        return true;
+      });
+    })();
+    // --- CONVERSION D'UNITÉ (lib/uniteConsoUtils) ----------------------
+    // Un article peut être stocké au KG et dosé au L (acide nitrique :
+    // 1 L = 1,32 KG). L'unité n'est donc plus un choix libre, et la
+    // quantité réellement déduite du stock est montrée à la saisie.
+    // Lib absente (script non chargé) → tout retombe sur le comportement
+    // d'avant, aucun écran ne casse.
+    const UCU = window.UniteConsoUtils;
+    const uniteIndex = UCU ? UCU.indexerArticles(catalogueArticles) : null;
+    /** Fiche de conversion d'un article, ou null (inconnu / doublons en désaccord). */
+    const ficheConversion = nom => UCU && uniteIndex ? UCU.trouverArticle(uniteIndex, nom) : null;
+    /** Unités que le magasinier a le droit de choisir pour cette ligne. */
+    const unitesPourArticle = nom => UCU ? UCU.unitesSaisissables(ficheConversion(nom)) : [];
+    /**
+     * Unité EFFECTIVE d'une ligne : celle qui est affichée ET envoyée.
+     * Un brouillon restauré (ou un bon scanné) peut porter « kg » quand
+     * la fiche écrit « KG » : sans ce rapprochement, le <select>
+     * afficherait la première option pendant que l'état en garde une
+     * autre — l'écran et l'envoi diraient deux choses différentes.
+     *
+     * ⚠️ Une unité qui ne correspond à AUCUNE unité permise est gardée
+     * TELLE QUELLE, jamais remplacée en douce par l'unité de stock : la
+     * ligne serait déduite d'une quantité que personne n'a saisie. Elle
+     * reste proposée dans le sélecteur et la ligne est signalée comme
+     * non convertible — c'est exactement le cas que le filet doit
+     * attraper.
+     */
+    const uniteEffective = it => {
+      const permises = unitesPourArticle(it.article);
+      if (!permises.length) return it.unite;
+      const match = permises.filter(u => UCU.normaliserUnite(u) === UCU.normaliserUnite(it.unite))[0];
+      return match || it.unite;
+    };
+    /** Options du sélecteur d'unité d'une ligne (cf. uniteEffective). */
+    const optionsUnite = it => {
+      const permises = unitesPourArticle(it.article);
+      if (!permises.length) {
+        // Article inconnu du catalogue : on ne sait rien de lui, la
+        // liste générique reste (sinon la ligne est insaisissable).
+        return [...new Set(['kg', 'L', 'unité', 'carton', 'sac', 'bidon', ...(it.unite ? [it.unite] : [])])];
+      }
+      const eff = uniteEffective(it);
+      return permises.indexOf(eff) >= 0 ? permises : [...permises, eff];
+    };
+    /** Verdict de conversion d'une ligne (null si la lib n'est pas chargée). */
+    const verdictLigne = it => UCU ? UCU.convertirQuantite({
+      article: it.article,
+      quantite: it.quantite,
+      unite: uniteEffective(it)
+    }, ficheConversion(it.article)) : null;
     const suggestRef = nom => 'ART-' + (nom || '').toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24);
     const openCreateArticle = (lineIdx, prefillNom) => {
       const nom = (prefillNom || '').trim();
@@ -347,13 +421,10 @@
         if (j.success) {
           const listR = await fetch('/api/stock?action=list-articles');
           const listJ = await listR.json();
+          // Liste COMPLÈTE (cf. le chargement initial) : dédoublonner ici
+          // rendrait à nouveau le front aveugle aux fiches jumelles.
           if (listJ.success) {
-            const seen = new Set();
-            setCatalogueArticles((listJ.articles || []).filter(a => {
-              if (seen.has(a.nom)) return false;
-              seen.add(a.nom);
-              return true;
-            }));
+            setCatalogueArticles(listJ.articles || []);
           }
           if (createArticleLineIdx != null) {
             const li = createArticleLineIdx;
@@ -384,6 +455,100 @@
         alert('Erreur réseau');
       }
       setCreatingArt(false);
+    };
+
+    // --- Renseigner la conversion d'unité d'un article ------------------
+    // Le magasinier n'a PAS accès à Stock › Articles, et c'est pourtant
+    // lui qui sait qu'un fût de 25 L d'acide nitrique pèse 33 kg. Le
+    // serveur (`update-article`) ne lui ouvre que ces DEUX champs et
+    // décide sur le contenu réel d'`updates` : ce bouton n'est donc pas
+    // la sécurité, juste le chemin.
+    const canSetConversion = currentProfile === 'magasinier' || currentProfile === 'achats' || currentProfile === 'dg';
+    /**
+     * TOUTES les fiches actives portant ce nom. Le catalogue porte ~105
+     * paires de jumelles : n'en corriger qu'une laisse les deux fiches en
+     * désaccord, donc l'article ambigu, donc TOUJOURS pas converti — la
+     * réparation paraîtrait sans effet. Lit la liste COMPLÈTE, jamais la
+     * liste d'affichage (dédoublonnée).
+     */
+    const fichesDuNom = nom => {
+      const cible = UCU ? UCU.canonNom(nom) : (nom || '').trim().toLowerCase();
+      return catalogueArticles.filter(a => (UCU ? UCU.canonNom(a.nom) : (a.nom || '').trim().toLowerCase()) === cible);
+    };
+    const openConversion = nom => {
+      const fiches = fichesDuNom(nom);
+      // Pré-remplissage depuis la PREMIÈRE fiche : quand les jumelles se
+      // contredisent, il faut bien en proposer une. L'enregistrement
+      // écrit ensuite la MÊME valeur sur toutes, ce qui lève le désaccord.
+      const f = fiches[0] || {};
+      setConversionArticle({
+        nom: nom,
+        unite_stock: (f.unite || '').trim(),
+        ids: fiches.map(a => a.id).filter(Boolean)
+      });
+      setConversionForm({
+        unite_consommation: (f.unite_consommation || '').trim(),
+        stock_par_unite_consommation: f.stock_par_unite_consommation === null || f.stock_par_unite_consommation === undefined ? '' : String(f.stock_par_unite_consommation)
+      });
+      setConversionError('');
+    };
+    const saveConversion = async () => {
+      if (!conversionArticle) return;
+      const uc = (conversionForm.unite_consommation || '').trim();
+      const facteur = UCU ? UCU.lireFacteur(conversionForm.stock_par_unite_consommation) : null;
+      // Une unité de consommation sans facteur ne convertit rien : on
+      // refuse ICI plutôt que d'écrire une fiche qui laisserait croire
+      // à une conversion inexistante.
+      if (uc && UCU && UCU.normaliserUnite(uc) !== UCU.normaliserUnite(conversionArticle.unite_stock) && facteur === null) {
+        setConversionError('Indiquez combien vaut 1 ' + uc + ' en ' + (conversionArticle.unite_stock || 'unité de stock') + ' (nombre supérieur à 0).');
+        return;
+      }
+      if (!conversionArticle.ids.length) {
+        setConversionError('Aucune fiche catalogue pour « ' + conversionArticle.nom + ' ».');
+        return;
+      }
+      setConversionSaving(true);
+      setConversionError('');
+      try {
+        // Les DEUX champs, et rien d'autre : y joindre un champ de plus
+        // ferait refuser TOUTE la requête au magasinier (garde serveur).
+        // Toutes les fiches homonymes sont mises à jour — n'en corriger
+        // qu'une laisserait la conversion ambiguë, donc inopérante.
+        const updates = {
+          unite_consommation: uc,
+          stock_par_unite_consommation: uc ? facteur : null
+        };
+        for (const id of conversionArticle.ids) {
+          const r = await fetch('/api/stock?action=update-article', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              id,
+              updates,
+              updated_by: {
+                profileId: currentProfile,
+                name: profileData?.name || currentProfile
+              }
+            })
+          });
+          const j = await r.json();
+          if (!j.success) {
+            setConversionError(j.error || 'Échec de l\'enregistrement');
+            setConversionSaving(false);
+            return;
+          }
+        }
+        const listJ = await fetch('/api/stock?action=list-articles').then(r => r.json());
+        if (listJ.success) {
+          setCatalogueArticles(listJ.articles || []);
+        }
+        setConversionArticle(null);
+      } catch (e) {
+        setConversionError('Erreur réseau');
+      }
+      setConversionSaving(false);
     };
     const filteredParcelles = parcelles;
     const bcCampagneToday = bcCampagneOf(new Date().toISOString().slice(0, 10));
@@ -613,6 +778,10 @@
         profileId: currentProfile,
         name: profileData?.name || currentProfile
       };
+      // `uniteEffective` : on envoie l'unité RÉELLEMENT affichée dans le
+      // sélecteur. Envoyer `i.unite` brut ferait diverger l'écran de
+      // l'envoi sur un brouillon restauré (« kg » affiché « KG »), et la
+      // conversion serveur ne s'appliquerait pas au même intitulé.
       const payload = {
         type: type || '',
         date: form.date,
@@ -623,7 +792,7 @@
         items: validItems.map(i => ({
           article: i.article,
           quantite: i.quantite,
-          unite: i.unite,
+          unite: uniteEffective(i),
           parcelle: i.parcelle,
           parcelle_ref: i.parcelle_ref || '',
           culture: i.culture,
@@ -646,7 +815,12 @@
       }).then(r => r.json()).then(json => {
         if (json.success) {
           setDoublonBc(null);
-          alert('Bon de consommation ' + json.numero + ' cree');
+          // Le serveur renvoie les lignes qu'il n'a PAS su convertir :
+          // le bon est créé (on ne bloque pas), mais le magasinier doit
+          // l'apprendre tout de suite, article et unités nommés.
+          const nonConv = json.lignes_non_convertibles || [];
+          const avis = nonConv.length ? '\n\nAttention — ' + nonConv.length + ' ligne(s) déduites sans conversion :\n' + nonConv.map(l => '• ' + l.article + ' : ' + l.quantite + ' ' + (l.unite_saisie || '?') + ' retirés d\'un stock tenu en ' + (l.unite_stock || '?')).join('\n') + '\nRenseignez la conversion sur la fiche de ces articles.' : '';
+          alert('Bon de consommation ' + json.numero + ' cree' + avis);
           clearBcDraft();
           setShowForm(false);
           loadBcs();
@@ -1177,8 +1351,10 @@
         padding: 40
       }
     }, "Aucun bon de consommation ", label.toLowerCase(), "."))))), showScan && window.MagBCScanModal && React.createElement(window.MagBCScanModal, {
+      // La modale de scan reçoit la liste d'AFFICHAGE (une entrée par
+      // nom), comme avant ce ticket : son appariement se fait par nom.
       type,
-      catalogueArticles,
+      catalogueArticles: catalogueArticlesAffichage,
       getStock,
       catalogUnit,
       refForCampagne,
@@ -1451,8 +1627,9 @@
           const next = {
             ...items[idx],
             article: val
-          };
-          const u = catalogUnit(val);
+          }; /* L'unité par défaut est celle du STOCK, écrite comme sur la fiche (« KG », pas « kg ») : c'est la valeur des options du sélecteur juste à côté. */
+          const permises = unitesPourArticle(val);
+          const u = permises.length ? permises[0] : catalogUnit(val);
           if (u) next.unite = u;
           items[idx] = next;
           setForm({
@@ -1470,7 +1647,7 @@
         }
       }), /*#__PURE__*/React.createElement("datalist", {
         id: 'stock-list-' + type
-      }, catalogueArticles.map(a => /*#__PURE__*/React.createElement("option", {
+      }, catalogueArticlesAffichage.map(a => /*#__PURE__*/React.createElement("option", {
         key: a.id,
         value: a.nom
       }, a.nom, " (stock: ", getStock(a.nom), ")"))), canCreateArticle && (() => {
@@ -1559,8 +1736,23 @@
           border: insuffisant ? '2px solid #e74c3c' : '1px solid #ddd',
           fontSize: 12
         }
-      })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("select", {
-        value: it.unite,
+      }), (() => {
+        // CE QUI SERA RÉELLEMENT DÉDUIT DU STOCK. Sans cette
+        // ligne, le magasinier saisit 5 L et ne voit jamais que
+        // 6,6 kg quittent le solde.
+        const v = verdictLigne(it);
+        if (!v || !v.converti) return null;
+        return /*#__PURE__*/React.createElement("div", {
+          style: {
+            fontSize: 10,
+            color: 'var(--green)',
+            marginTop: 2,
+            fontWeight: 600
+          }
+        }, "= ", v.quantite_stock, " ", v.unite_stock, " d\xE9duits du stock");
+      })()), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("select", {
+        className: "bc-unite-select",
+        value: uniteEffective(it),
         onChange: e => updateItem(idx, 'unite', e.target.value),
         style: {
           width: '100%',
@@ -1569,10 +1761,59 @@
           border: '1px solid #ddd',
           fontSize: 12
         }
-      }, [...new Set(['kg', 'L', 'unité', 'carton', 'sac', 'bidon', ...(it.unite ? [it.unite] : [])])].map(u => /*#__PURE__*/React.createElement("option", {
+      }, optionsUnite(it).map(u => /*#__PURE__*/React.createElement("option", {
         key: u,
         value: u
-      }, u)))), /*#__PURE__*/React.createElement("td", {
+      }, u))), (() => {
+        // LE FILET. Unité différente de celle du stock et aucune
+        // conversion exploitable : on ne bloque pas (décision
+        // d'Omar), on NOMME l'article et les deux unités, et on
+        // propose de renseigner la conversion sur-le-champ.
+        const v = verdictLigne(it);
+        if (!v || v.convertible || !it.article) return null;
+        if (v.motif === UCU.MOTIFS.QUANTITE_INVALIDE) return null;
+        // Fiches JUMELLES en désaccord : l'article existe, il est
+        // seulement en double. Le dire « absent du catalogue »
+        // enverrait le magasinier chercher un problème inexistant —
+        // et ici la réparation est possible (renseigner la même
+        // conversion sur toutes les fiches du nom).
+        const ambigu = UCU.estAmbigu(uniteIndex, it.article);
+        const inconnu = v.motif === UCU.MOTIFS.ARTICLE_INCONNU && !ambigu;
+        return /*#__PURE__*/React.createElement("div", {
+          style: {
+            fontSize: 10,
+            color: '#a01d10',
+            marginTop: 3,
+            fontWeight: 600,
+            lineHeight: 1.3
+          }
+        }, /*#__PURE__*/React.createElement("i", {
+          className: "fa-solid fa-triangle-exclamation",
+          style: {
+            marginRight: 3
+          }
+        }), ambigu ? 'Plusieurs fiches « ' + it.article + ' » au catalogue, en désaccord sur la conversion : la quantité sera déduite telle quelle.' : inconnu ? 'Article absent du catalogue : la quantité sera déduite telle quelle.' : 'Saisi en ' + v.unite_saisie + ', stock tenu en ' + v.unite_stock + ' — conversion non renseignée. La quantité sera déduite telle quelle.', !inconnu && canSetConversion && /*#__PURE__*/React.createElement("button", {
+          type: "button",
+          onClick: () => openConversion(it.article),
+          style: {
+            display: 'block',
+            marginTop: 3,
+            padding: '2px 6px',
+            borderRadius: 5,
+            border: '1px dashed var(--berry)',
+            background: 'var(--berry-pale)',
+            color: 'var(--berry)',
+            cursor: 'pointer',
+            fontSize: 10,
+            fontWeight: 600
+          }
+        }, /*#__PURE__*/React.createElement("i", {
+          className: "fa-solid fa-right-left",
+          style: {
+            marginRight: 3
+          }
+        }), "Renseigner la conversion"));
+      })()), /*#__PURE__*/React.createElement("td", {
         style: {
           textAlign: 'center',
           fontSize: 11,
@@ -1635,7 +1876,98 @@
         fontWeight: 600,
         fontSize: 13
       }
-    }, "Creer le bon")))), editDateBc && /*#__PURE__*/React.createElement("div", {
+    }, "Creer le bon")))), conversionArticle && /*#__PURE__*/React.createElement("div", {
+      className: "modal-overlay",
+      style: {
+        zIndex: 10003
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "modal-content",
+      style: {
+        maxWidth: 480,
+        width: '92vw'
+      }
+    }, /*#__PURE__*/React.createElement("h3", {
+      style: {
+        marginTop: 0,
+        color: 'var(--berry)'
+      }
+    }, /*#__PURE__*/React.createElement("i", {
+      className: "fa-solid fa-right-left",
+      style: {
+        marginRight: 8
+      }
+    }), "Conversion d'unit\xE9"), /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 12,
+        color: 'var(--gray-400)',
+        marginBottom: 4
+      }
+    }, "Article ", /*#__PURE__*/React.createElement("strong", {
+      style: {
+        color: 'var(--berry)'
+      }
+    }, conversionArticle.nom), " \u2014 stock tenu en ", /*#__PURE__*/React.createElement("strong", null, conversionArticle.unite_stock || '—')), /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 11,
+        color: 'var(--gray-400)',
+        marginBottom: 8
+      }
+    }, "Seuls l'unit\xE9 de consommation et sa conversion sont modifi\xE9s. Le prix, la cat\xE9gorie et l'unit\xE9 de stock ne changent pas."), window.ArticleConversionFields && /*#__PURE__*/React.createElement(window.ArticleConversionFields, {
+      uniteStock: conversionArticle.unite_stock,
+      uniteConsommation: conversionForm.unite_consommation,
+      facteur: conversionForm.stock_par_unite_consommation,
+      disabled: conversionSaving,
+      compact: true,
+      onChange: patch => {
+        setConversionForm({
+          ...conversionForm,
+          ...patch
+        });
+        setConversionError('');
+      }
+    }), conversionError && /*#__PURE__*/React.createElement("div", {
+      style: {
+        marginTop: 10,
+        padding: '8px 10px',
+        borderRadius: 8,
+        background: '#fdecea',
+        border: '1px solid #e74c3c',
+        color: '#a01d10',
+        fontSize: 12
+      }
+    }, conversionError), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: 'flex',
+        gap: 8,
+        justifyContent: 'flex-end',
+        marginTop: 16
+      }
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: () => setConversionArticle(null),
+      disabled: conversionSaving,
+      style: {
+        padding: '8px 16px',
+        borderRadius: 8,
+        border: '1px solid #ddd',
+        background: '#fff',
+        cursor: 'pointer',
+        fontSize: 13
+      }
+    }, "Annuler"), /*#__PURE__*/React.createElement("button", {
+      onClick: saveConversion,
+      disabled: conversionSaving,
+      style: {
+        padding: '8px 16px',
+        borderRadius: 8,
+        border: 'none',
+        background: 'var(--berry)',
+        color: '#fff',
+        cursor: 'pointer',
+        fontWeight: 600,
+        fontSize: 13
+      }
+    }, conversionSaving ? 'Enregistrement…' : 'Enregistrer la conversion')))), editDateBc && /*#__PURE__*/React.createElement("div", {
       className: "modal-overlay",
       style: {
         zIndex: 10002

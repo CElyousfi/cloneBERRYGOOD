@@ -93,6 +93,78 @@ function peutFusionnerArticles(role) {
 }
 
 /**
+ * Les DEUX SEULS champs de la fiche article qu'un magasinier peut écrire.
+ *
+ * Ils décrivent la conversion « unité de consommation → unité de stock »
+ * (cf. functions/lib/uniteConso) : `unite_consommation` et le facteur
+ * `stock_par_unite_consommation`. Le magasinier est celui qui SAIT qu'un fût
+ * d'acide nitrique de 25 L pèse 33 kg — et c'est lui que la ligne non
+ * convertible bloque au quotidien. Aucun autre champ : ni le prix, ni la
+ * catégorie, ni le nom.
+ */
+const CHAMPS_CONVERSION_UNITE = ['unite_consommation', 'stock_par_unite_consommation'];
+
+/** Refus opposé au magasinier qui sort de ces deux champs. */
+const REFUS_HORS_CONVERSION = 'Le magasinier ne peut renseigner que l\'unité de '
+  + 'consommation et sa conversion (unite_consommation, stock_par_unite_consommation)';
+
+/**
+ * Champs RÉELLEMENT demandés par un `updates`. `undefined` ne compte pas : le
+ * monolithe ignore déjà ces clés au moment de construire l'écriture, les
+ * compter ici ferait refuser une requête qui n'écrit rien de plus.
+ *
+ * @param {*} updates objet `updates` du body.
+ * @returns {string[]}
+ */
+function champsDemandes(updates) {
+  if (!updates || typeof updates !== 'object' || Array.isArray(updates)) return [];
+  return Object.keys(updates).filter((k) => updates[k] !== undefined);
+}
+
+/**
+ * Décide si `role` peut écrire les champs CONTENUS DANS `updates` sur une
+ * fiche `articles_catalog`.
+ *
+ * ⚠️ LIRE L'EN-TÊTE DE CE FICHIER AVANT DE TOUCHER À CETTE FONCTION. Brider
+ * `achats`/`dg` par champ a déjà été tenté et explicitement écarté : l'écran
+ * Stock › Articles envoie TOUJOURS le formulaire entier (11 champs), et un
+ * bridage leur aurait rendu un 403 sur une action qui marchait la veille.
+ * `peutModifierArticle` est donc appelée EN PREMIER et, si elle passe, la
+ * décision s'arrête là — accès complet, exactement comme avant.
+ *
+ * Ce qui est AJOUTÉ ici (2026-08-29, demande d'Omar) est un droit NOUVEAU pour
+ * un rôle qui n'en avait AUCUN sur le catalogue : le magasinier, et sur les
+ * deux seuls champs de conversion d'unité. Le cas est donc l'inverse du
+ * précédent — on n'enlève rien à personne.
+ *
+ * La décision se prend sur le CONTENU RÉEL de `updates`, jamais sur une
+ * déclaration du client : un magasinier qui joindrait `prix_ht` à sa
+ * conversion est refusé en bloc, sans écriture partielle.
+ *
+ * @param {*} role profileId résolu SERVEUR (`resolveCallerRole`).
+ * @param {*} updates objet `updates` du body, tel qu'il a été envoyé.
+ * @returns {Verdict}
+ */
+function peutModifierChampsArticle(role, updates) {
+  const complet = peutModifierArticle(role);
+  if (complet.ok) return complet;
+
+  const r = typeof role === 'string' ? role : '';
+  if (r !== ROLE_MAGASINIER) return { ok: false, raison: REFUS };
+
+  const champs = champsDemandes(updates);
+  // `updates` vide : rien à écrire. Refusé plutôt qu'accepté à blanc, pour ne
+  // pas laisser croire à une modification qui n'a pas eu lieu.
+  if (champs.length === 0) return { ok: false, raison: REFUS_HORS_CONVERSION };
+
+  const horsPerimetre = champs.filter((k) => CHAMPS_CONVERSION_UNITE.indexOf(k) === -1);
+  if (horsPerimetre.length > 0) {
+    return { ok: false, raison: REFUS_HORS_CONVERSION + ' — champ refusé : ' + horsPerimetre.join(', ') };
+  }
+  return { ok: true, raison: '' };
+}
+
+/**
  * Décide si `role` peut SUPPRIMER un bon de consommation (`delete-bc`).
  *
  * POPULATION PLUS LARGE que `peutModifierArticle` : `achats`, `dg` ET
@@ -130,11 +202,15 @@ function peutSupprimerBonConso(role) {
 
 module.exports = {
   peutModifierArticle,
+  peutModifierChampsArticle,
+  champsDemandes,
   peutFusionnerArticles,
   peutSupprimerBonConso,
   ROLE_CATALOGUE,
   ROLE_SUPERVISEUR,
   ROLE_MAGASINIER,
+  CHAMPS_CONVERSION_UNITE,
   REFUS,
+  REFUS_HORS_CONVERSION,
   REFUS_SUPPRESSION_BC,
 };

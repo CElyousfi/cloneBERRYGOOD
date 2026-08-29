@@ -331,6 +331,19 @@ function adaptBonsToConsoRows(bons, options) {
         Parcelle_Culturale: parcelle,
         Article: article,
         Article_Categorie: categorie,
+        // ⚠️ QUANTITÉ ET UNITÉ **SAISIES**, PAS CELLES DU STOCK — limite connue,
+        // assumée, et bornée ici pour qu'on ne la découvre pas dans un écart de
+        // coût. Depuis le ticket sb/unite-conversion, un article peut être
+        // stocké au KG et consommé au L (acide nitrique : 1 L = 1,32 KG) : le
+        // bon porte alors AUSSI `item.quantite_stock` / `item.unite_stock`, et
+        // c'est cette quantité-là qui a été retirée du solde.
+        // La VALORISATION, elle, lit toujours la saisie et la multiplie par un
+        // PMP exprimé dans l'unité de STOCK : pour 5 L d'acide nitrique, le
+        // stock est juste (6,6 kg retirés) mais le coût est sous-estimé de 32 %.
+        // Basculer sur `quantite_stock` ici n'est PAS un détail — les lignes
+        // antérieures au ticket n'ont pas ce champ, et les mélanger fabriquerait
+        // un historique incohérent. Chantier séparé, au backlog (validé par
+        // Omar). Ne pas « corriger » cette ligne sans traiter l'historique.
         Quantite: quantite,
         Article_unite: __cb_str(item.unite),
         Culture: resolveCulture({ label: parcelle, culture: item.culture }, sbMap),

@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:454996cc8a7a5bc7 -->
-# Code Map — Modules lib (215)
+<!-- sourceFingerprint: sha256:a796f68faa08e330 -->
+# Code Map — Modules lib (218)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
 
@@ -169,10 +169,12 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/stockMerge/articleMerge.js | — | normalizeArticleName, groupDuplicates, verifierIntegriteFiche, buildArticleIndex, resolveArticleTarget, rememberArticle, isMovementOpen, isBdcOpen, BDC_CLOSED_STATUSES |
 | functions/lib/stockMerge/masterSuggestion.js | — | choisirMaster, pmpArticle, prixHtArticle, prixArticle, nbAchatsArticle, formatDh, cleDocument, REGLE_PMP, REGLE_PRIX_HT, REGLE_NB_ACHATS |
 | functions/lib/stockRoles/articleClassement.js | — | fichesAClasserParNom, referencesAClasserParNom |
-| functions/lib/stockRoles/articlePermissions.js | — | peutModifierArticle, peutFusionnerArticles, peutSupprimerBonConso, ROLE_CATALOGUE, ROLE_SUPERVISEUR, ROLE_MAGASINIER, REFUS, REFUS_SUPPRESSION_BC |
-| functions/lib/stockRoles/index.js | — | peutModifierArticle, peutFusionnerArticles, peutSupprimerBonConso, fichesAClasserParNom, referencesAClasserParNom, ROLE_CATALOGUE, ROLE_SUPERVISEUR, ROLE_MAGASINIER, REFUS, REFUS_SUPPRESSION_BC |
+| functions/lib/stockRoles/articlePermissions.js | — | peutModifierArticle, peutModifierChampsArticle, champsDemandes, peutFusionnerArticles, peutSupprimerBonConso, ROLE_CATALOGUE, ROLE_SUPERVISEUR, ROLE_MAGASINIER, CHAMPS_CONVERSION_UNITE, REFUS, REFUS_HORS_CONVERSION, REFUS_SUPPRESSION_BC |
+| functions/lib/stockRoles/index.js | — | peutModifierArticle, peutModifierChampsArticle, champsDemandes, peutFusionnerArticles, peutSupprimerBonConso, fichesAClasserParNom, referencesAClasserParNom, ROLE_CATALOGUE, ROLE_SUPERVISEUR, ROLE_MAGASINIER, CHAMPS_CONVERSION_UNITE, REFUS, REFUS_HORS_CONVERSION, REFUS_SUPPRESSION_BC |
 | functions/lib/suppliers/supplierValidation.js | — | validateSupplier, normalizeIf, normalizeIce, normalizePhone, isValidIf, isValidIce, isValidPhone, isNonEmpty |
 | functions/lib/triage/bugTriage.js | — | MODULES, SEVERITIES, TRIAGE_MODEL, SYSTEM_PROMPT, TRIAGE_TOOL, shortId, shouldNotifyResolved, buildResolvedMessage, buildResolvedDGMessage, buildRecentBugsBlock, buildSystemPrompt, buildTextBlock, buildUserContent, isValidTriage, parseTriage, callClaude |
+| functions/lib/uniteConso/conversionUnite.js | — | CHAMP_UNITE_CONSOMMATION, CHAMP_FACTEUR, MOTIFS, normaliserUnite, lireFacteur, uniteStock, uniteConsommation, unitesSaisissables, phraseConversion, convertirQuantite, canonNom, indexerArticles, trouverArticle, estAmbigu, analyserLignes |
+| functions/lib/uniteConso/index.js | — | — voir fichier — |
 | functions/lib/validation/validationAccess.js | — | CAPORAL_FERME_BY_PROFILE, genericRoleFor, fermeForCaporalProfile, authorizeValidationAction |
 | functions/lib/valorisation/accessControl.js | — | FULL_ACCESS_PROFILES, CHEF_PROFILE_FERME, CHEF_PROFILE_CULTURE, isChefProfile, resolveChefFerme, resolvePerimetre |
 | functions/lib/valorisation/consoValorisation.js | — | canon, canonUnite, isTonne, normalizeQte, familleBucket, resolvePmp, aggregateConsoValorisee, SYNONYMES |
@@ -220,4 +222,5 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | public/lib/scanHistoryDisplay.js | ScanHistoryDisplay | scanFournisseurLabel, scanTtc, scanBdcMatche |
 | public/lib/stockDestinations.js | StockDestinations | resolveDestinationOptions, resolveReceptionDestination, resolveBdcDestination, SD_HORS_CONFIG_SUFFIX, SD_NOTE_HORS_CONFIG, SD_FERMES_STOCK_NON_MUTUALISE |
 | public/lib/stockMovementGuard.js | StockMovementGuard | IMPORT_CREATED_BY, VALIDATED_STATUS, isImportedMovement, isValidatedMovement, isDeletedMovement, isCreator, evaluateMutable, canEditMovement, canDeleteMovement, ADMIN_DELETE_ROLES, isAdminDeleter, evaluateAdminDelete, canAdminDeleteMovement, refusalMessage |
+| public/lib/uniteConsoUtils.js | UniteConsoUtils | CHAMP_UNITE_CONSOMMATION, CHAMP_FACTEUR, MOTIFS, normaliserUnite, lireFacteur, uniteStock, uniteConsommation, unitesSaisissables, phraseConversion, convertirQuantite, canonNom, indexerArticles, trouverArticle, estAmbigu, analyserLignes |
 | public/lib/useStockLocations.js | useStockLocations | magasins, stations, parcelles, loading |

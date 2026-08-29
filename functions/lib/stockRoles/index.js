@@ -17,18 +17,24 @@
 
 const {
   peutModifierArticle,
+  peutModifierChampsArticle,
+  champsDemandes,
   peutFusionnerArticles,
   peutSupprimerBonConso,
   ROLE_CATALOGUE,
   ROLE_SUPERVISEUR,
   ROLE_MAGASINIER,
+  CHAMPS_CONVERSION_UNITE,
   REFUS,
+  REFUS_HORS_CONVERSION,
   REFUS_SUPPRESSION_BC,
 } = require('./articlePermissions');
 const { fichesAClasserParNom, referencesAClasserParNom } = require('./articleClassement');
 
 module.exports = {
   peutModifierArticle,
+  peutModifierChampsArticle,
+  champsDemandes,
   peutFusionnerArticles,
   peutSupprimerBonConso,
   fichesAClasserParNom,
@@ -36,6 +42,8 @@ module.exports = {
   ROLE_CATALOGUE,
   ROLE_SUPERVISEUR,
   ROLE_MAGASINIER,
+  CHAMPS_CONVERSION_UNITE,
   REFUS,
+  REFUS_HORS_CONVERSION,
   REFUS_SUPPRESSION_BC,
 };

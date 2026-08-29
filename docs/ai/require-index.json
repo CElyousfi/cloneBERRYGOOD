@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:631fde5527aabf7f",
+    "sourceFingerprint": "sha256:2e0a509bab3c54f3",
     "stats": {
-      "targetFiles": 280,
-      "targetFilesWithDirectTests": 166,
-      "targetFilesWithTransitiveTests": 187,
-      "testFilesScanned": 252
+      "targetFiles": 285,
+      "targetFilesWithDirectTests": 168,
+      "targetFilesWithTransitiveTests": 190,
+      "testFilesScanned": 257
     }
   },
   "index": {
@@ -1473,6 +1473,7 @@
         "functions/lib/receptionValorisation/__tests__/prixLigne.test.js",
         "functions/lib/receptionValorisation/__tests__/receptionBdc.test.js",
         "functions/lib/stockRoles/__tests__/articleClassement.test.js",
+        "functions/lib/stockRoles/__tests__/articleConversionPermissions.test.js",
         "tests/unit/articleCatalogMergeButton.test.js",
         "tests/unit/articleCatalogWiring.test.js",
         "tests/unit/articleCategorieCanonique.test.js",
@@ -1481,6 +1482,7 @@
         "tests/unit/bcScan.test.js",
         "tests/unit/bcScanMatch.test.js",
         "tests/unit/bcSuppression.test.js",
+        "tests/unit/classer-article-cablage.test.js",
         "tests/unit/fetchBonsSupprimes.test.js"
       ]
     },
@@ -1496,6 +1498,7 @@
         "functions/lib/receptionValorisation/__tests__/prixLigne.test.js",
         "functions/lib/receptionValorisation/__tests__/receptionBdc.test.js",
         "functions/lib/stockRoles/__tests__/articleClassement.test.js",
+        "functions/lib/stockRoles/__tests__/articleConversionPermissions.test.js",
         "tests/unit/articleCatalogMergeButton.test.js",
         "tests/unit/articleCatalogWiring.test.js",
         "tests/unit/articleCategorieCanonique.test.js",
@@ -1505,6 +1508,7 @@
         "tests/unit/bcScan.test.js",
         "tests/unit/bcScanMatch.test.js",
         "tests/unit/bcSuppression.test.js",
+        "tests/unit/classer-article-cablage.test.js",
         "tests/unit/fetchBonsSupprimes.test.js"
       ]
     },
@@ -1514,9 +1518,11 @@
       ],
       "transitiveTests": [
         "functions/lib/stockRoles/__tests__/articleClassement.test.js",
+        "functions/lib/stockRoles/__tests__/articleConversionPermissions.test.js",
         "tests/unit/articleCatalogMergeButton.test.js",
         "tests/unit/articleCatalogWiring.test.js",
-        "tests/unit/bcSuppression.test.js"
+        "tests/unit/bcSuppression.test.js",
+        "tests/unit/classer-article-cablage.test.js"
       ]
     },
     "functions/lib/stockRoles/articlePermissions.js": {
@@ -1525,23 +1531,29 @@
         "functions/lib/stockRoles/__tests__/articlePermissions.test.js"
       ],
       "transitiveTests": [
+        "functions/lib/stockRoles/__tests__/articleConversionPermissions.test.js",
         "functions/lib/stockRoles/__tests__/articleFusionPermissions.test.js",
         "functions/lib/stockRoles/__tests__/articlePermissions.test.js",
         "tests/unit/articleCatalogMergeButton.test.js",
         "tests/unit/articleCatalogWiring.test.js",
-        "tests/unit/bcSuppression.test.js"
+        "tests/unit/bcSuppression.test.js",
+        "tests/unit/classer-article-cablage.test.js"
       ]
     },
     "functions/lib/stockRoles/index.js": {
       "directTests": [
+        "functions/lib/stockRoles/__tests__/articleConversionPermissions.test.js",
         "tests/unit/articleCatalogMergeButton.test.js",
         "tests/unit/articleCatalogWiring.test.js",
-        "tests/unit/bcSuppression.test.js"
+        "tests/unit/bcSuppression.test.js",
+        "tests/unit/classer-article-cablage.test.js"
       ],
       "transitiveTests": [
+        "functions/lib/stockRoles/__tests__/articleConversionPermissions.test.js",
         "tests/unit/articleCatalogMergeButton.test.js",
         "tests/unit/articleCatalogWiring.test.js",
-        "tests/unit/bcSuppression.test.js"
+        "tests/unit/bcSuppression.test.js",
+        "tests/unit/classer-article-cablage.test.js"
       ]
     },
     "functions/lib/suppliers/supplierValidation.js": {
@@ -1560,6 +1572,23 @@
       "transitiveTests": [
         "tests/unit/bugResolvedNotify.test.js",
         "tests/unit/bugTriage.test.js"
+      ]
+    },
+    "functions/lib/uniteConso/conversionUnite.js": {
+      "directTests": [],
+      "transitiveTests": [
+        "functions/lib/uniteConso/__tests__/conversionUnite.test.js",
+        "tests/unit/uniteConsoUtils.test.js"
+      ]
+    },
+    "functions/lib/uniteConso/index.js": {
+      "directTests": [
+        "functions/lib/uniteConso/__tests__/conversionUnite.test.js",
+        "tests/unit/uniteConsoUtils.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/uniteConso/__tests__/conversionUnite.test.js",
+        "tests/unit/uniteConsoUtils.test.js"
       ]
     },
     "functions/lib/validation/validationAccess.js": {
@@ -1640,6 +1669,14 @@
       "transitiveTests": []
     },
     "public/components/AffectationAnalytiqueTable.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/ArticleConversionFields.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/ArticleConversionFields.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
@@ -1997,7 +2034,8 @@
         "tests/unit/campagneUtilsBackend.test.js",
         "tests/unit/magBCSuppressionDoubleConfirm.test.js",
         "tests/unit/magBCTabDateSaisie.test.js",
-        "tests/unit/magBCTabEditDate.test.js"
+        "tests/unit/magBCTabEditDate.test.js",
+        "tests/unit/magBCUniteConversion.test.js"
       ],
       "transitiveTests": [
         "tests/unit/bcDoublonFrontWiring.test.js",
@@ -2006,7 +2044,8 @@
         "tests/unit/campagneUtilsBackend.test.js",
         "tests/unit/magBCSuppressionDoubleConfirm.test.js",
         "tests/unit/magBCTabDateSaisie.test.js",
-        "tests/unit/magBCTabEditDate.test.js"
+        "tests/unit/magBCTabEditDate.test.js",
+        "tests/unit/magBCUniteConversion.test.js"
       ]
     },
     "public/lib/coutMainOeuvre.js": {
@@ -2215,6 +2254,16 @@
       ],
       "transitiveTests": [
         "tests/unit/stockMovementGuard.test.js"
+      ]
+    },
+    "public/lib/uniteConsoUtils.js": {
+      "directTests": [
+        "tests/unit/magBCUniteConversion.test.js",
+        "tests/unit/uniteConsoUtils.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/magBCUniteConversion.test.js",
+        "tests/unit/uniteConsoUtils.test.js"
       ]
     },
     "public/lib/useStockLocations.js": {

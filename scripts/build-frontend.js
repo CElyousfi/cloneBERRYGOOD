@@ -140,6 +140,7 @@ const COMPONENT_SENTINELS = {
   "MagBonsCommandeTab.js": "window.MagBonsCommandeTab",
   "MagBdcReceptionTab.js": "window.MagBdcReceptionTab",
   "MagBCTab.js": "window.MagBCTab",
+  "ArticleConversionFields.js": "window.ArticleConversionFields",
   "ParcellesParamsTab.js": "window.ParcellesParamsTab",
   "ParcellesGroupesPanel.js": "window.ParcellesGroupesPanel",
   "PmpDetailPopup.js": "window.PmpDetailPopup",
