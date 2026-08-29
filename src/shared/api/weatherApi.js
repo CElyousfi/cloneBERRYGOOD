@@ -4,7 +4,14 @@
  * Uses real live weather data for Souss and Loukkos farm regions.
  */
 
-const OPENWEATHER_API_KEY = 'OPENWEATHER_KEY_REDACTED';
+// Clé lue depuis les variables d'environnement (jamais commitée).
+// Définir VITE_OPENWEATHER_API_KEY dans .env.local (dev) et dans les
+// variables d'environnement du projet Vercel (déploiement).
+const OPENWEATHER_API_KEY = import.meta.env.VITE_OPENWEATHER_API_KEY;
+
+if (!OPENWEATHER_API_KEY) {
+  console.warn('[weatherApi] VITE_OPENWEATHER_API_KEY absente — les appels météo seront ignorés.');
+}
 
 const FARM_COORDINATES = {
   'Ferme 1 - Souss': { lat: 30.4278, lon: -9.5981, region: 'Souss - Agadir' },
