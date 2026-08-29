@@ -1,0 +1,257 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "npm run build:vercel",
+  "outputDirectory": "dist-vercel",
+  "framework": null,
+  "rewrites": [
+    {
+      "source": "/api/bdp-introspect",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/bdpIntrospect"
+    },
+    {
+      "source": "/api/sync-pointage-bdp-test",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/syncPointageBdpTrigger"
+    },
+    {
+      "source": "/api/validate-pointage-bdp-test",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/validatePointageBdpTrigger"
+    },
+    {
+      "source": "/api/backfill-pointage-bdp-live",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/backfillPointageBdpLiveTrigger"
+    },
+    {
+      "source": "/api/fertigation",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/fertigation"
+    },
+    {
+      "source": "/api/phytosanitaire",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/phytosanitaire"
+    },
+    {
+      "source": "/api/produits",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/produits"
+    },
+    {
+      "source": "/api/parcelles",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/parcelles"
+    },
+    {
+      "source": "/api/dashboard",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/dashboard"
+    },
+    {
+      "source": "/api/agro-summary",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/agroSummary"
+    },
+    {
+      "source": "/api/health",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/health"
+    },
+    {
+      "source": "/api/avancement",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/avancementCulture"
+    },
+    {
+      "source": "/api/growth",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/growthTracking"
+    },
+    {
+      "source": "/api/mapping-conso",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/mappingConsoManagement"
+    },
+    {
+      "source": "/api/upload-photo",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/uploadPhoto"
+    },
+    {
+      "source": "/api/recommandation",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/recommandation"
+    },
+    {
+      "source": "/api/backfill-presence",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/backfillPresence"
+    },
+    {
+      "source": "/api/farmroad",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/farmroad"
+    },
+    {
+      "source": "/api/meteoblue",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/meteoblue"
+    },
+    {
+      "source": "/api/meteo-spray-digest",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/meteoSprayDigestTrigger"
+    },
+    {
+      "source": "/api/ecarts",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/ecarts"
+    },
+    {
+      "source": "/api/email-analysis",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/emailAnalysis"
+    },
+    {
+      "source": "/api/pointage-rh",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/pointageV3"
+    },
+    {
+      "source": "/api/harvest-weather",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/harvestWeather"
+    },
+    {
+      "source": "/api/harvest-prediction",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/harvestPrediction"
+    },
+    {
+      "source": "/api/upload-ecarts",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/uploadEcarts"
+    },
+    {
+      "source": "/api/validation",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/validation"
+    },
+    {
+      "source": "/api/pointage-validation",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/pointageValidation"
+    },
+    {
+      "source": "/api/stock",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/stockManagement"
+    },
+    {
+      "source": "/api/auth",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/authApi"
+    },
+    {
+      "source": "/api/hors-recolte-suivi",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/horsRecolteService"
+    },
+    {
+      "source": "/api/budget",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/budgetService"
+    },
+    {
+      "source": "/api/meeting-cr",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/meetingCR"
+    },
+    {
+      "source": "/api/fuel",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/fuel"
+    },
+    {
+      "source": "/api/telecom",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/telecom"
+    },
+    {
+      "source": "/api/ojra",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/ojra"
+    },
+    {
+      "source": "/api/notifications",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/notifications"
+    },
+    {
+      "source": "/api/tasks",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/tasks"
+    },
+    {
+      "source": "/api/alerts",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/alerts"
+    },
+    {
+      "source": "/api/gdd-tracking",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/gddTracking"
+    },
+    {
+      "source": "/api/climat-production",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/climatProduction"
+    },
+    {
+      "source": "/api/backup",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/backupApi"
+    },
+    {
+      "source": "/api/indoor-forecast",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/indoorForecast"
+    },
+    {
+      "source": "/api/caisse",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/caisseManagement"
+    },
+    {
+      "source": "/api/primes",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/primesManagement"
+    },
+    {
+      "source": "/api/fonctions",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/fonctionsManagement"
+    },
+    {
+      "source": "/api/registry",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/registryService"
+    },
+    {
+      "source": "/api/whatsapp-admin",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/whatsappAdmin"
+    },
+    {
+      "source": "/api/whatsapp-webhook",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/whatsappWebhook"
+    },
+    {
+      "source": "/api/run-daily-phenology-job-now",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/runDailyPhenologyJobNow"
+    },
+    {
+      "source": "/api/run-sync-jours-feries-now",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/runSyncJoursFeriesNow"
+    },
+    {
+      "source": "/api/bug-reports",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/bugReports"
+    },
+    {
+      "source": "/api/sentinel-recipients",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/sentinelRecipients"
+    },
+    {
+      "source": "/api/rh",
+      "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/rh"
+    },
+    {
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/app.modular.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "source": "/sw.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache"
+        }
+      ]
+    },
+    {
+      "source": "/app-version.txt",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache"
+        }
+      ]
+    }
+  ]
+}

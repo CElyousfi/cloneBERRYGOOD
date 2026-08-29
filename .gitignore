@@ -102,3 +102,10 @@ docs/BACKUP-*.json
 # Playwright e2e screenshots (générés)
 tests/e2e-screenshots/
 .claude/settings.json.bak*
+
+# Builds de la migration modulaire (artefacts, régénérables)
+dist/
+dist-migrated/
+dist-migrated-dev/
+dist-vercel/
+.vercel/

@@ -18,7 +18,14 @@
     "dev": "vite --config vite.config.js",
     "build:vite": "vite build --config vite.config.js",
     "test:finance": "node --test 'functions/lib/finance/__tests__/*.test.js'",
-    "test:all": "node --test 'tests/unit/**/*.test.js' 'functions/lib/finance/__tests__/*.test.js'"
+    "test:all": "node --test 'tests/unit/**/*.test.js' 'functions/lib/finance/__tests__/*.test.js'",
+    "migrate:extract": "node scripts/migrate/extract-modules.cjs",
+    "migrate:verify": "node scripts/migrate/verify-fidelity.cjs && node scripts/migrate/verify-references.cjs",
+    "migrate:build": "vite build --config vite.migrated.config.js",
+    "migrate:walk": "node scripts/migrate/walk-tabs.cjs",
+    "migrate:all": "npm run migrate:extract && npm run migrate:verify && npm run migrate:build",
+    "build:vercel": "npm run migrate:build && node scripts/migrate/assemble-vercel.cjs",
+    "vercel:config": "node scripts/migrate/gen-vercel-config.cjs"
   },
   "keywords": [],
   "author": "",
