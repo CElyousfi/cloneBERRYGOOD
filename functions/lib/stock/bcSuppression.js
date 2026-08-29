@@ -18,6 +18,14 @@
  * donc annuler l'impact stock — même mécanique que `delete-movement` pour les
  * réceptions (soft-delete + `reverseStockImpact`), qu'on ne réinvente pas.
  *
+ * ── QUI PEUT SUPPRIMER ────────────────────────────────────────────────────
+ * `achats`, `dg` et — depuis le 2026-08-29 — `magasinier` (cf. stockRoles).
+ * Côté interface, le magasinier passe par une DOUBLE confirmation (retaper le
+ * numéro du bon). Cette étape n'existe QUE dans MagBCTab.jsx : ce module ne la
+ * connaît pas et ne doit jamais la connaître. Un « double_confirmation: true »
+ * envoyé par le client serait trivialement usurpable ; la vraie garantie reste
+ * le rôle résolu serveur + le motif obligatoire + la trace.
+ *
  * ── CE QUE FAIT CE MODULE ─────────────────────────────────────────────────
  * Il décide (rôle, motif, état du bon) et construit les patchs. Aucune lecture
  * ni écriture Firestore, aucune horloge, aucune identité : le handler lui passe

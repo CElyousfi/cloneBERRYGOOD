@@ -21,7 +21,9 @@ const {
   peutSupprimerBonConso,
   ROLE_CATALOGUE,
   ROLE_SUPERVISEUR,
+  ROLE_MAGASINIER,
   REFUS,
+  REFUS_SUPPRESSION_BC,
 } = require('./articlePermissions');
 const { fichesAClasserParNom, referencesAClasserParNom } = require('./articleClassement');
 
@@ -33,5 +35,7 @@ module.exports = {
   referencesAClasserParNom,
   ROLE_CATALOGUE,
   ROLE_SUPERVISEUR,
+  ROLE_MAGASINIER,
   REFUS,
+  REFUS_SUPPRESSION_BC,
 };

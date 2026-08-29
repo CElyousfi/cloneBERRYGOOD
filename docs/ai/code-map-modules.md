@@ -1,5 +1,5 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:3dc2921639dc93c8 -->
+<!-- sourceFingerprint: sha256:454996cc8a7a5bc7 -->
 # Code Map — Modules lib (215)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
@@ -169,8 +169,8 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/stockMerge/articleMerge.js | — | normalizeArticleName, groupDuplicates, verifierIntegriteFiche, buildArticleIndex, resolveArticleTarget, rememberArticle, isMovementOpen, isBdcOpen, BDC_CLOSED_STATUSES |
 | functions/lib/stockMerge/masterSuggestion.js | — | choisirMaster, pmpArticle, prixHtArticle, prixArticle, nbAchatsArticle, formatDh, cleDocument, REGLE_PMP, REGLE_PRIX_HT, REGLE_NB_ACHATS |
 | functions/lib/stockRoles/articleClassement.js | — | fichesAClasserParNom, referencesAClasserParNom |
-| functions/lib/stockRoles/articlePermissions.js | — | peutModifierArticle, peutFusionnerArticles, peutSupprimerBonConso, ROLE_CATALOGUE, ROLE_SUPERVISEUR, REFUS |
-| functions/lib/stockRoles/index.js | — | peutModifierArticle, peutFusionnerArticles, peutSupprimerBonConso, fichesAClasserParNom, referencesAClasserParNom, ROLE_CATALOGUE, ROLE_SUPERVISEUR, REFUS |
+| functions/lib/stockRoles/articlePermissions.js | — | peutModifierArticle, peutFusionnerArticles, peutSupprimerBonConso, ROLE_CATALOGUE, ROLE_SUPERVISEUR, ROLE_MAGASINIER, REFUS, REFUS_SUPPRESSION_BC |
+| functions/lib/stockRoles/index.js | — | peutModifierArticle, peutFusionnerArticles, peutSupprimerBonConso, fichesAClasserParNom, referencesAClasserParNom, ROLE_CATALOGUE, ROLE_SUPERVISEUR, ROLE_MAGASINIER, REFUS, REFUS_SUPPRESSION_BC |
 | functions/lib/suppliers/supplierValidation.js | — | validateSupplier, normalizeIf, normalizeIce, normalizePhone, isValidIf, isValidIce, isValidPhone, isNonEmpty |
 | functions/lib/triage/bugTriage.js | — | MODULES, SEVERITIES, TRIAGE_MODEL, SYSTEM_PROMPT, TRIAGE_TOOL, shortId, shouldNotifyResolved, buildResolvedMessage, buildResolvedDGMessage, buildRecentBugsBlock, buildSystemPrompt, buildTextBlock, buildUserContent, isValidTriage, parseTriage, callClaude |
 | functions/lib/validation/validationAccess.js | — | CAPORAL_FERME_BY_PROFILE, genericRoleFor, fermeForCaporalProfile, authorizeValidationAction |

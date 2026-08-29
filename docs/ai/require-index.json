@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:ef0d05c0b60677b2",
+    "sourceFingerprint": "sha256:631fde5527aabf7f",
     "stats": {
       "targetFiles": 280,
       "targetFilesWithDirectTests": 166,
       "targetFilesWithTransitiveTests": 187,
-      "testFilesScanned": 251
+      "testFilesScanned": 252
     }
   },
   "index": {
@@ -1995,6 +1995,7 @@
         "tests/unit/campagnePeriodes.test.js",
         "tests/unit/campagneUtils.test.js",
         "tests/unit/campagneUtilsBackend.test.js",
+        "tests/unit/magBCSuppressionDoubleConfirm.test.js",
         "tests/unit/magBCTabDateSaisie.test.js",
         "tests/unit/magBCTabEditDate.test.js"
       ],
@@ -2003,6 +2004,7 @@
         "tests/unit/campagnePeriodes.test.js",
         "tests/unit/campagneUtils.test.js",
         "tests/unit/campagneUtilsBackend.test.js",
+        "tests/unit/magBCSuppressionDoubleConfirm.test.js",
         "tests/unit/magBCTabDateSaisie.test.js",
         "tests/unit/magBCTabEditDate.test.js"
       ]

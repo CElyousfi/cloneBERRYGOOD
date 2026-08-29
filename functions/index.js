@@ -8094,8 +8094,11 @@ exports.stockManagement = functions
       // l'impact était matérialisé. Logique pure : lib/stock/bcSuppression.
       if (action === "delete-bc" && req.method === "POST") {
         // Rôle résolu SERVEUR (resolveCallerRole), jamais depuis le body.
-        // `achats` ou `dg` (stockRoles) : le magasinier ne défait pas son propre
-        // bon — même règle que les réceptions.
+        // `achats`, `dg` ou `magasinier` (stockRoles) : celui qui saisit le bon
+        // est celui qui repère son doublon, il doit pouvoir le défaire.
+        // Le serveur ne valide QUE le rôle et le motif : la double confirmation
+        // du magasinier est une protection d'interface (MagBCTab.jsx), il n'y a
+        // volontairement AUCUN drapeau client à vérifier ici.
         const bcDelRole = await resolveCallerRole(authUser);
         const bcDelId = req.body && req.body.bc_id;
         const bcDelRef = bcDelId && typeof bcDelId === "string"

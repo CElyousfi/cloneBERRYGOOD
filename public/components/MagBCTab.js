@@ -202,11 +202,16 @@
     // NOUVEAUX useState AJOUTÉS EN FIN DE LISTE, jamais intercalés : les
     // tests de rendu indexent les hooks par ordre de déclaration.
     const [doublonBc, setDoublonBc] = useState(null);
-    // --- Suppression d'un bon (achats / dg) -----------------------------
+    // --- Suppression d'un bon (magasinier / achats / dg) ----------------
     const [deleteBc, setDeleteBc] = useState(null);
     const [deleteMotif, setDeleteMotif] = useState('');
     const [deleteSaving, setDeleteSaving] = useState(false);
     const [deleteError, setDeleteError] = useState('');
+    // Seconde étape de confirmation du magasinier (retaper le numéro).
+    // ENCORE EN FIN DE LISTE : cf. l'avertissement plus haut, les tests
+    // de rendu indexent les hooks par position.
+    const [deleteConfirmBc, setDeleteConfirmBc] = useState(null);
+    const [deleteNumeroSaisi, setDeleteNumeroSaisi] = useState('');
     const isImportBC = bc => bc._isImport || (bc.numero || '').startsWith('IMP-') || bc.created_by?.userId === 'import_caneva';
     const loadBcs = () => {
       Promise.all([fetch('/api/stock?action=list-bc&type=' + type).then(r => r.json()).catch(() => ({
@@ -669,22 +674,66 @@
     };
 
     // --- Suppression d'un bon de consommation ---------------------------
-    // Réservée à `achats` et `dg` : le serveur (delete-bc) refuse les
-    // autres, un bouton visible pour eux ne mènerait qu'à un 403.
-    // Supprimer un bon ANNULE l'impact stock de ses mouvements : les
-    // quantités reviennent en stock. Le motif est exigé ICI aussi, pour
-    // ne pas envoyer une requête qui échouera de toute façon.
-    const canDeleteBc = currentProfile === 'achats' || currentProfile === 'dg';
+    // Ouverte à `magasinier`, `achats` et `dg` : le serveur (delete-bc)
+    // refuse les autres, un bouton visible pour eux ne mènerait qu'à un
+    // 403. Supprimer un bon ANNULE l'impact stock de ses mouvements :
+    // les quantités reviennent en stock. Le motif est exigé ICI aussi,
+    // pour ne pas envoyer une requête qui échouera de toute façon.
+    const canDeleteBc = currentProfile === 'magasinier' || currentProfile === 'achats' || currentProfile === 'dg';
+    // Le magasinier supprime SON PROPRE bon, dans le flux de saisie et
+    // souvent sur mobile : c'est le seul profil chez qui le geste risque
+    // d'être machinal. Une seconde étape lui est donc imposée — et à lui
+    // seul, `achats`/`dg` gardant le parcours d'origine.
+    //
+    // ⚠️ PROTECTION D'INTERFACE, PAS DE SÉCURITÉ. Le serveur ne sait rien
+    // de cette étape et ne doit jamais en dépendre : il valide le rôle
+    // (résolu depuis le jeton) et le motif, un point c'est tout. Aucun
+    // drapeau « double_confirmation » n'est envoyé — il serait usurpable
+    // et ne donnerait qu'une fausse impression de sûreté.
+    const deleteDoubleConfirm = currentProfile === 'magasinier';
     const openDeleteBc = bc => {
       setDeleteBc(bc);
       setDeleteMotif('');
       setDeleteError('');
+      setDeleteConfirmBc(null);
+      setDeleteNumeroSaisi('');
     };
     const closeDeleteBc = () => {
       setDeleteBc(null);
       setDeleteError('');
+      setDeleteConfirmBc(null);
+      setDeleteNumeroSaisi('');
+    };
+    const closeDeleteConfirm = () => {
+      setDeleteConfirmBc(null);
+      setDeleteNumeroSaisi('');
+      setDeleteError('');
     };
     const deleteMotifValide = (deleteMotif || '').trim().length >= 3;
+    // Numéro attendu à la seconde étape. Comparaison STRICTE : ni trim,
+    // ni casse ignorée. Un « bc-0001 » ou un « BC-0001 » collé avec une
+    // espace passeraient distraitement, ce qui viderait le geste de son
+    // sens. Un bon sans numéro ne peut PAS être confirmé (chaîne vide
+    // == chaîne vide serait vrai, et le bouton s'activerait tout seul).
+    const deleteNumeroAttendu = deleteConfirmBc && deleteConfirmBc.numero || '';
+    const deleteNumeroOk = deleteNumeroAttendu !== '' && deleteNumeroSaisi === deleteNumeroAttendu;
+    const deleteLignes = deleteConfirmBc && (deleteConfirmBc.items || []).length || 0;
+    /**
+     * Première étape validée. Pour `achats`/`dg` c'est l'envoi direct ;
+     * pour le magasinier, cela n'ouvre QUE la seconde fenêtre — aucune
+     * requête n'est émise à ce stade.
+     */
+    const nextDeleteStep = () => {
+      if (!deleteBc) return;
+      if (!deleteMotifValide) {
+        setDeleteError('Motif obligatoire (3 caractères minimum)');
+        return;
+      }
+      if (!deleteDoubleConfirm) return submitDeleteBc();
+      setDeleteError('');
+      setDeleteNumeroSaisi('');
+      setDeleteConfirmBc(deleteBc);
+    };
     const submitDeleteBc = async () => {
       if (!deleteBc) return;
       if (!deleteMotifValide) {
@@ -712,6 +761,8 @@
           setDeleteSaving(false);
           return;
         }
+        setDeleteConfirmBc(null);
+        setDeleteNumeroSaisi('');
         setDeleteBc(null);
         setDetailBc(null);
         loadBcs();
@@ -1770,7 +1821,7 @@
         border: '1px solid #ddd',
         fontSize: 13
       }
-    }), deleteError && /*#__PURE__*/React.createElement("div", {
+    }), deleteError && !deleteConfirmBc && /*#__PURE__*/React.createElement("div", {
       style: {
         marginTop: 10,
         padding: '8px 10px',
@@ -1798,7 +1849,7 @@
         fontSize: 13
       }
     }, "Annuler"), /*#__PURE__*/React.createElement("button", {
-      onClick: submitDeleteBc,
+      onClick: nextDeleteStep,
       disabled: deleteSaving || !deleteMotifValide,
       style: {
         padding: '8px 16px',
@@ -1811,7 +1862,106 @@
         fontSize: 13,
         opacity: deleteSaving || !deleteMotifValide ? 0.6 : 1
       }
-    }, deleteSaving ? 'Suppression...' : 'Supprimer ce bon')))), showCreateArticle && /*#__PURE__*/React.createElement("div", {
+    }, deleteSaving ? 'Suppression...' : 'Supprimer ce bon')))), deleteConfirmBc && /*#__PURE__*/React.createElement("div", {
+      className: "modal-overlay",
+      style: {
+        zIndex: 10003
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "modal-content",
+      style: {
+        maxWidth: 460,
+        width: '90vw'
+      }
+    }, /*#__PURE__*/React.createElement("h3", {
+      style: {
+        marginTop: 0,
+        color: '#a01d10'
+      }
+    }, /*#__PURE__*/React.createElement("i", {
+      className: "fa-solid fa-triangle-exclamation",
+      style: {
+        marginRight: 8
+      }
+    }), "Confirmer la suppression"), /*#__PURE__*/React.createElement("div", {
+      style: {
+        padding: '10px 12px',
+        borderRadius: 8,
+        background: '#fdecea',
+        border: '1px solid #e74c3c',
+        color: '#a01d10',
+        fontSize: 12,
+        marginBottom: 12
+      }
+    }, "Le bon ", /*#__PURE__*/React.createElement("strong", null, deleteNumeroAttendu), " va dispara\xEEtre de la liste", deleteLignes > 0 && /*#__PURE__*/React.createElement("span", null, " (", deleteLignes, " ", deleteLignes > 1 ? 'lignes' : 'ligne', ")"), ", et les quantit\xE9s ", /*#__PURE__*/React.createElement("strong", null, "reviennent en stock"), " : la consommation est annul\xE9e."), /*#__PURE__*/React.createElement("label", {
+      style: {
+        fontSize: 12,
+        fontWeight: 600,
+        display: 'block',
+        marginBottom: 4
+      }
+    }, "Retapez le num\xE9ro du bon pour confirmer"), /*#__PURE__*/React.createElement("input", {
+      value: deleteNumeroSaisi,
+      onChange: e => {
+        setDeleteNumeroSaisi(e.target.value);
+        setDeleteError('');
+      },
+      placeholder: deleteNumeroAttendu,
+      style: {
+        width: '100%',
+        padding: '8px 12px',
+        borderRadius: 8,
+        border: '1px solid #ddd',
+        fontSize: 13
+      }
+    }), !deleteNumeroOk && /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 11,
+        color: 'var(--gray-400)',
+        marginTop: 4
+      }
+    }, "Saisie exacte attendue : ", /*#__PURE__*/React.createElement("strong", null, deleteNumeroAttendu)), deleteError && /*#__PURE__*/React.createElement("div", {
+      style: {
+        marginTop: 10,
+        padding: '8px 10px',
+        borderRadius: 8,
+        background: '#fdecea',
+        border: '1px solid #e74c3c',
+        color: '#a01d10',
+        fontSize: 12
+      }
+    }, deleteError), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: 'flex',
+        gap: 8,
+        justifyContent: 'flex-end',
+        marginTop: 16
+      }
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: closeDeleteConfirm,
+      style: {
+        padding: '8px 16px',
+        borderRadius: 8,
+        border: '1px solid #ddd',
+        background: '#fff',
+        cursor: 'pointer',
+        fontSize: 13
+      }
+    }, "Annuler"), /*#__PURE__*/React.createElement("button", {
+      onClick: submitDeleteBc,
+      disabled: deleteSaving || !deleteNumeroOk,
+      style: {
+        padding: '8px 16px',
+        borderRadius: 8,
+        border: 'none',
+        background: '#e74c3c',
+        color: '#fff',
+        cursor: 'pointer',
+        fontWeight: 600,
+        fontSize: 13,
+        opacity: deleteSaving || !deleteNumeroOk ? 0.6 : 1
+      }
+    }, deleteSaving ? 'Suppression...' : 'Supprimer définitivement')))), showCreateArticle && /*#__PURE__*/React.createElement("div", {
       className: "modal-overlay",
       style: {
         zIndex: 10001

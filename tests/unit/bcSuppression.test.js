@@ -13,7 +13,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 
 const bcSuppression = require('../../functions/lib/stock/bcSuppression');
-const { REFUS } = require('../../functions/lib/stockRoles');
+const { REFUS_SUPPRESSION_BC, peutSupprimerBonConso } = require('../../functions/lib/stockRoles');
 
 function bon(over) {
   return Object.assign({ numero: 'BC-2026-0033', date: '2026-08-25' }, over || {});
@@ -21,30 +21,54 @@ function bon(over) {
 
 // ── VALIDATION : RÔLE ──────────────────────────────────────────────────────
 
-test('rôle : achats et dg peuvent supprimer', () => {
-  for (const role of ['achats', 'dg']) {
+test('rôle : achats, dg ET magasinier peuvent supprimer', () => {
+  // Le magasinier a été AJOUTÉ le 2026-08-29 (inversion de la règle PR #353) :
+  // c'est lui qui repère son doublon, passer par le DG n'ajoutait qu'un délai.
+  // Ce qui compense : motif obligatoire, trace, soft-delete — et une double
+  // confirmation d'INTERFACE, dont ce module ne sait volontairement rien.
+  for (const role of ['achats', 'dg', 'magasinier']) {
     const v = bcSuppression.validerSuppression({ role, motif: 'doublon', bc: bon() });
     assert.equal(v.ok, true, role + ' doit pouvoir supprimer');
   }
 });
 
-test('rôle : le magasinier ne défait PAS son propre bon', () => {
-  const v = bcSuppression.validerSuppression({ role: 'magasinier', motif: 'doublon', bc: bon() });
-  assert.equal(v.ok, false);
-  assert.equal(v.code, 403);
-  assert.equal(v.error, REFUS);
+test('rôle : aucun drapeau client ne conditionne l\'autorisation', () => {
+  // Une « double confirmation » envoyée par le client serait usurpable : le
+  // serveur ne doit ni l'exiger, ni la lire. Absente comme présente, le
+  // verdict est identique — seul le rôle résolu serveur compte.
+  const sans = bcSuppression.validerSuppression({ role: 'magasinier', motif: 'doublon', bc: bon() });
+  const avec = bcSuppression.validerSuppression({ role: 'magasinier', motif: 'doublon', bc: bon(), double_confirmation: false });
+  assert.equal(sans.ok, true);
+  assert.deepEqual(avec, sans);
 });
 
 test('rôle : tout autre rôle, rôle absent ou non-chaîne est refusé en 403', () => {
-  for (const role of ['chef_f1', 'finance', '', null, undefined, 42, { profileId: 'dg' }]) {
+  for (const role of ['chef_f1', 'finance', 'rh', '', null, undefined, 42, { profileId: 'dg' }]) {
     const v = bcSuppression.validerSuppression({ role, motif: 'doublon', bc: bon() });
     assert.equal(v.ok, false, JSON.stringify(role) + ' doit être refusé');
     assert.equal(v.code, 403);
+    assert.equal(v.error, REFUS_SUPPRESSION_BC);
   }
 });
 
+test('rôle : le message de refus NOMME les trois profils autorisés', () => {
+  // Un message qui ne cite qu'« achats ou DG » ferait croire au magasinier
+  // qu'il n'a pas le droit — c'est le mensonge déjà corrigé pour le catalogue.
+  assert.match(REFUS_SUPPRESSION_BC, /magasinier/i);
+  assert.match(REFUS_SUPPRESSION_BC, /achats/i);
+  assert.match(REFUS_SUPPRESSION_BC, /DG/);
+});
+
+test('rôle : la suppression d\'un bon ne donne PAS accès au catalogue', () => {
+  // Le droit est un export DÉDIÉ, pas un alias : le magasinier supprime un bon
+  // sans pour autant pouvoir écrire une fiche article.
+  const { peutModifierArticle } = require('../../functions/lib/stockRoles');
+  assert.equal(peutSupprimerBonConso('magasinier').ok, true);
+  assert.equal(peutModifierArticle('magasinier').ok, false);
+});
+
 test('rôle : refusé AVANT tout, même sur un bon inexistant (aucune fuite d\'information)', () => {
-  const v = bcSuppression.validerSuppression({ role: 'magasinier', motif: '', bc: null, exists: false });
+  const v = bcSuppression.validerSuppression({ role: 'chef_f1', motif: '', bc: null, exists: false });
   assert.equal(v.code, 403);
 });
 

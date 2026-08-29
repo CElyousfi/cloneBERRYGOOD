@@ -70,6 +70,7 @@ const S = {
   filterSource: 20, dateFrom: 21, dateTo: 22, sortField: 23, sortDir: 24,
   detailBc: 25, editDateBc: 26, editDateValue: 27, editDateSaving: 28, editDateError: 29,
   doublonBc: 30, deleteBc: 31, deleteMotif: 32, deleteSaving: 33, deleteError: 34,
+  deleteConfirmBc: 35, deleteNumeroSaisi: 36,
 };
 
 function load(stateOverrides, spy) {
@@ -286,8 +287,11 @@ test('le forçage n\'est ni le bouton d\'accent ni l\'autofocus', () => {
 
 function deleteButtons(tree) { return findAll(tree, (n) => n.props.title === 'Supprimer le bon'); }
 
-test('bouton « Supprimer » — visible pour achats et dg', () => {
-  for (const profil of ['achats', 'dg']) {
+test('bouton « Supprimer » — visible pour magasinier, achats et dg', () => {
+  // Le magasinier a été AJOUTÉ le 2026-08-29 : il repère son doublon avant
+  // tout le monde. Sa double confirmation est testée dans
+  // tests/unit/magBCSuppressionDoubleConfirm.test.js.
+  for (const profil of ['magasinier', 'achats', 'dg']) {
     const tree = render(profil, null, newSpy());
     // bc1 seulement : mov_9 est une ligne virtuelle, IMP-0003 un import.
     assert.equal(deleteButtons(tree).length, 1, 'profil ' + profil);
@@ -295,7 +299,7 @@ test('bouton « Supprimer » — visible pour achats et dg', () => {
 });
 
 test('bouton « Supprimer » — ABSENT pour tout autre rôle (le serveur rendrait 403)', () => {
-  for (const profil of ['magasinier', 'chef_f1', 'finance', '']) {
+  for (const profil of ['chef_f1', 'finance', 'rh', '']) {
     const tree = render(profil, null, newSpy());
     assert.equal(deleteButtons(tree).length, 0, 'profil ' + profil);
   }

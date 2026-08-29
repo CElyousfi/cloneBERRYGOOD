@@ -33,6 +33,17 @@ const ROLE_SUPERVISEUR = 'dg';
 /** Message de refus. Nomme les DEUX profils autorisés — cf. en-tête. */
 const REFUS = 'Réservé au responsable achats ou au DG';
 
+/** Profil qui saisit les bons de consommation, et donc les corrige. */
+const ROLE_MAGASINIER = 'magasinier';
+
+/**
+ * Refus propre à `delete-bc` : la population y est PLUS LARGE que celle du
+ * catalogue, le message doit donc nommer les trois profils. Réutiliser `REFUS`
+ * aurait menti à l'utilisateur (« réservé achats ou DG » alors que le
+ * magasinier passe) — exactement le mensonge corrigé en en-tête de ce fichier.
+ */
+const REFUS_SUPPRESSION_BC = 'Réservé au magasinier, au responsable achats ou au DG';
+
 /**
  * @typedef {Object} Verdict
  * @property {boolean} ok true si l'écriture est autorisée.
@@ -84,15 +95,24 @@ function peutFusionnerArticles(role) {
 /**
  * Décide si `role` peut SUPPRIMER un bon de consommation (`delete-bc`).
  *
- * MÊME POPULATION que `peutModifierArticle` — `achats` ou `dg` — et c'est la
- * règle déjà en place pour les réceptions (`delete-movement`, chemin admin
- * métier `isAdminDeleter`) : le magasinier ne défait pas son propre bon.
- * Supprimer un bon annule des mouvements de stock déjà appliqués sur les
- * soldes ; c'est une correction d'inventaire, pas une action de saisie.
+ * POPULATION PLUS LARGE que `peutModifierArticle` : `achats`, `dg` ET
+ * `magasinier`. C'est un ÉLARGISSEMENT ASSUMÉ du 2026-08-29 (demande explicite
+ * d'Omar), qui inverse la règle livrée en PR #353. Celle-ci s'alignait sur les
+ * réceptions (« le magasinier ne défait pas son propre bon ») ; mais le
+ * magasinier est justement celui qui repère son doublon dans la seconde, et le
+ * faire passer par le DG ajoutait un délai sans rien sécuriser.
+ *
+ * Ce qui compense le risque n'est PAS une garde de rôle plus stricte : c'est le
+ * motif obligatoire, la trace (qui/quand/pourquoi), le soft-delete réversible,
+ * et — côté interface seulement — une double confirmation demandée au
+ * magasinier. ⚠️ Cette double confirmation est une protection d'ERGONOMIE :
+ * elle vit dans MagBCTab.jsx et n'a AUCUN équivalent serveur. Ne jamais la
+ * transformer en drapeau envoyé par le client et vérifié ici : un drapeau
+ * client est usurpable et ne donnerait qu'une fausse impression de sûreté.
  *
  * Export DÉDIÉ plutôt qu'un alias, pour la même raison que
- * `peutFusionnerArticles` : les deux droits pourraient légitimement diverger un
- * jour, la délégation garantit qu'ils ne divergent pas PAR ACCIDENT.
+ * `peutFusionnerArticles` — et cette fois la divergence est RÉELLE : le
+ * magasinier supprime un bon sans pour autant pouvoir écrire au catalogue.
  *
  * Le rôle DOIT être celui résolu SERVEUR (`resolveCallerRole`), jamais lu dans
  * le body.
@@ -101,7 +121,11 @@ function peutFusionnerArticles(role) {
  * @returns {Verdict}
  */
 function peutSupprimerBonConso(role) {
-  return peutModifierArticle(role);
+  const r = typeof role === 'string' ? role : '';
+  if (r === ROLE_CATALOGUE || r === ROLE_SUPERVISEUR || r === ROLE_MAGASINIER) {
+    return { ok: true, raison: '' };
+  }
+  return { ok: false, raison: REFUS_SUPPRESSION_BC };
 }
 
 module.exports = {
@@ -110,5 +134,7 @@ module.exports = {
   peutSupprimerBonConso,
   ROLE_CATALOGUE,
   ROLE_SUPERVISEUR,
+  ROLE_MAGASINIER,
   REFUS,
+  REFUS_SUPPRESSION_BC,
 };
