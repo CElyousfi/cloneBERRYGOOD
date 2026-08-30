@@ -275,7 +275,7 @@ Puis redéployer. L'écran de connexion Firebase revient ; aucun code applicatif
 
 ---
 
-## 9. Page d'accueil et nouvelle interface (thème v2)
+## 9. Page d'accueil et nouvelle interface (thème v3 — sombre)
 
 Le déploiement expose trois pages :
 
@@ -283,47 +283,48 @@ Le déploiement expose trois pages :
 |---|---|
 | `index.html` | Page d'accueil — choix entre les deux versions |
 | `legacy.html` | Interface d'origine, monolithe `app.js`, **inchangée** |
-| `new.html` | Application migrée (334 modules ES) + `theme-v2.css` |
+| `new.html` | Application migrée (334 modules ES) + `design/theme-v3.css` |
 
-### Le thème ne touche aucun code applicatif
+### Pourquoi une inversion filtrée, et non une redéfinition de jetons
 
-`design/theme-v2.css` est une couche **strictement présentationnelle**. Elle exploite le
-fait que l'application, bien qu'écrite à 80 % en styles inline (11 861 `style={{` contre
-2 902 `className=`), référence **5 655 fois `var(--x)`** dans ces styles inline.
+Une refonte par jetons a été tentée puis écartée sur mesure. L'application :
 
-Redéfinir les 26 jetons de design suffit donc à repeindre les 120 écrans sans modifier
-une seule ligne de logique. S'y ajoute le restylage des classes structurelles réellement
-utilisées : `.panel`, `.panel-header`, `.panel-title`, `.kpi-card`, `.data-table`,
-`.status-badge`, `.modal-content`, `.nav-item`, `.profile-chip`, `.sidebar`.
+| Mesure | Valeur |
+|---|---|
+| `style={{` (styles inline) | **11 861** |
+| `className=` | 2 902 |
+| Références `var(--x)` dans les inline | 5 655 |
+| **`var(--white)`** | **0** |
+| **Littéraux blancs en dur** (`'#fff'`, `'white'`) | **1 100** |
+| **Couleurs hex en dur** | **3 855** |
 
-Points de conception retenus :
+Redéfinir les jetons ne pouvait donc pas produire une interface sombre : 1 100 surfaces
+blanches et 3 855 couleurs codées en dur seraient restées claires — résultat à moitié
+sombre, cassé. Le thème applique donc un filtre d'inversion sur `<body>`, qui bascule
+**toutes** les surfaces d'un coup, y compris le codé en dur, puis ré-inverse les médias
+(`img`, `canvas`, `video`, `iframe`) pour qu'ils gardent leurs couleurs.
 
-- neutres passés d'un gris plat (`#999`, `#555`) à une échelle slate froide plus contrastée ;
-- couleurs sémantiques assombries pour rester lisibles sur fond clair ;
-- panneaux et cartes KPI élevés (ombres en couches) sur un fond légèrement plus dense,
-  pour que les surfaces blanches ressortent ;
-- titres de panneaux en micro-libellés capitales + pastille d'icône couleur marque ;
-- en-têtes de tableaux collants, séparateurs en filet, chiffres en `tabular-nums` ;
-- barre de profils sombre servant d'ancrage visuel, barre latérale conservée claire.
+Détails d'implémentation :
 
-> La barre latérale reste claire délibérément : le logo (`assets/icon-192.png`) est un
-> lettrage magenta sur **tuile blanche opaque**, qui apparaîtrait comme un rectangle blanc
-> sur un fond sombre.
-
-### Détail d'intégration
-
-Le thème est injecté en **fin de `<body>`**, pas dans le `<head>` : `public/index.html`
-contient un second bloc `<style>` situé après `</head>`, qui écraserait sinon le thème à
-spécificité égale.
+- `<html>` conserve un fond sombre **non filtré** : c'est lui qui peint le canvas
+  (zones de sur-défilement), sinon le fond de page reste clair ;
+- les ombres portées deviennent des halos clairs après inversion — elles sont
+  neutralisées au profit de filets nets ;
+- tout ce qui est écrit dans la feuille est en **espace pré-filtre** : une valeur claire
+  écrite dans le CSS apparaît sombre à l'écran ;
+- le magenta de marque vire au rose par `hue-rotate(180deg)` — ce virage est assumé et
+  rendu franc plutôt que délavé ;
+- vérifié au préalable : aucun élément du shell n'est en `position: fixed`, le filtre ne
+  casse donc aucun ancrage de mise en page.
 
 ### Non-régression de l'habillage
 
 Mêmes conditions, profil DG, 44 onglets parcourus :
 
-| | Nouvelle UI | Ancienne UI |
+| | Nouvelle UI (sombre) | Ancienne UI |
 |---|---|---|
 | Rendu correct | **39** | **39** |
 | ErrorBoundary | **5** | **5** |
 
 Les mêmes 5 écrans dépendants de Firestore tombent en ErrorBoundary des deux côtés : le
-thème ne casse aucun écran.
+thème ne casse aucun écran et ne modifie aucun comportement.

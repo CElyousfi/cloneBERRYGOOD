@@ -74,9 +74,9 @@ if(!legacy.includes(anchor)){ console.error('🛑 ancre <script app.js> introuva
 fs.writeFileSync(p.join(OUT,'legacy.html'),legacy);
 
 // new.html — application migrée (modules ES) + thème v2 (présentation uniquement)
-const THEME=p.resolve(__dirname,'../../design/theme-v2.css');
-if(!fs.existsSync(THEME)){ console.error('🛑 design/theme-v2.css introuvable'); process.exit(1); }
-fs.copyFileSync(THEME,p.join(OUT,'theme-v2.css'));
+const THEME=p.resolve(__dirname,'../../design/theme-v3.css');
+if(!fs.existsSync(THEME)){ console.error('🛑 design/theme-v3.css introuvable'); process.exit(1); }
+fs.copyFileSync(THEME,p.join(OUT,'theme-v3.css'));
 let modern=legacy.replace(anchor,
   '    <!-- Monolithe app.js remplacé par le point d\'entrée modulaire ES.\n'+
   '         Les <script> UMD/lib au-dessus sont conservés à l\'identique. -->\n'+
@@ -86,8 +86,8 @@ let modern=legacy.replace(anchor,
 // écrasé. On l'injecte en fin de <body>, après tous les styles d'origine.
 if(modern.indexOf('</body>')<0){ console.error('🛑 </body> introuvable'); process.exit(1); }
 modern=modern.replace('</body>',
-  '    <link rel="stylesheet" href="/theme-v2.css">\n'+
-  '    <div id="v2-ribbon"><span class="dot"></span>Nouvelle interface</div>\n</body>');
+  '    <link rel="stylesheet" href="/theme-v3.css">\n'+
+  '    <div id="v3-ribbon"><span class="dot"></span>Nouvelle interface</div>\n</body>');
 fs.writeFileSync(p.join(OUT,'new.html'),modern);
 
 // index.html — page d'accueil : choix entre les deux versions
@@ -100,5 +100,5 @@ console.log('dist-vercel/ assemblé');
 console.log('  fichiers copiés depuis public/ :',copied);
 console.log('  index.html   -> page d\'accueil (choix de version)');
 console.log('  legacy.html  -> interface d\'origine (app.js)');
-console.log('  new.html     -> app migrée + thème v2 (theme-v2.css)');
+console.log('  new.html     -> app migrée + thème v3 sombre (theme-v3.css)');
 console.log('  taille totale:',(size(OUT)/1048576).toFixed(1),'Mo');
