@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:2e0a509bab3c54f3",
+    "sourceFingerprint": "sha256:8d7c07abd6d45252",
     "stats": {
-      "targetFiles": 285,
-      "targetFilesWithDirectTests": 168,
-      "targetFilesWithTransitiveTests": 190,
-      "testFilesScanned": 257
+      "targetFiles": 286,
+      "targetFilesWithDirectTests": 169,
+      "targetFilesWithTransitiveTests": 191,
+      "testFilesScanned": 260
     }
   },
   "index": {
@@ -1257,10 +1257,28 @@
     },
     "functions/lib/stock/articleHistoryIndex.js": {
       "directTests": [
-        "tests/unit/articleHistoryIndex.test.js"
+        "tests/unit/articleHistoryIndex.test.js",
+        "tests/unit/articleHistoryKeyReconciliation.test.js",
+        "tests/unit/articleKey.test.js"
       ],
       "transitiveTests": [
-        "tests/unit/articleHistoryIndex.test.js"
+        "tests/unit/articleHistoryIndex.test.js",
+        "tests/unit/articleHistoryKeyReconciliation.test.js",
+        "tests/unit/articleKey.test.js"
+      ]
+    },
+    "functions/lib/stock/articleKey.js": {
+      "directTests": [
+        "tests/unit/articleHistoryKeyReconciliation.test.js",
+        "tests/unit/articleKey.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/receptionValorisation/__tests__/prixLigne.test.js",
+        "functions/lib/receptionValorisation/__tests__/receptionBdc.test.js",
+        "tests/unit/articleHistoryIndex.test.js",
+        "tests/unit/articleHistoryKeyReconciliation.test.js",
+        "tests/unit/articleKey.test.js",
+        "tests/unit/pmpDetail.test.js"
       ]
     },
     "functions/lib/stock/bcDate.js": {
@@ -1334,11 +1352,13 @@
     },
     "functions/lib/stock/pmpDetail.js": {
       "directTests": [
+        "tests/unit/articleKey.test.js",
         "tests/unit/pmpDetail.test.js"
       ],
       "transitiveTests": [
         "functions/lib/receptionValorisation/__tests__/prixLigne.test.js",
         "functions/lib/receptionValorisation/__tests__/receptionBdc.test.js",
+        "tests/unit/articleKey.test.js",
         "tests/unit/pmpDetail.test.js"
       ]
     },

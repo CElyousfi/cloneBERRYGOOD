@@ -23,11 +23,11 @@
     },
     "heatmap": [
       {
-        "commits": 48,
+        "commits": 46,
         "file": "public/components/CampagneAnalytiqueTab.js"
       },
       {
-        "commits": 47,
+        "commits": 45,
         "file": "public/components/CampagneAnalytiqueTab.jsx"
       },
       {
@@ -35,7 +35,7 @@
         "file": "public/app.jsx"
       },
       {
-        "commits": 31,
+        "commits": 32,
         "file": "functions/index.js"
       },
       {
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:d894150bc8068f23",
+    "sourceFingerprint": "sha256:a9ac8b31c048fd7d",
     "stats": {
       "backendModules": 99,
       "cloudFunctions": 91,
@@ -883,7 +883,7 @@
       },
       "gitCoupling": [
         {
-          "coCommits": 46,
+          "coCommits": 44,
           "domain": null,
           "file": "public/components/CampagneAnalytiqueTab.js",
           "note": "probabilistic",
@@ -967,13 +967,6 @@
           "windowDays": 90
         },
         {
-          "coCommits": 8,
-          "domain": null,
-          "file": "tests/unit/campagneExportUtils.test.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
           "coCommits": 7,
           "domain": null,
           "file": "functions/pointageService.js",
@@ -981,14 +974,7 @@
           "windowDays": 90
         },
         {
-          "coCommits": 7,
-          "domain": null,
-          "file": "public/components/CampagneAnalytiqueTab.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 7,
+          "coCommits": 6,
           "domain": null,
           "file": "tests/unit/campagneExportUtils.test.js",
           "note": "probabilistic",
@@ -1010,8 +996,22 @@
         },
         {
           "coCommits": 5,
+          "domain": null,
+          "file": "public/components/CampagneAnalytiqueTab.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 5,
           "domain": "caisse",
           "file": "public/lib/campagneRapprochement.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 5,
+          "domain": null,
+          "file": "tests/unit/campagneExportUtils.test.js",
           "note": "probabilistic",
           "windowDays": 90
         },
@@ -3018,7 +3018,7 @@
     "AchatsBonApportTab": {
       "domain": "achats",
       "file": "public/app.jsx",
-      "line": 53483
+      "line": 53491
     },
     "AchatsCatalogueTab": {
       "domain": "achats",
@@ -3043,7 +3043,7 @@
     "AchatsFacturesTab": {
       "domain": "achats",
       "file": "public/app.jsx",
-      "line": 52504
+      "line": 52512
     },
     "AchatsFournisseursTab": {
       "domain": "achats",
@@ -3053,37 +3053,37 @@
     "AchatsPaiementsTab": {
       "domain": "achats",
       "file": "public/app.jsx",
-      "line": 52699
+      "line": 52707
     },
     "AchatsRapprochementTab": {
       "domain": "caisse",
       "file": "public/app.jsx",
-      "line": 55486
+      "line": 55494
     },
     "AchatsReceptionsValoriserTab": {
       "domain": "achats",
       "file": "public/app.jsx",
-      "line": 57381
+      "line": 57389
     },
     "AchatsScanBLTab": {
       "domain": "achats",
       "file": "public/app.jsx",
-      "line": 53192
+      "line": 53200
     },
     "AchatsScanFacturesTab": {
       "domain": "achats",
       "file": "public/app.jsx",
-      "line": 52882
+      "line": 52890
     },
     "AchatsVentePlastiqueTab": {
       "domain": "achats",
       "file": "public/app.jsx",
-      "line": 55235
+      "line": 55243
     },
     "AdminConsoleTab": {
       "domain": "admin",
       "file": "public/app.jsx",
-      "line": 63987
+      "line": 63995
     },
     "AgroAnalyseFoliairesTab": {
       "domain": "agro",
@@ -3153,12 +3153,12 @@
     "BudgetVsReelTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 58435
+      "line": 58443
     },
     "CaisseTab": {
       "domain": "caisse",
       "file": "public/app.jsx",
-      "line": 59980
+      "line": 59988
     },
     "CampagneTab": {
       "domain": "referentiel",
@@ -3198,7 +3198,7 @@
     "ChefValidationBonsTab": {
       "domain": "pointage",
       "file": "public/app.jsx",
-      "line": 56774
+      "line": 56782
     },
     "ChefValidationsTab": {
       "domain": "pointage",
@@ -3213,7 +3213,7 @@
     "ComingSoonTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 63253
+      "line": 63261
     },
     "CoutRecolteTab": {
       "domain": "recolte",
@@ -3223,27 +3223,27 @@
     "DGAdoptionTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 64343
+      "line": 64351
     },
     "DGMeetingCRTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 65310
+      "line": 65318
     },
     "DGParametresTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 66548
+      "line": 66556
     },
     "DGSignatureTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 66012
+      "line": 66020
     },
     "DGTasksTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 64860
+      "line": 64868
     },
     "DGValidationsTab": {
       "domain": "pointage",
@@ -3253,7 +3253,7 @@
     "DQRDailyTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 56351
+      "line": 56359
     },
     "DashboardAssocieTab": {
       "domain": null,
@@ -3273,7 +3273,7 @@
     "EvolutionTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 66689
+      "line": 66697
     },
     "FinBDCTab": {
       "domain": "achats",
@@ -3308,7 +3308,7 @@
     "FinFacturesTab": {
       "domain": "achats",
       "file": "public/app.jsx",
-      "line": 52793
+      "line": 52801
     },
     "FinLiquidationsTab": {
       "domain": null,
@@ -3323,7 +3323,7 @@
     "FinPaiementsTab": {
       "domain": "paie",
       "file": "public/app.jsx",
-      "line": 56962
+      "line": 56970
     },
     "FinPlantsTab": {
       "domain": null,
@@ -3393,12 +3393,12 @@
     "MagInventaireTab": {
       "domain": "stock",
       "file": "public/app.jsx",
-      "line": 51904
+      "line": 51907
     },
     "MagMouvementsTab": {
       "domain": "stock",
       "file": "public/app.jsx",
-      "line": 57935
+      "line": 57943
     },
     "MagParcTab": {
       "domain": null,
@@ -3413,17 +3413,17 @@
     "MagSortieTab": {
       "domain": "stock",
       "file": "public/app.jsx",
-      "line": 57514
+      "line": 57522
     },
     "MagStockIntrantsTab": {
       "domain": "stock",
       "file": "public/app.jsx",
-      "line": 51795
+      "line": 51798
     },
     "MagTransfertTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 57028
+      "line": 57036
     },
     "MeteoTab": {
       "domain": "agro",
@@ -3468,7 +3468,7 @@
     "ProductivityReportTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 67163
+      "line": 67171
     },
     "QualiteBonsApportTab": {
       "domain": "qualite",
@@ -3538,7 +3538,7 @@
     "QualiteValidationBonsTab": {
       "domain": "pointage",
       "file": "public/app.jsx",
-      "line": 56588
+      "line": 56596
     },
     "QuinzaineTab": {
       "domain": "paie",
@@ -3598,7 +3598,7 @@
     "SuiviPointageTab": {
       "domain": "pointage",
       "file": "public/app.jsx",
-      "line": 65690
+      "line": 65698
     },
     "SuiviTab": {
       "domain": null,

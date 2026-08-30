@@ -15,6 +15,8 @@
  * (magasin|station), mêmes cumuls et arrondis.
  */
 
+const { canon } = require('./articleKey');
+
 const STOCK_LIEU_TYPES = ['magasin', 'station'];
 
 function isStockLieu(lieu) {
@@ -22,8 +24,8 @@ function isStockLieu(lieu) {
 }
 
 /**
- * Construit l'index complet { [articleKeyLower]: { rawEntries, movements, article } }.
- * articleKeyLower = clé de matching insensible à la casse (article_ref OU article_nom).
+ * Construit l'index complet { [articleKeyCanon]: { rawEntries, movements, article } }.
+ * articleKeyCanon = clé canonique (article_ref OU article_nom passés par `canon`).
  * Un même mouvement/item est indexé sous SES clés (ref ET nom) pour préserver le
  * matching actuel (article_ref OU article_nom).
  *
@@ -56,11 +58,15 @@ function buildArticleHistoryIndex(docs, guard) {
       const unite = item.unite || 'kg';
       if (qty <= 0) continue;
 
-      // Clés de matching : ref ET nom (lowercase). On indexe l'item sous chacune
-      // pour reproduire le matching "article_ref OU article_nom" de l'API.
+      // Clés de matching : ref ET nom, CANONISÉES (cf. lib/stock/articleKey.js).
+      // La canonicalisation doit être appliquée aux DEUX bouts du chemin
+      // (indexation ici, recherche dans sliceArticleHistory) : la faire d'un
+      // seul côté ne réconcilie que les articles déjà écrits en majuscules.
+      const kRef = canon(ref);
+      const kNom = canon(nom);
       const keys = [];
-      if (ref) keys.push(ref.toLowerCase());
-      if (nom && (!ref || nom.toLowerCase() !== ref.toLowerCase())) keys.push(nom.toLowerCase());
+      if (kRef) keys.push(kRef);
+      if (kNom && kNom !== kRef) keys.push(kNom);
       if (keys.length === 0) continue;
 
       for (const key of keys) {
@@ -110,8 +116,8 @@ function buildArticleHistoryIndex(docs, guard) {
  * @returns {{article: object, entries: Array, soldes_par_lieu: Array, solde_global: number, movements: Object, count: number}}
  */
 function sliceArticleHistory(index, articleParam, filterLieuId) {
-  const articleLc = (articleParam || '').toLowerCase();
-  const bucket = index[articleLc];
+  // Recherche par clé CANONIQUE — même règle que l'indexation (articleKey.js).
+  const bucket = index[canon(articleParam)];
 
   const rawEntries = bucket ? bucket.rawEntries.slice() : [];
   const movements = bucket ? bucket.movements : {};
@@ -160,4 +166,4 @@ function sliceArticleHistory(index, articleParam, filterLieuId) {
   };
 }
 
-module.exports = { buildArticleHistoryIndex, sliceArticleHistory, isStockLieu, STOCK_LIEU_TYPES };
+module.exports = { buildArticleHistoryIndex, sliceArticleHistory, isStockLieu, STOCK_LIEU_TYPES, canon };

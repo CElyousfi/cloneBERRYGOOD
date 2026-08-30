@@ -51497,7 +51497,10 @@ ${rejetHtml}
                             const seen = {};
                             const list = [];
                             (json.balances || []).forEach(b => {
-                                const ref = b.article_ref || b.article_nom;
+                                // NOM d'abord : clé portée par les mouvements (cf. get-article-history).
+                                // Avec la ref d'abord, un article fusionné (solde sur docId) s'affichait
+                                // dans la liste mais son grand livre revenait vide.
+                                const ref = b.article_nom || b.article_ref;
                                 if (!ref || seen[ref]) return;
                                 seen[ref] = true;
                                 list.push({ ref, label: b.article_nom || b.article_ref });
@@ -52137,7 +52140,12 @@ ${rejetHtml}
                                         <span
                                             title="Voir le détail des mouvements jusqu'à la date d'inventaire"
                                             onClick={() => setMvtDetailLine({
-                                                article: b.article_ref || b.article_nom || '',
+                                                // Le NOM d'abord : c'est la clé que portent les mouvements.
+                                                // Un article fusionné a un solde sur le docId de sa fiche
+                                                // (ex. Ref-Eng0052) que AUCUN mouvement ne porte — envoyer
+                                                // la ref d'abord vidait l'écran. Même priorité que
+                                                // get-pmp-detail (article_nom || article_ref).
+                                                article: b.article_nom || b.article_ref || '',
                                                 article_nom: b.article_nom || b.article_ref || '',
                                                 lieu_id: b.lieu_id || '',
                                                 unite: b.unite || '',

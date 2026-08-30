@@ -20,17 +20,13 @@
  */
 
 /**
- * Canonicalisation d'un nom d'article — IDENTIQUE à scripts/reconstruct-stock.js
- * et compute-pmp-apercu.js (MAJUSCULE, espaces normalisés, suffixe d'unité retiré).
- * @param {*} a
- * @returns {string}
+ * Canonicalisation d'un nom d'article — réexportée depuis la source unique
+ * `lib/stock/articleKey.js` (MAJUSCULE, espaces normalisés, suffixe d'unité
+ * retiré). Ne PAS la redéfinir ici : c'est la même clé que celle du grand livre
+ * (articleHistoryIndex), et deux copies qui divergent vident un écran.
+ * @type {(a: *) => string}
  */
-function canon(a) {
-  let s = (a == null ? '' : String(a)).toUpperCase().trim();
-  s = s.replace(/\s+/g, ' ');
-  s = s.replace(/\s*\((L|KG|G|ML|UNITE|U)\)\s*$/, '');
-  return s.trim();
-}
+const canon = require('./articleKey').canon;
 
 /**
  * Normalise une unité brute vers une forme canonique comparable.

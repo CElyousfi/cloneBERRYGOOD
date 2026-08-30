@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:a796f68faa08e330 -->
-# Code Map — Modules lib (218)
+<!-- sourceFingerprint: sha256:fc774e029614b232 -->
+# Code Map — Modules lib (219)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
 
@@ -143,7 +143,8 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/receptionValorisation/prixLigne.js | — | SOURCES_PRIORITE, MOTIF, cleArticle, normaliserSource, prixPondereSource, resolvePrixLigne, valoriserLignes |
 | functions/lib/receptionValorisation/receptionBdc.js | — | STATUT_RECEPTION_A_LA_CREATION, cleArticle, lignesDepuisBl, sourcesPrixDepuisBdc, resoudreMagasinDestination, valoriserItemsReception, construireItemsReception, construireMouvementReception |
 | functions/lib/sentinel/sentinelRecipients.js | — | filterSentinelRecipients |
-| functions/lib/stock/articleHistoryIndex.js | — | buildArticleHistoryIndex, sliceArticleHistory, isStockLieu, STOCK_LIEU_TYPES |
+| functions/lib/stock/articleHistoryIndex.js | — | buildArticleHistoryIndex, sliceArticleHistory, isStockLieu, STOCK_LIEU_TYPES, canon |
+| functions/lib/stock/articleKey.js | — | canon, articleHistoryKey |
 | functions/lib/stock/bcDate.js | — | ISO_DATE_RE, HISTORY_ACTION, isRealIsoDate, validateBcDate, campagneChange, buildDateUpdate |
 | functions/lib/stock/bcDoublons.js | — | MOTIF_SCAN, MOTIF_CONTENU, HISTORY_ACTION_FORCAGE, normaliserTexte, normaliserQuantite, signatureScan, signatureContenu, messageDoublon, detecterDoublon, forcageDemande, construireTraceForcage |
 | functions/lib/stock/bcScan.js | — | SIMILARITY_THRESHOLD, INCLUSION_THRESHOLD, AMBIGUITY_MARGIN, VARIETY_ALIASES, CULTURE_TOKENS, VARIETE_EST_CULTURE, extractCulture, ALLOWED_SCAN_MIME, EXT_TO_MIME, resolveScanMedia, normalizeLabel, toNumber, buildBcScanPrompt, sanitizeVocabList, buildVocabulaireSection, selectVocabArticles, VOCAB_MAX_ENTRIES, parseAiJson, flattenBcScan, diceCoefficient, matchArticle, extractSecteurs, extractVariete, aliasMatchParcelle, parcelleAliasDocId, nextParcelleAliasCount, matchParcelle |
