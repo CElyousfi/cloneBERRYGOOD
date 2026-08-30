@@ -1,0 +1,209 @@
+/* ============================================================================
+   Smart BERRY — Interface v5
+   Application réécrite de zéro : structure, navigation et écrans.
+   Rien n'est repris de l'interface d'origine — ni balisage, ni classe, ni jeton.
+
+   Structure : rail d'icônes · colonne de navigation · contenu · volet contextuel
+   ========================================================================== */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root{
+  --ink:#0A0A0A; --ink-2:#1C1C1C; --muted:#6E6E6E; --muted-2:#9B9B9B;
+  --line:#E8E8E8; --line-2:#F2F2F2;
+  --bg:#FFFFFF; --bg-2:#FAFAFA; --bg-3:#F5F5F5;
+  --rail:56px; --nav:224px; --aside:296px; --top:52px;
+  --serif:'Instrument Serif',"Times New Roman",Georgia,serif;
+  --sans:'Inter',-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+  --mono:ui-monospace,'SF Mono',Menlo,monospace;
+}
+html,body{height:100%}
+body{
+  font-family:var(--sans);font-size:13.5px;line-height:1.5;
+  color:var(--ink);background:var(--bg);
+  -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
+}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+input{font:inherit}
+::selection{background:#111;color:#fff}
+svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.6;
+  stroke-linecap:round;stroke-linejoin:round}
+
+.app{display:flex;height:100vh;overflow:hidden}
+
+/* ---------- Rail ---------------------------------------------------------- */
+.rail{
+  width:var(--rail);flex:0 0 var(--rail);background:var(--bg-3);
+  border-right:1px solid var(--line);
+  display:flex;flex-direction:column;align-items:center;padding:12px 0;
+}
+.rail .mk{width:26px;height:26px;margin-bottom:18px;color:var(--ink)}
+.rail .items{display:flex;flex-direction:column;gap:2px;flex:1}
+.rail .it{
+  width:36px;height:36px;border-radius:9px;display:grid;place-items:center;
+  color:var(--muted-2);transition:background .12s,color .12s;
+}
+.rail .it:hover{background:#EAEAEA;color:var(--ink)}
+.rail .it.on{background:var(--ink);color:#fff}
+.rail .me{
+  width:28px;height:28px;border-radius:99px;background:var(--ink);color:#fff;
+  display:grid;place-items:center;font-size:10px;font-weight:600;
+}
+
+/* ---------- Colonne de navigation ---------------------------------------- */
+.nav{
+  width:var(--nav);flex:0 0 var(--nav);border-right:1px solid var(--line);
+  display:flex;flex-direction:column;background:var(--bg);
+}
+.nav .hd{padding:16px 16px 12px;border-bottom:1px solid var(--line-2)}
+.nav .hd .mod{font-family:var(--serif);font-size:19px;letter-spacing:-.01em}
+.nav .hd .cnt{font-size:11px;color:var(--muted-2);margin-top:2px}
+.nav .ls{flex:1;overflow-y:auto;padding:8px}
+.nav .ls button{
+  display:flex;align-items:center;gap:9px;width:100%;text-align:left;
+  padding:7px 9px;border-radius:7px;color:var(--muted);font-size:13px;
+  transition:background .12s,color .12s;
+}
+.nav .ls button svg{width:14px;height:14px;color:var(--muted-2)}
+.nav .ls button:hover{background:var(--bg-2);color:var(--ink)}
+.nav .ls button.on{background:var(--bg-3);color:var(--ink);font-weight:550}
+.nav .ls button.on svg{color:var(--ink)}
+.nav .ft{padding:10px 12px;border-top:1px solid var(--line-2);
+  font-size:11px;color:var(--muted-2)}
+
+/* ---------- Contenu ------------------------------------------------------- */
+.main{flex:1;display:flex;flex-direction:column;min-width:0}
+.top{
+  height:var(--top);flex:0 0 var(--top);border-bottom:1px solid var(--line);
+  display:flex;align-items:center;gap:12px;padding:0 16px;
+}
+.top .sr{flex:1;display:flex;align-items:center;gap:8px;color:var(--muted-2)}
+.top .sr input{border:none;outline:none;background:none;width:100%;color:var(--ink);font-size:13px}
+.top .sr input::placeholder{color:var(--muted-2)}
+.top .kbd{
+  border:1px solid var(--line);border-radius:5px;padding:1px 6px;
+  font-size:10.5px;color:var(--muted-2);font-family:var(--mono);
+}
+.top .act{display:flex;gap:6px}
+.btn{
+  display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);
+  border-radius:7px;padding:6px 11px;font-size:12.5px;color:var(--muted);
+  transition:border-color .12s,color .12s,background .12s;
+}
+.btn:hover{border-color:#D6D6D6;color:var(--ink)}
+.btn.pri{background:var(--ink);border-color:var(--ink);color:#fff}
+.btn.pri:hover{background:#2A2A2A}
+.btn svg{width:13px;height:13px}
+
+.body{flex:1;display:flex;min-height:0}
+.doc{flex:1;overflow-y:auto;min-width:0}
+.pad{padding:26px 28px 48px}
+
+/* ---------- En-tête d'écran ---------------------------------------------- */
+.hero{display:flex;align-items:flex-start;gap:18px;margin-bottom:22px}
+.hero h1{font-family:var(--serif);font-size:31px;font-weight:400;letter-spacing:-.014em;line-height:1.1}
+.hero p{color:var(--muted);font-size:13px;margin-top:5px;max-width:62ch}
+.hero .sp{flex:1}
+
+/* ---------- Bandeau de mesures (filets, pas de cartes) ------------------- */
+.metrics{
+  display:flex;flex-wrap:wrap;border-top:1px solid var(--line);
+  border-bottom:1px solid var(--line);margin-bottom:20px;
+}
+.metric{flex:1 1 168px;padding:15px 20px 14px;border-right:1px solid var(--line-2)}
+.metric:last-child{border-right:none}
+.metric .k{
+  font-size:10.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--muted-2);
+}
+.metric .v{
+  font-size:25px;font-weight:500;letter-spacing:-.026em;margin-top:7px;
+  font-variant-numeric:tabular-nums;
+}
+.metric .d{font-size:11.5px;color:var(--muted-2);margin-top:3px}
+
+/* ---------- Barre de filtres --------------------------------------------- */
+.filters{display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.seg{display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.seg button{padding:5px 12px;font-size:12.5px;color:var(--muted)}
+.seg button.on{background:var(--bg-3);color:var(--ink);font-weight:550}
+.filters .sp{flex:1}
+.find{
+  display:flex;align-items:center;gap:7px;border:1px solid var(--line);
+  border-radius:7px;padding:5px 10px;color:var(--muted-2);min-width:210px;
+}
+.find input{border:none;outline:none;background:none;width:100%;font-size:12.5px;color:var(--ink)}
+
+/* ---------- Tableau pleine largeur --------------------------------------- */
+.tbl{border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--bg)}
+.tbl .sc{overflow:auto;max-height:calc(100vh - 400px)}
+table{width:100%;border-collapse:separate;border-spacing:0}
+thead th{
+  position:sticky;top:0;z-index:2;background:var(--bg-2);
+  font-size:10.5px;font-weight:600;letter-spacing:.085em;text-transform:uppercase;
+  color:var(--muted-2);text-align:left;padding:9px 14px;white-space:nowrap;
+  border-bottom:1px solid var(--line);
+}
+thead th.n{text-align:right}
+tbody td{
+  padding:10px 14px;border-bottom:1px solid var(--line-2);font-size:13px;
+  color:var(--ink-2);white-space:nowrap;
+}
+tbody td.n{text-align:right;font-variant-numeric:tabular-nums}
+tbody td.s{color:var(--muted)}
+tbody tr:last-child td{border-bottom:none}
+tbody tr{transition:background .1s}
+tbody tr:hover{background:var(--bg-2);cursor:default}
+.tag{
+  display:inline-block;border:1px solid var(--line);border-radius:5px;
+  padding:2px 7px;font-size:10.5px;font-weight:550;letter-spacing:.04em;
+  text-transform:uppercase;color:var(--muted);background:var(--bg-2);
+}
+.tag.k{background:var(--ink);border-color:var(--ink);color:#fff}
+.empty{padding:44px 20px;text-align:center;color:var(--muted-2);font-size:13px}
+.empty .t{font-family:var(--serif);font-size:19px;color:var(--muted);margin-bottom:5px}
+
+/* ---------- Volet contextuel --------------------------------------------- */
+.aside{
+  width:var(--aside);flex:0 0 var(--aside);border-left:1px solid var(--line);
+  overflow-y:auto;background:var(--bg-2);
+}
+.aside .sec{padding:18px 18px;border-bottom:1px solid var(--line)}
+.aside .sec h3{
+  font-size:10.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--muted-2);margin-bottom:11px;
+}
+.aside .kv{display:flex;justify-content:space-between;gap:12px;padding:6px 0;font-size:12.5px}
+.aside .kv span{color:var(--muted)}
+.aside .kv b{font-weight:550;font-variant-numeric:tabular-nums}
+.aside .note{font-size:12px;color:var(--muted);line-height:1.6}
+.bars{display:flex;align-items:flex-end;gap:4px;height:52px;margin-top:6px}
+.bars i{flex:1;background:#DEDEDE;border-radius:1px}
+.bars i.k{background:var(--ink)}
+.lgd{display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted-2);margin-top:6px}
+
+/* ---------- Vue d'ensemble ------------------------------------------------ */
+.ov{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));
+  gap:1px;background:var(--line);border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.ov .c{background:var(--bg);padding:16px;min-height:148px;display:flex;flex-direction:column;
+  transition:background .12s}
+.ov .c:hover{background:var(--bg-2)}
+.ov .c .h{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);margin-bottom:10px}
+.ov .c .h svg{width:13px;height:13px;color:var(--muted-2)}
+.ov .c .t{font-size:12.5px;line-height:1.55;color:var(--ink-2);flex:1}
+.ov .c .t b{font-weight:600}
+.ov .c .v{font-size:24px;font-weight:500;letter-spacing:-.025em;margin-top:6px;
+  font-variant-numeric:tabular-nums}
+.ov .c .f{margin-top:10px;padding-top:9px;border-top:1px solid var(--line-2);
+  font-size:11.5px;color:var(--muted-2)}
+.ov .c:hover .f{color:var(--ink)}
+
+.ribbon{
+  position:fixed;right:12px;bottom:12px;z-index:60;display:inline-flex;
+  align-items:center;gap:7px;padding:5px 10px;border:1px solid var(--line);
+  border-radius:6px;background:#fff;font-size:10.5px;color:var(--muted);
+  letter-spacing:.05em;text-transform:uppercase;pointer-events:none;
+}
+.ribbon .d{width:5px;height:5px;border-radius:99px;background:var(--ink)}
+
+@media(max-width:1240px){ .aside{display:none} }
+@media(max-width:900px){ .nav{display:none} .pad{padding:20px 16px 40px} .hero h1{font-size:25px} }

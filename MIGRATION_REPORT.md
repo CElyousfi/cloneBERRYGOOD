@@ -275,43 +275,56 @@ Puis redéployer. L'écran de connexion Firebase revient ; aucun code applicatif
 
 ---
 
-## 9. Page d'accueil et nouvelle interface (v4)
-
-Le déploiement expose quatre pages :
+## 9. Page d'accueil et interface v5
 
 | Page | Contenu |
 |---|---|
 | `index.html` | Page d'accueil — choix entre les deux versions |
 | `legacy.html` | Interface d'origine, monolithe `app.js`, **inchangée** |
-| `new.html` | **Coquille v4**, écrite intégralement de zéro (`design/v4/`) |
-| `app.html` | Application migrée, habillée v4, chargée dans le cadre de la coquille |
+| `new.html` | **Interface v5**, écrite intégralement de zéro (`design/v5/`) |
+| `app.html` | Moteur métier migré — référence fonctionnelle |
 
-### Architecture retenue
+### Une structure entièrement nouvelle
 
-Une refonte « 0 % similaire » de l'intégralité des 120 écrans supposerait de réécrire
-les **11 861 styles inline** de l'application — donc de refaire l'applicatif, ce que le
-périmètre non-régression interdit. L'interface v4 sépare donc les deux plans :
+L'interface v5 ne reprend **ni balisage, ni classe, ni jeton** de l'application d'origine.
+La structure elle-même change :
 
-- **Le tableau de bord est neuf**, écrit de zéro (`design/v4/shell.{html,css,js}`) :
-  aucune classe, aucun jeton, aucun balisage hérités de l'ancienne interface. Rail
-  d'icônes 64 px, recherche globale, titre en serif éditorial, grille de cartes à filets
-  1 px, micro-graphiques SVG, panneau d'intentions.
-- **Les écrans métier restent l'application réelle**, chargée dans un cadre depuis
-  `app.html` — fonctionnalités, calculs et parcours strictement inchangés. Ils reçoivent
-  `design/v4/embed.css`, qui les aligne sur le langage visuel v4 : `grayscale(1)`
-  neutralise d'un coup les 3 855 couleurs codées en dur, puis les classes structurelles
-  sont redessinées en monochrome à filets.
-
-Le rail passe le contexte au cadre via `#tab=<libellé>` ; `embed.js` ouvre l'écran
-correspondant. Aucune ligne de code applicatif n'est modifiée.
-
-### Non-régression de l'habillage
-
-Mêmes conditions, profil DG, 44 onglets parcourus :
-
-| | `app.html` (v4) | `legacy.html` |
+| | Interface d'origine | Interface v5 |
 |---|---|---|
-| Rendu correct | **39** | **39** |
-| ErrorBoundary | **5** | **5** |
+| Disposition | barre de profils + barre latérale + contenu | rail d'icônes · colonne de module · contenu · volet contextuel |
+| Indicateurs | cartes KPI encadrées | bandeau de mesures à filets, sans boîtes |
+| Navigation | liste plate de 40+ onglets | modules puis écrans, à deux niveaux |
+| Tableaux | panneaux empilés | tableau pleine largeur, en-tête collant, chiffres alignés |
+| Contexte | — | volet latéral permanent (répartition, notes, seuils) |
+| Typographie | Inter uniquement | Instrument Serif éditorial + Inter |
+| Couleur | berry, vert, orange, rouge | monochrome intégral |
 
-Les mêmes 5 écrans dépendants de Firestore tombent en ErrorBoundary des deux côtés.
+14 écrans sont rendus par un moteur unique piloté par spécification
+(`design/v5/data.js`) : Vue d'ensemble, Trésorerie, Factures, Virements, Bons de
+commande, Fournisseurs, Stock intrants, Inventaire, Paie, Pointage, Bons d'apport,
+Écarts, Parcelles, Paramètres.
+
+### Fidélité de l'architecture d'information
+
+Les colonnes ne sont pas inventées : elles sont extraites des écrans réels du monolithe.
+Exemples repris à l'identique —
+
+- **Trésorerie** : Semaine · Entrées Driscoll's · Factures · Loyers · Paie · Autres · Solde net · Cumul
+- **Paie** : Matricule · Nom · Prénom · Déclaré · Prime fct (DH/j) · Ancienneté (j) · Palier · Jours période · Brut
+- **Stock** : Lieu · Type · Article · Unité · Solde · Statut
+- **BDC** : N° · Date · Fournisseur · Ferme · Articles · Total TTC
+
+### Portée — à lire avant recette
+
+L'interface v5 est une **refonte de présentation** : la structure, la navigation et les
+écrans sont neufs, et l'architecture d'information est fidèle à l'existant. En revanche
+elle **n'embarque pas la logique métier** (calculs de paie, réconciliations, workflows de
+validation), qui reste dans le moteur migré servi par `app.html`.
+
+Recâbler les 14 écrans sur cette logique — puis couvrir les 106 écrans restants — est un
+chantier de réécriture applicative distinct du forfait de migration non-régression, et
+doit être chiffré séparément.
+
+### Contrôle
+
+14 écrans sur 14 rendus sans erreur JavaScript.

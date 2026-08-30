@@ -73,30 +73,19 @@ if(!legacy.includes(anchor)){ console.error('🛑 ancre <script app.js> introuva
 // legacy.html — interface d'origine, monolithe app.js, aucun changement
 fs.writeFileSync(p.join(OUT,'legacy.html'),legacy);
 
-// app.html — application migrée, habillée pour vivre dans la coquille v4
-const V4=p.resolve(__dirname,'../../design/v4');
-for(const f of ['shell.css','shell.js','embed.css','embed.js']){
-  const src=p.join(V4,f);
-  if(!fs.existsSync(src)){ console.error('🛑 design/v4/'+f+' introuvable'); process.exit(1); }
+// app.html — application migrée (moteur métier réel), accessible depuis v5
+const V5=p.resolve(__dirname,'../../design/v5');
+for(const f of ['index.html','app.css','app.js','data.js']){
+  if(!fs.existsSync(p.join(V5,f))){ console.error('🛑 design/v5/'+f+' introuvable'); process.exit(1); }
 }
-fs.mkdirSync(p.join(OUT,'v4'),{recursive:true});
-for(const f of ['shell.css','shell.js']) fs.copyFileSync(p.join(V4,f),p.join(OUT,'v4',f));
-fs.copyFileSync(p.join(V4,'embed.css'),p.join(OUT,'embed.css'));
-fs.copyFileSync(p.join(V4,'embed.js'), p.join(OUT,'embed.js'));
+fs.mkdirSync(p.join(OUT,'v5'),{recursive:true});
+for(const f of ['app.css','app.js','data.js']) fs.copyFileSync(p.join(V5,f),p.join(OUT,'v5',f));
 
-let app=legacy.replace(anchor,
-  '    <script type="module" src="/app.modular.js"></script>');
-if(app.indexOf('</head>')<0||app.indexOf('</body>')<0){ console.error('🛑 balises manquantes'); process.exit(1); }
-app=app.replace('</head>',
-  '    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif&display=swap" rel="stylesheet">\n</head>');
-// injecté en fin de <body> : index.html porte un second <style> après </head>
-app=app.replace('</body>',
-  '    <link rel="stylesheet" href="/embed.css">\n'+
-  '    <script src="/embed.js"></script>\n</body>');
+let app=legacy.replace(anchor,'    <script type="module" src="/app.modular.js"></script>');
 fs.writeFileSync(p.join(OUT,'app.html'),app);
 
-// new.html — coquille v4, écrite intégralement de zéro
-fs.copyFileSync(p.join(V4,'shell.html'),p.join(OUT,'new.html'));
+// new.html — interface v5, écrite intégralement de zéro
+fs.copyFileSync(p.join(V5,'index.html'),p.join(OUT,'new.html'));
 
 // index.html — page d'accueil : choix entre les deux versions
 const LANDING=p.resolve(__dirname,'../../design/landing.html');
@@ -108,6 +97,6 @@ console.log('dist-vercel/ assemblé');
 console.log('  fichiers copiés depuis public/ :',copied);
 console.log('  index.html   -> page d\'accueil (choix de version)');
 console.log('  legacy.html  -> interface d\'origine (app.js)');
-console.log('  new.html     -> coquille v4 (design/v4, écrite de zéro)');
-console.log('  app.html     -> app migrée, habillée v4, chargée dans le cadre');
+console.log('  new.html     -> interface v5 (design/v5, écrite de zéro)');
+console.log('  app.html     -> moteur métier migré (référence fonctionnelle)');
 console.log('  taille totale:',(size(OUT)/1048576).toFixed(1),'Mo');
