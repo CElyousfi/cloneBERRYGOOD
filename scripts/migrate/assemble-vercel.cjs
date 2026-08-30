@@ -67,18 +67,38 @@ if (process.env.DEMO_NO_AUTH === '1') {
 
 // 3. index.html migré + legacy.html d'origine
 const legacy=fs.readFileSync(p.join(PUB,'index.html'),'utf8');
-fs.writeFileSync(p.join(OUT,'legacy.html'),legacy);
 const anchor='<script defer src="app.js?v=mt4mnskr"></script>';
 if(!legacy.includes(anchor)){ console.error('🛑 ancre <script app.js> introuvable dans public/index.html'); process.exit(1); }
-const migrated=legacy.replace(anchor,
-  '    <!-- MIGRATION : monolithe app.js remplacé par le point d\'entrée modulaire ES.\n'+
-  '         Tous les <script> UMD/lib au-dessus sont conservés à l\'identique. -->\n'+
+
+// legacy.html — interface d'origine, monolithe app.js, aucun changement
+fs.writeFileSync(p.join(OUT,'legacy.html'),legacy);
+
+// new.html — application migrée (modules ES) + thème v2 (présentation uniquement)
+const THEME=p.resolve(__dirname,'../../design/theme-v2.css');
+if(!fs.existsSync(THEME)){ console.error('🛑 design/theme-v2.css introuvable'); process.exit(1); }
+fs.copyFileSync(THEME,p.join(OUT,'theme-v2.css'));
+let modern=legacy.replace(anchor,
+  '    <!-- Monolithe app.js remplacé par le point d\'entrée modulaire ES.\n'+
+  '         Les <script> UMD/lib au-dessus sont conservés à l\'identique. -->\n'+
   '    <script type="module" src="/app.modular.js"></script>');
-fs.writeFileSync(p.join(OUT,'index.html'),migrated);
+// Le thème doit gagner la cascade : index.html contient un SECOND bloc <style>
+// situé dans le <body>, après </head>. Un <link> en fin de <head> serait donc
+// écrasé. On l'injecte en fin de <body>, après tous les styles d'origine.
+if(modern.indexOf('</body>')<0){ console.error('🛑 </body> introuvable'); process.exit(1); }
+modern=modern.replace('</body>',
+  '    <link rel="stylesheet" href="/theme-v2.css">\n'+
+  '    <div id="v2-ribbon"><span class="dot"></span>Nouvelle interface</div>\n</body>');
+fs.writeFileSync(p.join(OUT,'new.html'),modern);
+
+// index.html — page d'accueil : choix entre les deux versions
+const LANDING=p.resolve(__dirname,'../../design/landing.html');
+if(!fs.existsSync(LANDING)){ console.error('🛑 design/landing.html introuvable'); process.exit(1); }
+fs.copyFileSync(LANDING,p.join(OUT,'index.html'));
 
 const size=d=>{let t=0;(function w(x){for(const e of fs.readdirSync(x,{withFileTypes:true})){const f=p.join(x,e.name);e.isDirectory()?w(f):t+=fs.statSync(f).size;}})(d);return t;};
 console.log('dist-vercel/ assemblé');
 console.log('  fichiers copiés depuis public/ :',copied);
-console.log('  index.html   -> app.modular.js (migré)');
-console.log('  legacy.html  -> app.js (monolithe, pour comparaison)');
+console.log('  index.html   -> page d\'accueil (choix de version)');
+console.log('  legacy.html  -> interface d\'origine (app.js)');
+console.log('  new.html     -> app migrée + thème v2 (theme-v2.css)');
 console.log('  taille totale:',(size(OUT)/1048576).toFixed(1),'Mo');

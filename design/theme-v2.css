@@ -1,0 +1,344 @@
+/* ============================================================================
+   Smart BERRY — Thème v2 « Édition Professionnelle »
+   ----------------------------------------------------------------------------
+   Couche 100 % PRÉSENTATION. Aucune ligne de code applicatif n'est modifiée :
+   le thème agit en redéfinissant les jetons de design (5 655 usages de var(--x)
+   dans les styles inline de l'app) puis en restylant les 216 classes du shell.
+   Chargé APRÈS les <style> d'origine — à spécificité égale, le dernier gagne.
+   ========================================================================== */
+
+/* ---------- 1. Jetons de design ------------------------------------------ */
+:root {
+  /* Marque — berry approfondi, plus dense et moins rosé */
+  --berry:        #7C1D48;
+  --berry-light:  #A33A68;
+  --berry-pale:   rgba(124, 29, 72, 0.07);
+  --berry-bg:     #EFF2F7;
+
+  /* Neutres — échelle slate froide, contrastes conformes AA */
+  --white:      #FFFFFF;
+  --gray-50:    #F8FAFC;
+  --gray-100:   #F1F5F9;
+  --gray-200:   #E4E9F0;
+  --gray-300:   #CBD5E1;
+  --gray-400:   #7C8899;
+  --gray-500:   #64748B;
+  --gray-600:   #4A5768;
+  --gray-700:   #334155;
+  --gray-800:   #1E293B;
+  --dark:       #0F172A;
+
+  /* Sémantique — assombries pour rester lisibles sur fond clair */
+  --green:       #12784A;
+  --green-light: #1B9159;
+  --green-pale:  rgba(18, 120, 74, 0.10);
+  --blue:        #1D68C4;
+  --blue-pale:   rgba(29, 104, 196, 0.10);
+  --orange:      #B4650B;
+  --orange-pale: rgba(180, 101, 11, 0.10);
+  --red:         #C0342A;
+  --red-pale:    rgba(192, 52, 42, 0.10);
+  --gold:        #9C7312;
+  --gold-pale:   rgba(156, 115, 18, 0.10);
+
+  /* Layout — inchangé pour ne rien casser */
+  --sidebar-width:       260px;
+  --header-height:       64px;
+  --profile-bar-height:  48px;
+
+  /* Jetons additionnels propres au thème v2 */
+  --v2-radius:      10px;
+  --v2-radius-lg:   14px;
+  --v2-shadow-xs:   0 1px 2px rgba(15, 23, 42, .05);
+  --v2-shadow-sm:   0 1px 3px rgba(15, 23, 42, .07), 0 1px 2px rgba(15, 23, 42, .04);
+  --v2-shadow-md:   0 4px 12px rgba(15, 23, 42, .07), 0 1px 3px rgba(15, 23, 42, .05);
+  --v2-shadow-lg:   0 12px 32px rgba(15, 23, 42, .12), 0 2px 8px rgba(15, 23, 42, .06);
+  --v2-ring:        0 0 0 3px rgba(124, 29, 72, .14);
+  --v2-sidebar-bg:  #14121A;
+  --v2-border:      #E4E9F0;
+}
+
+/* ---------- 2. Base ------------------------------------------------------- */
+body {
+  background: var(--berry-bg);
+  color: var(--gray-800);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'cv02','cv03','cv04','ss01';
+}
+::selection { background: rgba(124,29,72,.16); }
+
+/* Barres de défilement discrètes */
+* { scrollbar-width: thin; scrollbar-color: var(--gray-300) transparent; }
+*::-webkit-scrollbar { width: 9px; height: 9px; }
+*::-webkit-scrollbar-thumb {
+  background: var(--gray-300); border-radius: 99px;
+  border: 2px solid transparent; background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover { background: var(--gray-400); background-clip: content-box; }
+*::-webkit-scrollbar-track { background: transparent; }
+
+/* Chiffres alignés partout où ça compte */
+.kpi-value, .data-table td, .data-table th { font-variant-numeric: tabular-nums; }
+
+/* ---------- 3. Barre de profils ------------------------------------------ */
+.profile-bar {
+  background: var(--v2-sidebar-bg);
+  border-bottom: 1px solid rgba(255,255,255,.07);
+  box-shadow: none;
+}
+.profile-bar .label {
+  color: rgba(255,255,255,.42);
+  font-size: 10.5px; font-weight: 700;
+  letter-spacing: .09em; text-transform: uppercase;
+}
+.profile-chip {
+  background: rgba(255,255,255,.05);
+  border: 1px solid rgba(255,255,255,.09);
+  color: rgba(255,255,255,.72);
+  border-radius: 8px;
+  font-weight: 550; font-size: 12.5px;
+  transition: background .16s ease, color .16s ease, border-color .16s ease;
+}
+.profile-chip:hover {
+  background: rgba(255,255,255,.11);
+  border-color: rgba(255,255,255,.18);
+  color: #fff;
+}
+.profile-chip.active {
+  background: var(--berry-light);
+  border-color: var(--berry-light);
+  color: #fff;
+  box-shadow: 0 2px 10px rgba(163,58,104,.42);
+}
+.profile-bar .scroll-btn {
+  background: rgba(255,255,255,.07); color: rgba(255,255,255,.75);
+  border: 1px solid rgba(255,255,255,.10); border-radius: 7px;
+}
+.profile-bar .scroll-btn:hover { background: rgba(255,255,255,.15); color:#fff; }
+
+/* ---------- 4. Barre latérale -------------------------------------------- */
+.sidebar {
+  background: var(--white);
+  border-right: 1px solid var(--v2-border);
+  box-shadow: none;
+}
+.sidebar-header {
+  border-bottom: 1px solid var(--v2-border);
+  padding: 20px 18px;
+}
+.sidebar-header .app-name { font-weight: 700; letter-spacing: -.015em; color: var(--gray-800); }
+
+.sidebar-nav { padding: 10px 10px 16px; }
+.nav-item {
+  border-radius: 9px;
+  margin: 1px 0;
+  padding: 9px 11px;
+  color: var(--gray-600);
+  font-weight: 520; font-size: 13.5px;
+  border: 1px solid transparent;
+  transition: background .14s ease, color .14s ease;
+}
+.nav-item i { color: var(--gray-400); width: 18px; transition: color .14s ease; }
+.nav-item:hover { background: var(--gray-100); color: var(--gray-800); }
+.nav-item:hover i { color: var(--gray-600); }
+.nav-item.active {
+  background: var(--berry-pale);
+  color: var(--berry);
+  font-weight: 650;
+  border-color: rgba(124,29,72,.14);
+  position: relative;
+}
+.nav-item.active::before {
+  content: ''; position: absolute; left: -10px; top: 50%;
+  transform: translateY(-50%);
+  width: 3px; height: 20px; border-radius: 0 3px 3px 0;
+  background: var(--berry);
+}
+.nav-item.active i { color: var(--berry); }
+.nav-item .badge {
+  background: var(--berry); color:#fff; border-radius: 99px;
+  font-size: 10.5px; font-weight: 700; padding: 2px 7px;
+}
+
+.sidebar-footer { border-top: 1px solid var(--v2-border); background: var(--gray-50); }
+.sidebar-footer .user-avatar {
+  background: linear-gradient(135deg, var(--berry) 0%, var(--berry-light) 100%);
+  color:#fff; font-weight: 700; box-shadow: var(--v2-shadow-xs);
+}
+.sidebar-footer .user-info .name { font-weight: 650; color: var(--gray-800); }
+.sidebar-footer .user-info .role { color: var(--gray-500); font-size: 11.5px; }
+
+.sidebar-nav > div:first-child,
+.sidebar .nav-section-label {
+  font-size: 10px; font-weight: 700; letter-spacing: .11em;
+  text-transform: uppercase; color: var(--gray-400);
+}
+
+/* ---------- 5. En-tête de contenu ---------------------------------------- */
+.content-area { background: var(--berry-bg); }
+.content-header {
+  background: rgba(255,255,255,.86);
+  backdrop-filter: saturate(180%) blur(12px);
+  -webkit-backdrop-filter: saturate(180%) blur(12px);
+  border-bottom: 1px solid var(--v2-border);
+}
+.content-header h1 {
+  font-weight: 750; letter-spacing: -.028em;
+  color: var(--dark); font-size: 21px;
+}
+.header-btn {
+  background: var(--white);
+  border: 1px solid var(--v2-border);
+  border-radius: 9px;
+  color: var(--gray-600);
+  font-weight: 560;
+  box-shadow: var(--v2-shadow-xs);
+  transition: border-color .14s ease, box-shadow .14s ease, color .14s ease;
+}
+.header-btn:hover {
+  border-color: var(--gray-300); color: var(--gray-800);
+  box-shadow: var(--v2-shadow-sm);
+}
+
+/* ---------- 6. Cartes KPI ------------------------------------------------- */
+.kpi-grid { gap: 14px; }
+.kpi-card {
+  background: var(--white);
+  border: 1px solid var(--v2-border);
+  border-radius: var(--v2-radius-lg);
+  box-shadow: var(--v2-shadow-sm);
+  transition: box-shadow .18s ease, transform .18s ease, border-color .18s ease;
+}
+.kpi-card:hover {
+  box-shadow: var(--v2-shadow-md);
+  border-color: var(--gray-300);
+  transform: translateY(-1px);
+}
+.kpi-card .kpi-icon { border-radius: 10px; }
+.kpi-card .kpi-value {
+  font-weight: 720; letter-spacing: -.028em;
+  color: var(--gray-800);
+}
+.kpi-card .kpi-label {
+  color: var(--gray-500); font-weight: 560;
+  font-size: 11.5px; letter-spacing: .035em; text-transform: uppercase;
+}
+.kpi-card .kpi-change { font-weight: 650; border-radius: 99px; }
+
+/* ---------- 6bis. Panneaux (composant Panel — présent sur tous les écrans) - */
+.panel {
+  background: var(--white);
+  border: 1px solid var(--v2-border);
+  border-radius: var(--v2-radius-lg);
+  box-shadow: var(--v2-shadow-sm);
+  margin-bottom: 18px;
+  overflow: hidden;
+  transition: box-shadow .18s ease, border-color .18s ease;
+}
+.panel:hover { box-shadow: var(--v2-shadow-md); border-color: #D8DFE9; }
+.panel-header {
+  padding: 15px 20px;
+  background: linear-gradient(180deg, #FCFDFE 0%, var(--gray-50) 100%);
+  border-bottom: 1px solid var(--v2-border);
+}
+.panel-title {
+  font-size: 12px; font-weight: 700;
+  letter-spacing: .075em; text-transform: uppercase;
+  color: var(--gray-600);
+  display: flex; align-items: center; gap: 9px;
+}
+.panel-title i {
+  color: var(--berry); font-size: 12.5px;
+  width: 20px; height: 20px; border-radius: 6px;
+  display: inline-grid; place-items: center;
+  background: var(--berry-pale);
+}
+.panel-body { padding: 20px; }
+
+
+/* ---------- 7. Tableaux --------------------------------------------------- */
+.table-responsive {
+  border: 1px solid var(--v2-border);
+  border-radius: var(--v2-radius);
+  background: var(--white);
+  box-shadow: var(--v2-shadow-xs);
+  overflow: auto;
+}
+.data-table { border-collapse: separate; border-spacing: 0; }
+.data-table thead th {
+  background: var(--gray-50);
+  color: var(--gray-500);
+  font-size: 11px; font-weight: 700;
+  letter-spacing: .055em; text-transform: uppercase;
+  border-bottom: 1px solid var(--v2-border);
+  position: sticky; top: 0; z-index: 2;
+  white-space: nowrap;
+}
+.data-table tbody td {
+  border-bottom: 1px solid var(--gray-100);
+  color: var(--gray-700);
+  font-size: 13px;
+}
+.data-table tbody tr:last-child td { border-bottom: none; }
+.data-table tbody tr { transition: background .12s ease; }
+.data-table tbody tr:hover { background: var(--gray-50); }
+
+/* ---------- 8. Badges de statut ------------------------------------------ */
+.status-badge {
+  border-radius: 99px;
+  font-weight: 650; font-size: 11.5px;
+  letter-spacing: .012em;
+  padding: 3px 10px;
+  border: 1px solid transparent;
+}
+
+/* ---------- 9. Modales ---------------------------------------------------- */
+.modal-overlay {
+  background: rgba(15, 23, 42, .48);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+.modal-content {
+  border-radius: var(--v2-radius-lg);
+  box-shadow: var(--v2-shadow-lg);
+  border: 1px solid var(--v2-border);
+}
+
+/* ---------- 10. Contrôles de formulaire ---------------------------------- */
+input, select, textarea, button { font-family: 'Inter', system-ui, sans-serif; }
+input:not([type=checkbox]):not([type=radio]), select, textarea {
+  border-radius: 8px !important;
+  border: 1px solid var(--gray-300) !important;
+  transition: border-color .14s ease, box-shadow .14s ease;
+}
+input:not([type=checkbox]):not([type=radio]):focus, select:focus, textarea:focus {
+  outline: none !important;
+  border-color: var(--berry) !important;
+  box-shadow: var(--v2-ring) !important;
+}
+button { transition: filter .14s ease, box-shadow .14s ease, background .14s ease; }
+button:not(:disabled):hover { filter: brightness(.97); }
+button:focus-visible {
+  outline: none; box-shadow: var(--v2-ring);
+}
+
+/* ---------- 11. Divers ---------------------------------------------------- */
+.chip-group-label { color: var(--gray-500); font-weight: 650; letter-spacing: .03em; }
+.fade-in { animation: v2FadeIn .22s ease-out; }
+@keyframes v2FadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+/* Bandeau discret identifiant la version — n'entre pas en conflit avec le badge démo */
+#v2-ribbon {
+  position: fixed; right: 12px; bottom: 12px; z-index: 99998;
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 12px; border-radius: 99px;
+  background: rgba(20, 18, 26, .92);
+  color: #fff; font: 600 11px/1 'Inter', sans-serif; letter-spacing: .02em;
+  box-shadow: var(--v2-shadow-md);
+  pointer-events: none;
+}
+#v2-ribbon .dot {
+  width: 6px; height: 6px; border-radius: 99px;
+  background: #4ADE80; box-shadow: 0 0 0 3px rgba(74,222,128,.22);
+}

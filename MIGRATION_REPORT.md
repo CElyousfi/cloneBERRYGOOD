@@ -272,3 +272,58 @@ Puis redéployer. L'écran de connexion Firebase revient ; aucun code applicatif
   l'interface. Restreindre via la protection de déploiement Vercel si nécessaire.
 - **`/api/*`** : proxifié vers les Cloud Functions `europe-west1`. Les appels partent
   avec un jeton fictif et seront rejetés — attendu en démo.
+
+---
+
+## 9. Page d'accueil et nouvelle interface (thème v2)
+
+Le déploiement expose trois pages :
+
+| Page | Contenu |
+|---|---|
+| `index.html` | Page d'accueil — choix entre les deux versions |
+| `legacy.html` | Interface d'origine, monolithe `app.js`, **inchangée** |
+| `new.html` | Application migrée (334 modules ES) + `theme-v2.css` |
+
+### Le thème ne touche aucun code applicatif
+
+`design/theme-v2.css` est une couche **strictement présentationnelle**. Elle exploite le
+fait que l'application, bien qu'écrite à 80 % en styles inline (11 861 `style={{` contre
+2 902 `className=`), référence **5 655 fois `var(--x)`** dans ces styles inline.
+
+Redéfinir les 26 jetons de design suffit donc à repeindre les 120 écrans sans modifier
+une seule ligne de logique. S'y ajoute le restylage des classes structurelles réellement
+utilisées : `.panel`, `.panel-header`, `.panel-title`, `.kpi-card`, `.data-table`,
+`.status-badge`, `.modal-content`, `.nav-item`, `.profile-chip`, `.sidebar`.
+
+Points de conception retenus :
+
+- neutres passés d'un gris plat (`#999`, `#555`) à une échelle slate froide plus contrastée ;
+- couleurs sémantiques assombries pour rester lisibles sur fond clair ;
+- panneaux et cartes KPI élevés (ombres en couches) sur un fond légèrement plus dense,
+  pour que les surfaces blanches ressortent ;
+- titres de panneaux en micro-libellés capitales + pastille d'icône couleur marque ;
+- en-têtes de tableaux collants, séparateurs en filet, chiffres en `tabular-nums` ;
+- barre de profils sombre servant d'ancrage visuel, barre latérale conservée claire.
+
+> La barre latérale reste claire délibérément : le logo (`assets/icon-192.png`) est un
+> lettrage magenta sur **tuile blanche opaque**, qui apparaîtrait comme un rectangle blanc
+> sur un fond sombre.
+
+### Détail d'intégration
+
+Le thème est injecté en **fin de `<body>`**, pas dans le `<head>` : `public/index.html`
+contient un second bloc `<style>` situé après `</head>`, qui écraserait sinon le thème à
+spécificité égale.
+
+### Non-régression de l'habillage
+
+Mêmes conditions, profil DG, 44 onglets parcourus :
+
+| | Nouvelle UI | Ancienne UI |
+|---|---|---|
+| Rendu correct | **39** | **39** |
+| ErrorBoundary | **5** | **5** |
+
+Les mêmes 5 écrans dépendants de Firestore tombent en ErrorBoundary des deux côtés : le
+thème ne casse aucun écran.
