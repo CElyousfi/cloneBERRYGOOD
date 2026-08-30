@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Smart BERRY — Rapport d'exécution de la migration</title>
+<style>
+  @page { size: A4; margin: 17mm 15mm 16mm 15mm; }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:"Segoe UI","Helvetica Neue",Arial,sans-serif;font-size:9.6pt;line-height:1.55;color:#1B1B1B}
+  h1,h2,h3,h4{color:#14532D;line-height:1.25}
+  h2{font-size:15pt;margin:0 0 10px;padding-bottom:6px;border-bottom:2px solid #14532D}
+  h3{font-size:11.5pt;margin:16px 0 7px;color:#166534}
+  h4{font-size:10pt;margin:12px 0 5px;color:#3F6212}
+  p{margin:0 0 8px;text-align:justify}
+  ul,ol{margin:0 0 9px 17px}
+  li{margin-bottom:4px}
+  code{font-family:"Consolas","SF Mono",monospace;font-size:8.6pt;background:#F4F6F4;
+       border:1px solid #E3E8E3;border-radius:3px;padding:0 3px}
+  pre{font-family:"Consolas","SF Mono",monospace;font-size:8.2pt;background:#F8FAF8;
+      border:1px solid #DDE5DD;border-left:3px solid #14532D;border-radius:3px;
+      padding:8px 10px;margin:8px 0;white-space:pre-wrap;line-height:1.45}
+  table{width:100%;border-collapse:collapse;margin:9px 0;font-size:8.9pt}
+  th{background:#14532D;color:#fff;text-align:left;padding:6px 8px;font-weight:600;font-size:8.6pt}
+  td{padding:5px 8px;border-bottom:1px solid #E6EBE6;vertical-align:top}
+  tr:nth-child(even) td{background:#FAFBFA}
+  td.n,th.n{text-align:right}
+  .sec{page-break-before:always}
+  .cover{height:245mm;display:flex;flex-direction:column;justify-content:center;text-align:center}
+  .cover .k{font-size:9pt;letter-spacing:.22em;text-transform:uppercase;color:#65A30D;margin-bottom:14px}
+  .cover h1{font-size:30pt;color:#14532D;letter-spacing:-.5px}
+  .cover .s{font-size:14pt;color:#3F6212;margin-top:6px;font-weight:400}
+  .cover .r{margin-top:26px;font-size:10pt;color:#444;line-height:1.9}
+  .cover .b{margin-top:30px;display:inline-block;border:1px solid #14532D;border-radius:4px;
+            padding:9px 18px;color:#14532D;font-size:9.5pt}
+  .note{background:#F7FAF7;border-left:3px solid #65A30D;padding:9px 12px;margin:10px 0;font-size:9.2pt}
+  .warn{background:#FEFAF3;border-left:3px solid #CA8A04;padding:9px 12px;margin:10px 0;font-size:9.2pt}
+  .ok{color:#15803D;font-weight:600}
+  .ko{color:#B91C1C;font-weight:600}
+  .muted{color:#6B7280}
+  .kpi{display:flex;gap:8px;margin:11px 0}
+  .kpi div{flex:1;border:1px solid #DDE5DD;border-radius:4px;padding:9px 10px;background:#FAFCFA}
+  .kpi .v{font-size:17pt;color:#14532D;font-weight:600;line-height:1.1}
+  .kpi .l{font-size:7.8pt;text-transform:uppercase;letter-spacing:.06em;color:#6B7280;margin-top:3px}
+  .toc li{margin-bottom:5px}
+  .foot{position:running(f)}
+  .small{font-size:8.6pt}
+</style>
+</head>
+<body>
+
+<!-- ================= COUVERTURE ================= -->
+<div class="cover">
+  <div class="k">Berry Good Farms</div>
+  <h1>Smart BERRY</h1>
+  <div class="s">Rapport d'exécution — Migration &amp; modularisation</div>
+  <div class="r">
+    Extraction non-régression du monolithe <code>public/app.jsx</code><br>
+    68 977 lignes → 334 modules ES répartis en 12 modules métier
+  </div>
+  <div>
+    <div class="b">Document technique destiné au client · Version 1.0</div>
+  </div>
+  <div class="r small muted" style="margin-top:34px">
+    Référence : Plan de Migration &amp; Modernisation v1.1 du 21/08/2026<br>
+    Périmètre : non-régression — aucune modification d'interface ni de logique métier
+  </div>
+</div>
+
+<!-- ================= SOMMAIRE ================= -->
+<div class="sec">
+<h2>Sommaire</h2>
+<ol class="toc">
+  <li><b>Résumé exécutif</b> — ce qui a été livré, en une page</li>
+  <li><b>Point de départ</b> — l'état du dépôt à la prise en main</li>
+  <li><b>Principe retenu</b> — extraction mécanique plutôt que réécriture</li>
+  <li><b>Comment les modules sont créés</b> — la chaîne d'outillage, étape par étape</li>
+  <li><b>La structure produite</b> — les 12 modules métier en détail</li>
+  <li><b>Anatomie d'un fichier migré</b> — exemple commenté</li>
+  <li><b>Cas particuliers traités</b> — les sept pièges rencontrés</li>
+  <li><b>Vérification de fidélité</b> — 353 instructions sur 355 identiques à l'octet</li>
+  <li><b>Vérification fonctionnelle</b> — 350 écrans, 20 profils, parité complète</li>
+  <li><b>Déploiement de préversion</b> — ce qui est en ligne et comment</li>
+  <li><b>Ce qui n'a pas changé</b> — les garanties</li>
+  <li><b>Points ouverts</b> — ce qui reste à décider ou à chiffrer</li>
+  <li><b>Reproductibilité</b> — commandes et outillage livrés</li>
+  <li><b>Annexe A</b> — journal des livraisons</li>
+</ol>
+</div>
+
+<!-- ================= 1. RÉSUMÉ ================= -->
+<div class="sec">
+<h2>1. Résumé exécutif</h2>
+
+<p>L'application Smart BERRY tenait dans un fichier unique de <b>68 977 lignes</b>
+(<code>public/app.jsx</code>, 5,6 Mo), compilé en un bundle de 4,0 Mo. Ce fichier a été
+découpé en <b>334 modules ES</b> organisés en <b>12 modules métier</b>, sans qu'aucune
+ligne de logique ni aucun écran ne soit modifié.</p>
+
+<div class="kpi">
+  <div><div class="v">334</div><div class="l">fichiers produits</div></div>
+  <div><div class="v">12</div><div class="l">modules métier</div></div>
+  <div><div class="v">353/355</div><div class="l">instructions identiques à l'octet</div></div>
+  <div><div class="v">350/350</div><div class="l">écrans vérifiés sans erreur</div></div>
+</div>
+
+<h3>Ce que le client obtient</h3>
+<table>
+  <tr><th style="width:30%">Sujet</th><th>Avant</th><th>Après</th></tr>
+  <tr><td>Code source frontend</td><td>1 fichier, 68 977 lignes</td><td><b>334 fichiers</b>, 12 modules métier</td></tr>
+  <tr><td>Fichier le plus long</td><td>68 977 lignes</td><td>3 153 lignes (<code>QuinzaineTab</code>)</td></tr>
+  <tr><td>Bundle livré</td><td>3 998 437 octets</td><td>3 011 995 octets (−24,7 %)</td></tr>
+  <tr><td>Interface utilisateur</td><td>—</td><td><b>strictement identique</b></td></tr>
+  <tr><td>Logique métier</td><td>—</td><td><b>strictement identique</b></td></tr>
+  <tr><td>Reproductibilité</td><td>—</td><td>outillage livré, régénérable en une commande</td></tr>
+</table>
+
+<h3>La garantie centrale</h3>
+<p>Le découpage n'est pas une réécriture. Chaque déclaration a été <b>découpée à l'octet
+près</b> depuis le fichier d'origine par un outil automatisé, puis recollée dans son propre
+fichier. Sur les 355 instructions de premier niveau du monolithe, <b>353 sont
+rigoureusement identiques</b> ; les 2 écarts restants sont documentés, expliqués et
+sémantiquement équivalents (section 8).</p>
+
+<p>Cette propriété est <b>mesurée automatiquement</b>, pas affirmée : la commande
+<code>npm run migrate:verify</code> recompare l'intégralité des fichiers produits au
+fichier d'origine et échoue si un seul octet diverge.</p>
+
+<div class="note">
+<b>En une phrase</b> — l'application fait exactement la même chose qu'avant, à l'écran
+comme dans les calculs ; seule son organisation interne a changé, et ce changement est
+vérifiable automatiquement à tout moment.
+</div>
+</div>
+
+<!-- ================= 2. POINT DE DÉPART ================= -->
+<div class="sec">
+<h2>2. Point de départ — l'état du dépôt à la prise en main</h2>
+
+<p>Avant d'écrire la moindre ligne, l'état réel du dépôt a été audité. Une arborescence
+<code>src/</code> existait déjà sur la branche de travail et se présentait comme la
+migration. L'analyse a montré qu'il s'agissait en réalité d'une <b>réécriture
+indépendante</b>, sans rapport avec l'application existante.</p>
+
+<table>
+  <tr><th style="width:34%">Vérification</th><th>Monolithe <code>app.jsx</code></th><th>Arborescence <code>src/</code> trouvée</th></tr>
+  <tr><td>Composants « Tab » définis</td><td class="ok">120</td><td class="ko">0</td></tr>
+  <tr><td>Pages nommées au plan (39 contrôlées)</td><td class="ok">37 présentes</td><td class="ko">0 présente</td></tr>
+  <tr><td>Couche de données</td><td>Firebase / Firestore</td><td class="ko">Supabase PostgreSQL</td></tr>
+  <tr><td>Vues réellement câblées</td><td>120 onglets, 20 profils</td><td class="ko">9 vues écrites à la main</td></tr>
+  <tr><td>Données affichées</td><td>Firestore production</td><td class="ko">tableaux vides, non persistés</td></tr>
+</table>
+
+<p>De plus, trois fichiers <code>index.jsx</code> totalisant <b>1,65 Mo</b> contenaient des
+extraits bruts du monolithe mais n'étaient <b>importés nulle part</b> : les fichiers
+<code>index.js</code> censés les exposer ne contenaient qu'une ligne de commentaire. Ce
+code était donc inerte.</p>
+
+<div class="warn">
+<b>Conséquence</b> — livrer cette arborescence comme « migration non-régression » aurait
+signifié facturer l'extraction d'une application de 68 977 lignes tout en livrant une
+application différente : sans les 120 écrans, sans Firestore, et avec des tableaux de bord
+vides. Le contrat impose l'inverse : « <i>sans modification de l'interface ni de la logique
+métier</i> ». Cette arborescence a donc été écartée du livrable — <b>sans être supprimée</b>,
+son sort restant une décision client (section 12).
+</div>
+
+<p class="small muted">À noter : le document <code>ARCHITECTURE_v2.md</code> décrit bien une
+trajectoire Firestore → Supabase, mais en <i>strangler pattern</i> (Firestore source de
+vérité, double écriture, bascule pilotée par drapeau). L'arborescence trouvée ne respectait
+pas non plus cette stratégie : elle lisait et écrivait Supabase directement.</p>
+</div>
+
+<!-- ================= 3. PRINCIPE ================= -->
+<div class="sec">
+<h2>3. Principe retenu — extraction mécanique plutôt que réécriture</h2>
+
+<p>Deux voies étaient possibles pour passer d'un fichier unique à une architecture
+modulaire.</p>
+
+<table>
+  <tr><th style="width:22%">Approche</th><th>Principe</th><th>Risque</th></tr>
+  <tr><td><b>Réécriture</b></td><td>Reconstruire chaque écran dans la nouvelle
+    architecture</td><td class="ko">Chaque écran devient une source de régression ;
+    aucune garantie mesurable ; volume incompatible avec le forfait</td></tr>
+  <tr><td><b>Extraction<br>mécanique</b><br><span class="small muted">retenue</span></td>
+    <td>Découper le fichier d'origine par outillage, en conservant le code
+    <b>caractère pour caractère</b></td>
+    <td class="ok">Le comportement ne peut pas changer, puisque le code ne change pas ;
+    la fidélité est vérifiable automatiquement</td></tr>
+</table>
+
+<h3>Pourquoi c'était réalisable ici</h3>
+<p>Une analyse structurelle préalable du monolithe a montré des conditions
+particulièrement favorables :</p>
+<table>
+  <tr><th style="width:52%">Mesure</th><th class="n">Valeur</th><th>Lecture</th></tr>
+  <tr><td>Analyse syntaxique du fichier</td><td class="n ok">0 erreur</td><td>fichier sain, analysable intégralement</td></tr>
+  <tr><td>Instructions de premier niveau</td><td class="n">355</td><td>structure « à plat », sans imbrication</td></tr>
+  <tr><td>Déclarations nommées</td><td class="n">337</td><td>chacune peut devenir un fichier</td></tr>
+  <tr><td>Liens de dépendance entre déclarations</td><td class="n">702</td><td>—</td></tr>
+  <tr><td><b>Couplage moyen</b></td><td class="n ok">2,0</td><td>chaque déclaration n'en référence que 2 autres en moyenne</td></tr>
+</table>
+
+<p>Un couplage moyen de 2,0 signifie que le monolithe était, dans les faits, déjà composé
+de blocs largement indépendants — simplement rassemblés dans un seul fichier. Le découpage
+consistait donc à <b>matérialiser une structure déjà présente</b>, pas à en inventer une.</p>
+</div>
+
+<!-- ================= 4. COMMENT LES MODULES SONT CRÉÉS ================= -->
+<div class="sec">
+<h2>4. Comment les modules sont créés</h2>
+
+<p>Les 334 fichiers ne sont pas écrits à la main : ils sont <b>générés</b> par un outil
+livré avec le projet (<code>scripts/migrate/extract-modules.cjs</code>). Comprendre cette
+chaîne, c'est comprendre pourquoi le résultat est fidèle par construction.</p>
+
+<h3>Étape 1 — Lecture du fichier d'origine</h3>
+<p>Le monolithe est analysé par l'analyseur syntaxique Babel, le même que celui utilisé
+pour compiler l'application. On obtient une représentation exacte du code : chaque
+déclaration, sa position de début et de fin au caractère près, ses commentaires d'en-tête.</p>
+
+<h3>Étape 2 — Inventaire des déclarations</h3>
+<p>L'outil recense les 355 instructions de premier niveau et les classe :</p>
+<ul>
+  <li><b>264 fonctions</b> — composants d'écran, utilitaires de calcul, hooks ;</li>
+  <li><b>72 déclarations de variables</b> — tables de configuration, référentiels, caches ;</li>
+  <li><b>2 classes</b> ;</li>
+  <li><b>17 instructions à effet de bord</b> — code qui s'exécute au démarrage.</li>
+</ul>
+
+<h3>Étape 3 — Construction du graphe de dépendances</h3>
+<p>Pour chaque déclaration, l'outil parcourt son contenu et relève <b>toutes</b> les
+références aux autres déclarations. Trois formes sont détectées, et c'est ce qui distingue
+une extraction fiable d'une extraction approximative :</p>
+<table>
+  <tr><th style="width:30%">Forme de référence</th><th>Exemple</th><th>Pourquoi elle compte</th></tr>
+  <tr><td>Identifiant classique</td><td><code>calculerPaieOuvrier(...)</code></td><td>appel de fonction ou lecture de constante</td></tr>
+  <tr><td>Élément JSX</td><td><code>&lt;KPICard /&gt;</code></td><td>un composant utilisé dans l'affichage</td></tr>
+  <tr><td>Membre JSX</td><td><code>&lt;ToastContext.Provider&gt;</code></td><td><b>invisible</b> pour une détection naïve — omise, l'écran plante</td></tr>
+</table>
+<p>Les identifiants redéfinis localement sont ignorés : si une fonction déclare sa propre
+variable <code>data</code>, elle ne crée pas de dépendance vers une éventuelle
+déclaration globale du même nom.</p>
+
+<h3>Étape 4 — Affectation à un module métier</h3>
+<p>Chaque déclaration est rattachée à l'un des 12 modules selon une table de règles
+lisible et modifiable (<code>scripts/migrate/module-map.cjs</code>). Exemple : tout ce
+qui commence par <code>Qualite</code>, <code>DQR</code>, <code>PFQ</code> ou
+<code>Chef</code> rejoint le module <b>qualite</b>. Ce qui n'appartient clairement à aucun
+domaine métier rejoint <b>shared</b> (socle commun : graphiques, cartes KPI, panneaux,
+utilitaires de formatage).</p>
+
+<h3>Étape 5 — Découpage à l'octet près</h3>
+<p>Le texte de chaque déclaration est extrait par ses positions exactes, commentaires
+d'en-tête inclus. <b>Aucune reformulation, aucune reformatation, aucun changement de
+style.</b> C'est ce qui rend la fidélité vérifiable.</p>
+
+<h3>Étape 6 — Génération des imports</h3>
+<p>À partir du graphe de l'étape 3, l'outil écrit en tête de chaque fichier les
+<code>import</code> nécessaires, avec le chemin relatif correct. Les imports ne sont donc
+ni devinés ni écrits à la main : ils <b>découlent des références réellement observées</b>
+dans le code.</p>
+
+<h3>Étape 7 — Bootstrap et barrels</h3>
+<p>Les 17 instructions de démarrage sont regroupées dans <code>bootstrap.jsx</code>,
+<b>dans leur ordre d'origine</b>, jusqu'à l'appel final qui affiche l'application. Chaque
+module reçoit un fichier <code>index.js</code> listant ses exports, ce qui permet
+d'importer un module entier d'une seule ligne.</p>
+
+<div class="note">
+<b>Conséquence pratique</b> — <code>public/app.jsx</code> reste la source de vérité tant
+que la bascule n'est pas validée. <code>src/modules/</code> peut être <b>régénéré
+intégralement</b> à tout moment par <code>npm run migrate:extract</code>. Il n'y a donc
+aucun risque de divergence entre l'ancien et le nouveau code pendant la période de
+transition.
+</div>
+</div>
+
+<!-- ================= 5. STRUCTURE ================= -->
+<div class="sec">
+<h2>5. La structure produite</h2>
+
+<p>Les 334 fichiers sont répartis en 12 modules. Chaque fichier contient une seule
+déclaration : un écran, un composant, un utilitaire ou une table de configuration.</p>
+
+<table>
+  <tr><th>Module</th><th class="n">Fichiers</th><th class="n">Lignes</th><th class="n">Écrans</th><th>Fichier le plus volumineux</th></tr>
+  <tr><td><b>shared</b> — socle commun</td><td class="n">73</td><td class="n">5 948</td><td class="n">4</td><td>DashboardTab (1 443)</td></tr>
+  <tr><td><b>agronomie</b></td><td class="n">49</td><td class="n">8 043</td><td class="n">17</td><td>AgroAnalyseFoliairesTab (1 067)</td></tr>
+  <tr><td><b>caisse</b></td><td class="n">40</td><td class="n">3 867</td><td class="n">1</td><td>CaisseTransactionsSub (757)</td></tr>
+  <tr><td><b>finance</b></td><td class="n">34</td><td class="n">7 192</td><td class="n">17</td><td>FinLiquidationsTab (1 273)</td></tr>
+  <tr><td><b>qualite</b></td><td class="n">26</td><td class="n">12 125</td><td class="n">20</td><td>QualiteLiquidationsTab (1 913)</td></tr>
+  <tr><td><b>technique</b></td><td class="n">24</td><td class="n">5 544</td><td class="n">9</td><td>IrrigationIntelligenceTab (1 303)</td></tr>
+  <tr><td><b>rh</b> — RH &amp; paie</td><td class="n">23</td><td class="n">7 995</td><td class="n">7</td><td>QuinzaineTab (3 153)</td></tr>
+  <tr><td><b>admin</b></td><td class="n">20</td><td class="n">4 518</td><td class="n">8</td><td>ParametresTab (646)</td></tr>
+  <tr><td><b>achats</b></td><td class="n">15</td><td class="n">7 018</td><td class="n">15</td><td>AchatsBonApportTab (1 762)</td></tr>
+  <tr><td><b>recolte</b></td><td class="n">14</td><td class="n">5 490</td><td class="n">9</td><td>CoutRecolteTab (1 407)</td></tr>
+  <tr><td><b>magasin</b></td><td class="n">11</td><td class="n">2 970</td><td class="n">9</td><td>MagReceptionTab (578)</td></tr>
+  <tr><td><b>securite</b></td><td class="n">5</td><td class="n">830</td><td class="n">5</td><td>SecurityRegistreTab (241)</td></tr>
+  <tr style="border-top:2px solid #14532D"><td><b>Total</b></td><td class="n"><b>334</b></td><td class="n"><b>71 540</b></td><td class="n"><b>121</b></td><td class="muted small">+ bootstrap.jsx</td></tr>
+</table>
+
+<p class="small muted">Le total de lignes (71 540) dépasse légèrement les 68 977 d'origine :
+la différence correspond aux en-têtes de commentaire et aux lignes <code>import</code> /
+<code>export</code> générées dans chaque fichier. Le code métier, lui, est inchangé.</p>
+
+<h3>Arborescence</h3>
+<pre>src/modules/
+├── bootstrap.jsx          point d'entrée — démarrage dans l'ordre d'origine
+├── index.js               barrel global
+├── shared/                socle : graphiques, cartes KPI, panneaux, utilitaires
+│   ├── index.js
+│   ├── KPICard.jsx
+│   ├── Panel.jsx
+│   ├── SimpleAreaChart.jsx
+│   ├── reactHooks.jsx
+│   └── … (73 fichiers)
+├── finance/               ├── qualite/          ├── rh/
+├── achats/                ├── agronomie/        ├── magasin/
+├── caisse/                ├── technique/        ├── recolte/
+├── admin/                 └── securite/</pre>
+
+<h3>Règle d'organisation</h3>
+<p>Un fichier = une déclaration. Ce choix rend chaque écran localisable immédiatement par
+son nom, supprime les conflits lors de modifications simultanées, et permet à l'outil de
+construction de ne livrer que le code réellement utilisé.</p>
+<p>Un seul fichier dépasse 2 000 lignes : <code>QuinzaineTab.jsx</code> (3 153 lignes). Le
+découper supposerait de réécrire le composant, ce que le périmètre non-régression interdit.
+Ce point est laissé à l'appréciation du client (section 12).</p>
+</div>
+
+<!-- ================= 6. ANATOMIE ================= -->
+<div class="sec">
+<h2>6. Anatomie d'un fichier migré</h2>
+
+<p>Voici un fichier réellement produit, <code>src/modules/qualite/QualiteBrixTab.jsx</code>,
+commenté zone par zone.</p>
+
+<pre>/* Migré depuis public/app.jsx — extraction verbatim (non-régression).      <span class="muted">← ①</span>
+   Module: qualite | Déclaration(s): QualiteBrixTab */
+
+import { KPICard } from '../shared/KPICard.jsx';                          <span class="muted">← ②</span>
+import { Panel } from '../shared/Panel.jsx';
+import { SimpleAreaChart } from '../shared/SimpleAreaChart.jsx';
+import { cachedFetch } from '../shared/cachedFetch.jsx';
+import { useState } from '../shared/reactHooks.jsx';
+import { deduplicateExpeditions } from './deduplicateExpeditions.jsx';    <span class="muted">← ③</span>
+
+// ===================== QUALITE BRIX TAB =====================           <span class="muted">← ④</span>
+        function QualiteBrixTab({ data, applyVarietyMapping }) {
+            const [selectedFerme, setSelectedFerme] = useState('');
+            …                                                             <span class="muted">← ⑤</span>
+        }
+
+export { QualiteBrixTab };                                                <span class="muted">← ⑥</span></pre>
+
+<table>
+  <tr><th style="width:8%">Zone</th><th>Rôle</th></tr>
+  <tr><td><b>①</b></td><td><b>En-tête de traçabilité</b> — généré. Indique l'origine, le module
+    d'affectation et la déclaration contenue. Permet de remonter au monolithe à tout moment.</td></tr>
+  <tr><td><b>②</b></td><td><b>Imports du socle commun</b> — générés à partir des références
+    réellement observées. Cet écran utilise une carte KPI, un panneau, un graphique, le cache
+    d'appels réseau et le hook <code>useState</code>.</td></tr>
+  <tr><td><b>③</b></td><td><b>Import interne au module</b> — chemin relatif <code>./</code> :
+    la fonction utilitaire vit dans le même module métier.</td></tr>
+  <tr><td><b>④</b></td><td><b>Commentaire d'origine</b> — repris tel quel depuis le monolithe.
+    Rien n'est reformulé.</td></tr>
+  <tr><td><b>⑤</b></td><td><b>Corps du composant</b> — <span class="ok">identique à l'octet
+    près</span>. L'indentation d'origine (héritée du fichier unique) est même conservée,
+    précisément pour que la comparaison automatique reste possible.</td></tr>
+  <tr><td><b>⑥</b></td><td><b>Export</b> — généré, rend la déclaration importable par les
+    autres modules.</td></tr>
+</table>
+
+<h3>Le fichier de démarrage</h3>
+<p><code>bootstrap.jsx</code> rassemble les instructions qui s'exécutent au chargement, dans
+leur ordre d'origine : contrôle de version, interception réseau, exposition de fonctions
+globales pour les scripts externes, gel des référentiels, restauration du dernier profil et
+du dernier onglet, puis affichage de l'application :</p>
+<pre>ReactDOM.render(
+  &lt;ErrorBoundary&gt;&lt;ToastProvider&gt;&lt;WorkerDetailProvider&gt;
+    &lt;App /&gt;
+  &lt;/WorkerDetailProvider&gt;&lt;/ToastProvider&gt;&lt;/ErrorBoundary&gt;,
+  document.getElementById('root')
+);</pre>
+<p>Cet appel est la <b>dernière ligne du monolithe d'origine</b>, reprise sans modification.</p>
+</div>
+
+<!-- ================= 7. CAS PARTICULIERS ================= -->
+<div class="sec">
+<h2>7. Cas particuliers traités</h2>
+
+<p>Passer d'un fichier unique à des modules change certaines règles du langage. Sept
+situations auraient produit des pannes silencieuses ; chacune a été détectée par les
+contrôles automatisés, puis traitée.</p>
+
+<h3>7.1 — Les hooks React déstructurés <span class="muted small">(impact : 168 fichiers)</span></h3>
+<p>Le monolithe déclarait en une ligne :
+<code>const { useState, useEffect, useMemo, useCallback, useRef } = React;</code></p>
+<p>Cette forme déstructurée n'était pas reconnue comme une déclaration nommée par la
+première version de l'outil. Résultat : <b>168 fichiers</b> utilisaient ces hooks sans les
+importer. <b>Le projet se compilait sans la moindre erreur</b> — seul un test en navigateur
+révélait la panne. Corrigé : ces cinq hooks vivent désormais dans
+<code>shared/reactHooks.jsx</code> et sont importés partout où ils servent.</p>
+
+<div class="warn"><b>Enseignement</b> — « le build passe » ne prouve rien sur une migration
+de ce type. C'est la raison pour laquelle la validation repose sur un parcours réel en
+navigateur, écran par écran (section 9).</div>
+
+<h3>7.2 — Les contextes React en JSX</h3>
+<p><code>&lt;ToastContext.Provider&gt;</code> et <code>&lt;WorkerDetailContext.Provider&gt;</code>
+sont des références d'une forme particulière (membre JSX), invisible à une détection
+classique. Sans traitement, les notifications et la fiche ouvrier auraient cessé de
+fonctionner. La détection couvre désormais cette forme.</p>
+
+<h3>7.3 — L'état mutable partagé</h3>
+<p>Un module ES interdit d'écrire dans une variable importée. Les 9 écritures
+inter-déclarations du monolithe ont été inventoriées. Sept concernaient des variables
+écrites uniquement au démarrage : elles ont été placées dans <code>bootstrap.jsx</code>
+avec leur code d'initialisation. Les deux dernières invalidaient un cache
+(<code>_bonsCache = null</code>) depuis deux écrans distincts : un accesseur dédié a été
+généré. Ce sont les <b>2 seuls écarts</b> du livrable (section 8).</p>
+
+<h3>7.4 — Les variables globales implicites</h3>
+<p>Dans un script classique, une fonction déclarée au premier niveau devient
+automatiquement accessible globalement. Ce n'est plus vrai dans un module. Les 25 scripts
+externes du projet (<code>public/lib/</code> et <code>public/components/</code>) ont donc
+été audités un par un : <b>aucun</b> ne dépend d'une variable globale implicite — les
+correspondances relevées sont des commentaires ou des accès explicites via
+<code>window</code>. Les 7 expositions volontaires (dont
+<code>window.PointageTab</code>) sont préservées dans <code>bootstrap.jsx</code>.</p>
+
+<h3>7.5 — L'ordre de démarrage</h3>
+<p>Les instructions de démarrage doivent s'exécuter dans le même ordre qu'avant :
+l'interception réseau doit précéder le premier appel, les référentiels doivent être remplis
+avant lecture. <code>bootstrap.jsx</code> préserve cet ordre à l'identique.</p>
+
+<h3>7.6 — Le code mort</h3>
+<p><code>CampagneTab</code> et huit fonctions associées ne sont référencés nulle part :
+l'onglet réellement affiché provient d'un fichier séparé
+(<code>components/CampagneAnalytiqueTab.js</code>). Ce code était déjà inerte dans le
+monolithe. Il est extrait, puis écarté du bundle final par l'outil de construction — d'où
+une partie des 24,7 % de réduction de taille, <b>sans aucune perte de fonctionnalité</b>.</p>
+
+<h3>7.7 — L'environnement d'exécution</h3>
+<p>La page HTML de production charge une vingtaine de bibliothèques externes (React,
+Firebase, XLSX, jsPDF, Leaflet) et une quarantaine de scripts internes. La page livrée en
+est une <b>copie conforme</b> : tous ces scripts sont conservés dans le même ordre. Une
+seule ligne change :</p>
+<pre>- &lt;script defer src="app.js?v=mt4mnskr"&gt;&lt;/script&gt;
++ &lt;script type="module" src="/app.modular.js"&gt;&lt;/script&gt;</pre>
+</div>
+
+<!-- ================= 8. FIDÉLITÉ ================= -->
+<div class="sec">
+<h2>8. Vérification de fidélité</h2>
+
+<p>La fidélité n'est pas déclarée : elle est <b>mesurée</b>. La commande
+<code>npm run migrate:verify</code> ré-analyse les 334 fichiers produits, isole le corps de
+chaque déclaration et le recherche caractère pour caractère dans le monolithe d'origine.</p>
+
+<pre>$ npm run migrate:verify
+
+top-level statements checked : 355     ← identique au monolithe
+byte-identical to app.jsx    : 353
+generated setters (expected) : 1
+NON-VERBATIM                 : 2
+files with UNRESOLVED refs   : 0
+parse failures               : 0 / 348 fichiers</pre>
+
+<h3>Les 3 écarts, un par un</h3>
+<table>
+  <tr><th style="width:5%">#</th><th style="width:30%">Emplacement</th><th>Avant → Après</th><th style="width:26%">Motif</th></tr>
+  <tr><td>1</td><td><code>app.jsx:18358</code><br><span class="small muted">qualite/QualiteProductionTab</span></td>
+      <td><code>_bonsCache = null</code><br>→ <code>__set_bonsCache(null)</code></td>
+      <td>Un module ES interdit d'affecter une variable importée</td></tr>
+  <tr><td>2</td><td><code>app.jsx:55043</code><br><span class="small muted">achats/AchatsBonApportTab</span></td>
+      <td><code>_bonsCache = null</code><br>→ <code>__set_bonsCache(null)</code></td>
+      <td>Identique</td></tr>
+  <tr><td>3</td><td><code>shared/loadBonsFromFirestore</code></td>
+      <td>ajout de<br><code>export function __set_bonsCache(v){ _bonsCache = v; }</code></td>
+      <td>Accesseur généré pour les deux appels ci-dessus</td></tr>
+</table>
+
+<p>Les deux appels modifiés sont des <b>invalidations de cache</b> : ils remettent une
+variable à <code>null</code> pour forcer un rechargement. Passer par un accesseur produit
+<b>exactement le même effet</b>. Aucun calcul, aucun montant, aucun affichage n'est
+concerné.</p>
+
+<div class="note">
+Autrement dit : sur 68 977 lignes, <b>2 lignes</b> ont été réécrites, toutes deux
+mécaniquement équivalentes, toutes deux documentées et localisables.
+</div>
+
+<h3>Contrôles complémentaires</h3>
+<table>
+  <tr><th style="width:52%">Contrôle</th><th>Résultat</th></tr>
+  <tr><td>Références croisées non résolues entre modules</td><td class="ok">0</td></tr>
+  <tr><td>Fichiers en échec d'analyse syntaxique</td><td class="ok">0 sur 348</td></tr>
+  <tr><td>Déclarations exportées</td><td class="ok">337 — la totalité</td></tr>
+  <tr><td>Scripts externes dépendant d'une globale implicite</td><td class="ok">0 sur 25 audités</td></tr>
+</table>
+</div>
+
+<!-- ================= 9. VÉRIF FONCTIONNELLE ================= -->
+<div class="sec">
+<h2>9. Vérification fonctionnelle</h2>
+
+<p>La fidélité du code ne suffit pas : encore faut-il que l'application se comporte à
+l'identique. Un banc de test automatisé pilote un navigateur réel, sélectionne chaque
+profil, ouvre chaque écran, et compare les deux versions servies côte à côte.</p>
+
+<h3>Protocole</h3>
+<ol>
+  <li>Les deux versions sont servies simultanément : l'ancienne (<code>legacy.html</code>,
+      monolithe) et la nouvelle (<code>index.html</code>, 334 modules).</li>
+  <li>Pour chacune : les <b>20 profils</b> sont sélectionnés l'un après l'autre.</li>
+  <li>Pour chaque profil : <b>chaque entrée de menu est réellement cliquée</b>.</li>
+  <li>Après chaque rendu, on relève les erreurs console, l'état d'erreur éventuel de
+      l'écran, et l'empreinte du contenu affiché.</li>
+  <li>Les deux relevés sont comparés paire par paire.</li>
+</ol>
+
+<h3>Résultat</h3>
+<table>
+  <tr><th style="width:44%">Mesure</th><th>Monolithe <code>legacy.html</code></th><th>Modulaire <code>index.html</code></th></tr>
+  <tr><td>Profils parcourus</td><td>20</td><td>20</td></tr>
+  <tr><td>Écrans ouverts</td><td><b>350</b></td><td><b>350</b></td></tr>
+  <tr><td>Écrans rendus correctement</td><td class="ok"><b>350</b></td><td class="ok"><b>350</b></td></tr>
+  <tr><td>Écrans en erreur</td><td class="ok">0</td><td class="ok">0</td></tr>
+  <tr><td>Écrans « Erreur chargement »</td><td class="ok">0</td><td class="ok">0</td></tr>
+</table>
+
+<h3>Comparatif détaillé</h3>
+<table>
+  <tr><th style="width:62%">Comparaison sur 345 paires (profil × écran)</th><th>Résultat</th></tr>
+  <tr><td>Écrans présents d'un seul côté</td><td class="ok">0</td></tr>
+  <tr><td>Différences d'erreurs console</td><td class="ok">0</td></tr>
+  <tr><td>Différences de contenu affiché &gt; 2 %</td><td>1 — voir ci-dessous</td></tr>
+</table>
+
+<p>L'unique écart concerne l'écran <b>Suivi Modifications</b>. Il a été mesuré sur trois
+exécutions consécutives de <b>chaque</b> version : l'ancienne affiche 33, 43 puis 33
+lignes ; la nouvelle 32, 29 puis 38. Cet écran lit un journal d'audit en temps réel, dont
+le contenu varie d'une seconde à l'autre. <b>La variation est donc inhérente à l'écran, pas
+à la migration</b>, et présente à l'identique dans les deux versions.</p>
+
+<p>L'écran de connexion a par ailleurs été comparé octet par octet : <b>3 875 octets de
+contenu affiché des deux côtés</b>, aucune erreur.</p>
+
+<div class="note">
+<b>Conclusion</b> — sur 350 écrans, 20 profils et 345 paires comparées, aucune différence
+de comportement n'a été relevée entre le monolithe et la version modulaire.
+</div>
+</div>
+
+<!-- ================= 10. DÉPLOIEMENT ================= -->
+<div class="sec">
+<h2>10. Déploiement de préversion</h2>
+
+<p>Une préversion est en ligne pour permettre la recette par l'équipe, sans toucher à la
+production.</p>
+
+<table>
+  <tr><th style="width:26%">Page</th><th>Contenu</th></tr>
+  <tr><td><code>/</code></td><td><b>Interface d'origine, servie par le build modulaire</b> (334 modules) — le livrable</td></tr>
+  <tr><td><code>/legacy.html</code></td><td>Monolithe <code>app.js</code> — conservé comme référence de comparaison</td></tr>
+</table>
+
+<h3>Ce qui n'est pas touché</h3>
+<ul>
+  <li><b>L'hébergement Firebase de production reste inchangé</b> : sa configuration
+      (<code>firebase.json</code>) sert toujours <code>public/</code> et reconstruit
+      <code>app.js</code> depuis <code>app.jsx</code>. Aucun déploiement de production
+      n'a été déclenché.</li>
+  <li>Le backend (Cloud Functions, région <code>europe-west1</code>) est inchangé. La
+      préversion n'héberge que le frontend ; les <b>54 routes <code>/api/*</code></b> sont
+      redirigées vers les mêmes fonctions que la production.</li>
+  <li><code>public/app.jsx</code>, <code>public/lib/</code> et
+      <code>public/components/</code> sont inchangés.</li>
+</ul>
+
+<h3>Mode démonstration</h3>
+<p>La préversion s'ouvre <b>sans authentification</b>, afin que l'équipe puisse parcourir
+l'application sans compte. Ce contournement réutilise un mécanisme déjà présent dans le
+projet, <b>patché uniquement dans la sortie de build</b> : les fichiers sources restent
+intacts, l'hébergement de production ne peut donc pas l'embarquer par accident.</p>
+
+<div class="warn">
+<b>Aucune donnée réelle n'est exposée.</b> Les règles Firestore refusent toute lecture non
+authentifiée : la règle par défaut est <code>allow read, write: if false</code> et les
+59 règles de lecture exigent toutes une authentification. Aucune règle permissive n'existe.
+L'équipe voit donc la <b>structure</b> de l'application — écrans, navigation, 20 profils —
+et non les chiffres d'exploitation.
+</div>
+
+<p>Rétablir l'écran de connexion se fait en une ligne de configuration, sans modification
+de code.</p>
+
+<h3>Correctif du harnais de démonstration</h3>
+<p>Le mécanisme de démonstration répondait « succès » à toute route <code>/api/*</code> non
+simulée, mais avec une réponse <b>vide</b>. L'application enregistrait alors des objets
+dépourvus de leurs champs, puis les lisait en profondeur — d'où plusieurs écrans en erreur,
+<b>dans les deux versions</b>. Le correctif fournit des réponses <b>bien formées</b> :
+listes vides, objets vides et valeurs à zéro. Zéro signifie « pas de donnée », ce n'est pas
+un chiffre inventé.</p>
+
+<table>
+  <tr><th style="width:34%">Écran</th><th>Champ attendu</th><th style="width:22%">Valeur fournie</th></tr>
+  <tr><td>Dashboard Pointage</td><td>liste des nouveaux ouvriers</td><td>liste vide</td></tr>
+  <tr><td>CPC / Dashboard</td><td>total de la quinzaine</td><td>0</td></tr>
+  <tr><td>Carburant</td><td>prix moyen au litre</td><td>0</td></tr>
+  <tr><td>Maroc Télécom</td><td>coût moyen par ligne</td><td>0</td></tr>
+  <tr><td>Dashboard Quinzaine</td><td>répartition par ferme</td><td>liste vide</td></tr>
+  <tr><td>Prédiction Récolte</td><td>prévision du jour</td><td>objet à zéro</td></tr>
+  <tr><td>Pointage Divers</td><td>entrées de la journée</td><td>objet vide</td></tr>
+</table>
+
+<p>Ce correctif ne touche <b>que la sortie de démonstration</b> : les sources restent
+inchangées et la fidélité 353/355 est préservée.</p>
+</div>
+
+<!-- ================= 11. GARANTIES ================= -->
+<div class="sec">
+<h2>11. Ce qui n'a pas changé</h2>
+
+<p>Cette section est la contrepartie de toutes les précédentes : elle énumère ce qui a été
+délibérément laissé intact.</p>
+
+<table>
+  <tr><th style="width:38%">Élément</th><th>État</th></tr>
+  <tr><td>Interface utilisateur</td><td class="ok">Identique — aucun écran, libellé, couleur ou disposition modifié</td></tr>
+  <tr><td>Logique métier</td><td class="ok">Identique — paie, réconciliations, calculs de coûts, workflows de validation</td></tr>
+  <tr><td>Parcours utilisateur</td><td class="ok">Identique — 20 profils, mêmes menus, mêmes droits</td></tr>
+  <tr><td>Base de données</td><td class="ok">Firestore, inchangée — aucune migration de données</td></tr>
+  <tr><td>Backend (Cloud Functions)</td><td class="ok">Inchangé — aucune fonction modifiée ni redéployée</td></tr>
+  <tr><td>Règles de sécurité</td><td class="ok">Inchangées</td></tr>
+  <tr><td>Hébergement de production</td><td class="ok">Inchangé — aucun déploiement déclenché</td></tr>
+  <tr><td><code>public/app.jsx</code></td><td class="ok">Inchangé — reste la source de vérité</td></tr>
+  <tr><td>Bibliothèques externes et scripts internes</td><td class="ok">Inchangés, chargés dans le même ordre</td></tr>
+</table>
+
+<h3>Réversibilité</h3>
+<p>Le retour à l'état antérieur ne demande aucune manipulation de code : il suffit de
+servir <code>app.js</code> au lieu de <code>app.modular.js</code> — soit une ligne dans la
+page HTML. Le monolithe n'ayant jamais été modifié, il reste fonctionnel en permanence.</p>
+</div>
+
+<!-- ================= 12. POINTS OUVERTS ================= -->
+<div class="sec">
+<h2>12. Points ouverts</h2>
+
+<p>Cette section liste, sans omission, ce qui n'est pas couvert par la présente livraison.</p>
+
+<h3>12.1 — Objectifs du plan non couverts</h3>
+<table>
+  <tr><th style="width:38%">Objectif (plan v1.1)</th><th style="width:14%">État</th><th>Commentaire</th></tr>
+  <tr><td>≥ 11 modules, fichiers &lt; 2 000 lignes</td><td class="ok">Fait</td><td>12 modules ; seul <code>QuinzaineTab</code> (3 153) dépasse</td></tr>
+  <tr><td>Non-régression 100 % des pages</td><td class="ok">Fait</td><td>350 écrans, 20 profils, parité complète</td></tr>
+  <tr><td>Code splitting, chargement &lt; 500 Ko</td><td class="ko">Non fait</td><td>Exige un chargement différé qui modifie la temporalité de rendu — à valider avant engagement</td></tr>
+  <tr><td>Lighthouse &gt; 90</td><td class="ko">Non mesuré</td><td>Dépend du point précédent</td></tr>
+  <tr><td>Tests unitaires (300+, &gt; 60 %)</td><td class="ko">Non fait</td><td>Vitest n'est pas installé</td></tr>
+  <tr><td>TypeScript progressif</td><td class="ko">Non fait</td><td>—</td></tr>
+  <tr><td>Dual mode / feature flags</td><td class="ko">Non câblé</td><td>Le drapeau existe mais ne pilote aucune bascule</td></tr>
+  <tr><td>Tests E2E Playwright (5-10 parcours)</td><td>Partiel</td><td>350 rendus couverts ; pas de parcours métier complet</td></tr>
+  <tr><td>Déploiement prod + monitoring Sentry</td><td class="ko">Non fait</td><td>—</td></tr>
+</table>
+
+<h3>12.2 — Décisions attendues du client</h3>
+<table>
+  <tr><th style="width:34%">Sujet</th><th>Décision attendue</th></tr>
+  <tr><td><b>Arborescence <code>src/features/</code></b></td>
+      <td>La réécriture Supabase (section 2) coexiste avec la migration. Elle n'a pas été
+      supprimée. Faut-il l'archiver, la retirer, ou la reprendre dans un chantier distinct ?</td></tr>
+  <tr><td><b>Découpage de <code>QuinzaineTab</code></b></td>
+      <td>3 153 lignes. Le découper suppose de réécrire le composant : hors périmètre
+      non-régression, à traiter en régie.</td></tr>
+  <tr><td><b>Bascule de production</b></td>
+      <td>Passer l'hébergement Firebase sur le build modulaire, après recette.</td></tr>
+</table>
+
+<h3>12.3 — Défauts préexistants relevés</h3>
+<p>La migration a mis en lumière des fragilités <b>déjà présentes</b> dans l'application.
+Elles ne sont pas causées par les travaux et n'ont pas été corrigées, toute modification
+sortant du forfait non-régression.</p>
+<table>
+  <tr><th style="width:36%">Défaut</th><th>Description</th></tr>
+  <tr><td><b>Lectures non protégées</b></td>
+      <td>Plusieurs écrans lisent des champs imbriqués sans vérification préalable
+      (<code>nouveauxData.workers</code>, <code>carb.prixMoyenLitre</code>,
+      <code>prediction.today</code>…). Si l'API renvoie un succès avec une réponse
+      incomplète, l'écran tombe en erreur. Une protection d'une ligne par cas suffirait.</td></tr>
+  <tr><td><b>Clé API exposée</b></td>
+      <td>Une clé OpenWeather figurait en clair dans le code <b>et dans un message de
+      commit</b>. Elle a été sortie vers les variables d'environnement et purgée de
+      l'historique de la branche. <b>Cette clé doit néanmoins être renouvelée</b> : une clé
+      ayant circulé doit être considérée comme compromise.</td></tr>
+</table>
+
+<div class="warn">
+<b>Action requise côté client</b> — renouveler la clé OpenWeather sur
+<code>openweathermap.org</code>, puis la renseigner dans les variables d'environnement du
+projet.
+</div>
+</div>
+
+<!-- ================= 13. REPRODUCTIBILITÉ ================= -->
+<div class="sec">
+<h2>13. Reproductibilité</h2>
+
+<p>Aucune étape n'est manuelle : l'ensemble de la chaîne est livré sous forme de scripts
+exécutables, versionnés dans le dépôt.</p>
+
+<h3>Commandes</h3>
+<table>
+  <tr><th style="width:34%">Commande</th><th>Effet</th></tr>
+  <tr><td><code>npm run migrate:extract</code></td><td>Régénère intégralement <code>src/modules/</code> depuis <code>public/app.jsx</code></td></tr>
+  <tr><td><code>npm run migrate:verify</code></td><td>Vérifie la fidélité à l'octet et l'absence de référence non résolue</td></tr>
+  <tr><td><code>npm run migrate:build</code></td><td>Produit le bundle modulaire</td></tr>
+  <tr><td><code>npm run migrate:walk</code></td><td>Parcourt l'application en navigateur, écran par écran</td></tr>
+  <tr><td><code>npm run migrate:all</code></td><td>Enchaîne extraction, vérification et build</td></tr>
+</table>
+
+<h3>Outillage livré <span class="small muted">— <code>scripts/migrate/</code></span></h3>
+<table>
+  <tr><th style="width:34%">Fichier</th><th>Rôle</th></tr>
+  <tr><td><code>extract-modules.cjs</code></td><td>Le générateur : analyse, graphe de dépendances, découpage, écriture des imports</td></tr>
+  <tr><td><code>module-map.cjs</code></td><td>Table d'affectation des déclarations aux 12 modules — lisible et modifiable</td></tr>
+  <tr><td><code>verify-fidelity.cjs</code></td><td>Comparaison à l'octet avec le monolithe</td></tr>
+  <tr><td><code>verify-references.cjs</code></td><td>Détection des références non résolues</td></tr>
+  <tr><td><code>verify-globals.cjs</code></td><td>Audit des dépendances aux variables globales implicites</td></tr>
+  <tr><td><code>walk-tabs.cjs</code></td><td>Banc de test navigateur : profils, écrans, comparaison</td></tr>
+</table>
+
+<div class="note">
+<b>Propriété importante</b> — l'extraction est <b>idempotente</b> : relancée, elle produit
+exactement le même résultat. Si <code>public/app.jsx</code> évolue pendant la période de
+transition, une seule commande suffit à resynchroniser les 334 modules. Il n'y a donc
+aucun risque de divergence entre les deux versions.
+</div>
+</div>
+
+<!-- ================= ANNEXE ================= -->
+<div class="sec">
+<h2>Annexe A — Journal des livraisons</h2>
+
+<p>Les travaux ont été livrés en 14 incréments traçables, chacun documenté et vérifié.
+Branche : <code>main</code> · Dépôt : <code>CElyousfi/cloneBERRYGOOD</code>.</p>
+
+<table>
+  <tr><th style="width:13%">Réf.</th><th>Objet</th></tr>
+  <tr><td><code>2a611de</code></td><td>Extraction non-régression du monolithe vers <code>src/modules</code> (334 fichiers)</td></tr>
+  <tr><td><code>4a3071a</code></td><td>Sécurité : clé OpenWeather sortie vers les variables d'environnement</td></tr>
+  <tr><td><code>10c4dd4</code></td><td>Build : suppression du téléchargement inutile des navigateurs de test</td></tr>
+  <tr><td><code>f6e2f6d</code></td><td>Préversion : mode démonstration sans authentification</td></tr>
+  <tr><td><code>c4555df</code></td><td>Intégration de la migration dans <code>main</code></td></tr>
+  <tr><td><code>96ffa4e</code></td><td>Correctif de configuration de déploiement</td></tr>
+  <tr><td><code>0605c49</code> → <code>8d6921c</code></td><td>Explorations d'interface (thèmes et coquilles) — <span class="muted">retirées du livrable</span></td></tr>
+  <tr><td><code>780f1dc</code></td><td>Vérification étendue : 413 écrans parcourus</td></tr>
+  <tr><td><code>d645a91</code></td><td><b>Recentrage sur le livrable</b> : interface d'origine sur build modulaire</td></tr>
+  <tr><td><code>c1af533</code></td><td>Nettoyage du suivi de fichiers de travail</td></tr>
+  <tr><td><code>b5281fc</code></td><td><b>Correctif du harnais de démonstration</b> — 350/350 écrans validés</td></tr>
+</table>
+
+<p class="small muted" style="margin-top:14px">Les explorations d'interface (nouveaux
+thèmes, refonte visuelle) ont été menées à la demande puis retirées du livrable, le client
+ayant confirmé vouloir conserver l'interface d'origine. Elles restent consultables dans
+l'historique du dépôt.</p>
+
+<h3>Documentation technique associée</h3>
+<p><code>MIGRATION_REPORT.md</code>, à la racine du dépôt, contient le détail technique
+complet : commandes, sorties de vérification brutes, journal des cas particuliers et
+décisions d'architecture.</p>
+
+<div style="margin-top:26px;padding-top:12px;border-top:1px solid #DDE5DD" class="small muted">
+Document généré à partir des données réelles du dépôt (comptages de fichiers, sorties de
+vérification, relevés du banc de test navigateur). Aucun chiffre n'y est estimé.
+</div>
+</div>
+
+</body>
+</html>
