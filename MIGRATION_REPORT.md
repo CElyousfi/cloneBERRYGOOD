@@ -275,72 +275,58 @@ Puis redéployer. L'écran de connexion Firebase revient ; aucun code applicatif
 
 ---
 
-## 9. Page d'accueil et interface v5
+## 9. Déploiement de préversion — interface d'origine sur build modulaire
+
+Les explorations d'interface (thèmes v2/v3, coquilles v4/v5) ont été retirées. Le
+déploiement sert désormais le livrable contractuel, et rien d'autre :
 
 | Page | Contenu |
 |---|---|
-| `index.html` | Page d'accueil — choix entre les deux versions |
-| `legacy.html` | Interface d'origine, monolithe `app.js`, **inchangée** |
-| `new.html` | **Interface v5** — chrome neuve pilotant l'application réelle |
-| `app.html` | Application migrée, chrome d'origine masquée, corps restylé |
+| `index.html` | **Interface d'origine**, servie par le build modulaire (334 modules ES) |
+| `legacy.html` | Monolithe `app.js` — conservé comme référence de comparaison |
 
-### Principe : chrome neuve, moteur d'origine
+C'est exactement le périmètre de la section 9 du plan : *extraction du code existant
+vers la nouvelle architecture modulaire, sans modification de l'interface ni de la
+logique métier*.
 
-La coquille v5 (`design/v5/`) est écrite de zéro — ni balisage, ni classe, ni jeton
-repris de l'ancienne interface. Le **contenu**, lui, reste l'application Smart BERRY
-réelle : tous les écrans, tous les calculs, tous les boutons sont ceux d'origine.
+### Ce qui change réellement
 
-La chrome d'origine est masquée par `design/v5/embed.css` (barre de profils, barre
-latérale, en-tête d'écran, navigation mobile). Les éléments restent dans le DOM, donc
-**lisibles et cliquables par la coquille** : celle-ci lit la navigation en direct dans
-le cadre et la restitue dans sa propre colonne. Aucun libellé n'est codé en dur, donc
-aucun écran ne peut être oublié.
-
-| | Interface d'origine | Interface v5 |
+| | `legacy.html` | `index.html` |
 |---|---|---|
-| Disposition | barre de profils + barre latérale + contenu | rail d'icônes · colonne d'écrans · contenu |
-| Sélection de profil | 20 pastilles en bandeau | sélecteur dans la barre supérieure |
-| Indicateurs | cartes KPI encadrées | bandeau de mesures à filets |
-| Titre d'écran | en-tête applicatif | en-tête éditorial serif dans la coquille |
-| Recherche | — | recherche d'écran globale (↵) |
-| Couleur | berry, vert, orange, rouge | monochrome intégral |
+| Code servi | `app.js`, **1 fichier de 4,0 Mo** | `app.modular.js`, build de **334 modules** |
+| Source | `public/app.jsx`, 68 977 lignes | `src/modules/`, 12 modules métier |
+| Interface | — | **identique** |
+| Logique métier | — | **identique** |
 
-### Contrôle de fonctionnement
+`index.html` est une copie conforme de `public/index.html` : tous les `<script>` UMD
+(React, Firebase, XLSX, jsPDF, Leaflet) et tous les `lib/*.js` / `components/*.js` sont
+conservés à l'octet près. Seule la ligne `<script src="app.js">` devient
+`<script type="module" src="/app.modular.js">`.
 
-Parcours automatisé de la coquille, clic réel sur chaque entrée de navigation :
+### Mode démonstration
 
-| Contrôle | Résultat |
-|---|---|
-| Profils parcourus | **20 / 20** |
-| Écrans ouverts (tous profils) | **413** |
-| Rendus corrects | **413** |
-| ErrorBoundary | **0** |
-| Écrans vides | **0** |
-| Erreurs JavaScript | **0** |
+Le build de préversion reste sans authentification pour la revue d'équipe (voir le
+correctif du harnais plus bas). Pour rétablir l'écran de connexion, une ligne dans
+`vercel.json` :
 
-Les contrôles interactifs ont été vérifiés écran par écran (boutons visibles, filtres,
-formulaires). Exemple : sur Trésorerie, « Ajouter » ouvre bien le formulaire de saisie
-en ligne (7 champs) — comportement identique au monolithe d'origine.
+```diff
+- "buildCommand": "npm run build:vercel:demo"
++ "buildCommand": "npm run build:vercel"
+```
 
 ### Correctif du harnais de démonstration
 
-Les 5 écrans qui tombaient en ErrorBoundary (`Dashboard Pointage`, `Dashboard Récolte`,
-`CPC / Dashboard`, `Carburant`, `Maroc Télécom`) ne relevaient **pas** d'un défaut
-applicatif mais du harnais de démonstration.
-
 `public/lib/local-test-bypass.js` renvoyait `success: true` pour **toute** route `/api/*`
 non mockée, avec une charge utile vide. L'application enregistrait alors un objet sans
-ses tableaux (`nouveauxData.workers` absent) puis lisait `.length` dessus — d'où le
-plantage à `app.jsx:4931`. La garde applicative (`if (!nouveauxData) return null`) est
-correcte : c'est le mock qui annonçait un succès sans données.
+ses tableaux (`nouveauxData.workers` absent) puis lisait `.length` dessus — plantage à
+`app.jsx:4931`, sur 5 écrans. La garde applicative est correcte ; c'est le mock qui
+annonçait un succès sans données.
 
 Le correctif renvoie `success: false` pour les routes non mockées : les gardes
-`if (x.success)` court-circuitent proprement, ce qui est le comportement attendu hors
-backend. Il est appliqué **uniquement à la sortie de build de démonstration** ;
-`public/lib/local-test-bypass.js` et `src/modules/` restent inchangés, et la fidélité
-353/355 de l'extraction est préservée.
+`if (x.success)` court-circuitent proprement. Appliqué **uniquement à la sortie de build
+de démonstration** — `public/` et `src/modules/` restent inchangés, la fidélité 353/355
+est préservée.
 
-> Le défaut sous-jacent subsiste en production : si l'API réelle renvoie un jour
-> `success: true` sans le tableau `workers`, `DashboardTab` plantera de la même façon.
-> Une garde d'une ligne le corrigerait — hors périmètre non-régression, à traiter en
-> régie après accord.
+> Le défaut sous-jacent subsiste en production : si l'API réelle renvoie `success: true`
+> sans le tableau `workers`, `DashboardTab` plantera de la même façon. Une garde d'une
+> ligne le corrigerait — hors périmètre non-régression, à traiter en régie après accord.

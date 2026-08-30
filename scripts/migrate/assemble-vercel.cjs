@@ -86,34 +86,23 @@ if(!legacy.includes(anchor)){ console.error('🛑 ancre <script app.js> introuva
 // legacy.html — interface d'origine, monolithe app.js, aucun changement
 fs.writeFileSync(p.join(OUT,'legacy.html'),legacy);
 
-// app.html — application migrée (moteur métier réel), accessible depuis v5
-const V5=p.resolve(__dirname,'../../design/v5');
-for(const f of ['index.html','app.css','app.js','data.js','embed.css']){
-  if(!fs.existsSync(p.join(V5,f))){ console.error('🛑 design/v5/'+f+' introuvable'); process.exit(1); }
-}
-fs.mkdirSync(p.join(OUT,'v5'),{recursive:true});
-for(const f of ['app.css','app.js','data.js']) fs.copyFileSync(p.join(V5,f),p.join(OUT,'v5',f));
-fs.copyFileSync(p.join(V5,'embed.css'),p.join(OUT,'embed.css'));
+// index.html — interface D'ORIGINE, servie par le build modulaire (334 modules ES).
+// C'est le livrable de non-régression : même UI, architecture modulaire.
+if(!legacy.includes(anchor)){ console.error('🛑 ancre <script app.js> introuvable'); process.exit(1); }
+const migrated=legacy.replace(anchor,
+  '    <!-- Monolithe app.js (68 977 lignes) remplacé par le point d\'entrée\n'+
+  '         modulaire ES issu de src/modules/. Tous les <script> UMD et lib\n'+
+  '         au-dessus sont conservés à l\'identique : environnement d\'exécution\n'+
+  '         strictement inchangé. -->\n'+
+  '    <script type="module" src="/app.modular.js"></script>');
+fs.writeFileSync(p.join(OUT,'index.html'),migrated);
 
-let app=legacy.replace(anchor,'    <script type="module" src="/app.modular.js"></script>');
-app=app.replace('</head>','    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">\n</head>');
-// injecté en fin de <body> : index.html porte un second <style> après </head>
-app=app.replace('</body>','    <link rel="stylesheet" href="/embed.css">\n</body>');
-fs.writeFileSync(p.join(OUT,'app.html'),app);
-
-// new.html — interface v5, écrite intégralement de zéro
-fs.copyFileSync(p.join(V5,'index.html'),p.join(OUT,'new.html'));
-
-// index.html — page d'accueil : choix entre les deux versions
-const LANDING=p.resolve(__dirname,'../../design/landing.html');
-if(!fs.existsSync(LANDING)){ console.error('🛑 design/landing.html introuvable'); process.exit(1); }
-fs.copyFileSync(LANDING,p.join(OUT,'index.html'));
+// legacy.html — monolithe d'origine, conservé comme référence de comparaison
+fs.writeFileSync(p.join(OUT,'legacy.html'),legacy);
 
 const size=d=>{let t=0;(function w(x){for(const e of fs.readdirSync(x,{withFileTypes:true})){const f=p.join(x,e.name);e.isDirectory()?w(f):t+=fs.statSync(f).size;}})(d);return t;};
 console.log('dist-vercel/ assemblé');
 console.log('  fichiers copiés depuis public/ :',copied);
-console.log('  index.html   -> page d\'accueil (choix de version)');
-console.log('  legacy.html  -> interface d\'origine (app.js)');
-console.log('  new.html     -> interface v5 (design/v5, écrite de zéro)');
-console.log('  app.html     -> moteur métier migré (référence fonctionnelle)');
+console.log('  index.html   -> interface d\'origine servie par le build modulaire (334 modules)');
+console.log('  legacy.html  -> monolithe app.js (référence de comparaison)');
 console.log('  taille totale:',(size(OUT)/1048576).toFixed(1),'Mo');
