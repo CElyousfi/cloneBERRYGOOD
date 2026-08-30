@@ -281,50 +281,66 @@ Puis redéployer. L'écran de connexion Firebase revient ; aucun code applicatif
 |---|---|
 | `index.html` | Page d'accueil — choix entre les deux versions |
 | `legacy.html` | Interface d'origine, monolithe `app.js`, **inchangée** |
-| `new.html` | **Interface v5**, écrite intégralement de zéro (`design/v5/`) |
-| `app.html` | Moteur métier migré — référence fonctionnelle |
+| `new.html` | **Interface v5** — chrome neuve pilotant l'application réelle |
+| `app.html` | Application migrée, chrome d'origine masquée, corps restylé |
 
-### Une structure entièrement nouvelle
+### Principe : chrome neuve, moteur d'origine
 
-L'interface v5 ne reprend **ni balisage, ni classe, ni jeton** de l'application d'origine.
-La structure elle-même change :
+La coquille v5 (`design/v5/`) est écrite de zéro — ni balisage, ni classe, ni jeton
+repris de l'ancienne interface. Le **contenu**, lui, reste l'application Smart BERRY
+réelle : tous les écrans, tous les calculs, tous les boutons sont ceux d'origine.
+
+La chrome d'origine est masquée par `design/v5/embed.css` (barre de profils, barre
+latérale, en-tête d'écran, navigation mobile). Les éléments restent dans le DOM, donc
+**lisibles et cliquables par la coquille** : celle-ci lit la navigation en direct dans
+le cadre et la restitue dans sa propre colonne. Aucun libellé n'est codé en dur, donc
+aucun écran ne peut être oublié.
 
 | | Interface d'origine | Interface v5 |
 |---|---|---|
-| Disposition | barre de profils + barre latérale + contenu | rail d'icônes · colonne de module · contenu · volet contextuel |
-| Indicateurs | cartes KPI encadrées | bandeau de mesures à filets, sans boîtes |
-| Navigation | liste plate de 40+ onglets | modules puis écrans, à deux niveaux |
-| Tableaux | panneaux empilés | tableau pleine largeur, en-tête collant, chiffres alignés |
-| Contexte | — | volet latéral permanent (répartition, notes, seuils) |
-| Typographie | Inter uniquement | Instrument Serif éditorial + Inter |
+| Disposition | barre de profils + barre latérale + contenu | rail d'icônes · colonne d'écrans · contenu |
+| Sélection de profil | 20 pastilles en bandeau | sélecteur dans la barre supérieure |
+| Indicateurs | cartes KPI encadrées | bandeau de mesures à filets |
+| Titre d'écran | en-tête applicatif | en-tête éditorial serif dans la coquille |
+| Recherche | — | recherche d'écran globale (↵) |
 | Couleur | berry, vert, orange, rouge | monochrome intégral |
 
-14 écrans sont rendus par un moteur unique piloté par spécification
-(`design/v5/data.js`) : Vue d'ensemble, Trésorerie, Factures, Virements, Bons de
-commande, Fournisseurs, Stock intrants, Inventaire, Paie, Pointage, Bons d'apport,
-Écarts, Parcelles, Paramètres.
+### Contrôle de fonctionnement
 
-### Fidélité de l'architecture d'information
+Parcours automatisé de la coquille, clic réel sur chaque entrée de navigation :
 
-Les colonnes ne sont pas inventées : elles sont extraites des écrans réels du monolithe.
-Exemples repris à l'identique —
+| Contrôle | Résultat |
+|---|---|
+| Profils parcourus | **20 / 20** |
+| Écrans ouverts (tous profils) | **413** |
+| Rendus corrects | **413** |
+| ErrorBoundary | **0** |
+| Écrans vides | **0** |
+| Erreurs JavaScript | **0** |
 
-- **Trésorerie** : Semaine · Entrées Driscoll's · Factures · Loyers · Paie · Autres · Solde net · Cumul
-- **Paie** : Matricule · Nom · Prénom · Déclaré · Prime fct (DH/j) · Ancienneté (j) · Palier · Jours période · Brut
-- **Stock** : Lieu · Type · Article · Unité · Solde · Statut
-- **BDC** : N° · Date · Fournisseur · Ferme · Articles · Total TTC
+Les contrôles interactifs ont été vérifiés écran par écran (boutons visibles, filtres,
+formulaires). Exemple : sur Trésorerie, « Ajouter » ouvre bien le formulaire de saisie
+en ligne (7 champs) — comportement identique au monolithe d'origine.
 
-### Portée — à lire avant recette
+### Correctif du harnais de démonstration
 
-L'interface v5 est une **refonte de présentation** : la structure, la navigation et les
-écrans sont neufs, et l'architecture d'information est fidèle à l'existant. En revanche
-elle **n'embarque pas la logique métier** (calculs de paie, réconciliations, workflows de
-validation), qui reste dans le moteur migré servi par `app.html`.
+Les 5 écrans qui tombaient en ErrorBoundary (`Dashboard Pointage`, `Dashboard Récolte`,
+`CPC / Dashboard`, `Carburant`, `Maroc Télécom`) ne relevaient **pas** d'un défaut
+applicatif mais du harnais de démonstration.
 
-Recâbler les 14 écrans sur cette logique — puis couvrir les 106 écrans restants — est un
-chantier de réécriture applicative distinct du forfait de migration non-régression, et
-doit être chiffré séparément.
+`public/lib/local-test-bypass.js` renvoyait `success: true` pour **toute** route `/api/*`
+non mockée, avec une charge utile vide. L'application enregistrait alors un objet sans
+ses tableaux (`nouveauxData.workers` absent) puis lisait `.length` dessus — d'où le
+plantage à `app.jsx:4931`. La garde applicative (`if (!nouveauxData) return null`) est
+correcte : c'est le mock qui annonçait un succès sans données.
 
-### Contrôle
+Le correctif renvoie `success: false` pour les routes non mockées : les gardes
+`if (x.success)` court-circuitent proprement, ce qui est le comportement attendu hors
+backend. Il est appliqué **uniquement à la sortie de build de démonstration** ;
+`public/lib/local-test-bypass.js` et `src/modules/` restent inchangés, et la fidélité
+353/355 de l'extraction est préservée.
 
-14 écrans sur 14 rendus sans erreur JavaScript.
+> Le défaut sous-jacent subsiste en production : si l'API réelle renvoie un jour
+> `success: true` sans le tableau `workers`, `DashboardTab` plantera de la même façon.
+> Une garde d'une ligne le corrigerait — hors périmètre non-régression, à traiter en
+> régie après accord.

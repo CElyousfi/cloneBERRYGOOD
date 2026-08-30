@@ -20,7 +20,10 @@
   </aside>
 
   <nav class="nav">
-    <div class="hd"><div class="mod" id="navmod">—</div><div class="cnt" id="navcnt"></div></div>
+    <div class="hd">
+      <div class="mod" id="navmod">Écrans</div>
+      <div class="cnt" id="navcnt">…</div>
+    </div>
     <div class="ls" id="navls"></div>
     <div class="ft">Berry Good Farms · 2025-2026</div>
   </nav>
@@ -32,13 +35,29 @@
         <input id="q" placeholder="Rechercher un écran…" autocomplete="off">
       </label>
       <span class="kbd">↵</span>
-      <div class="act">
-        <a class="btn" href="/legacy.html">Ancienne version</a>
-      </div>
+      <select id="prof" class="prof" title="Profil actif"></select>
+      <div class="act"><a class="btn" href="/legacy.html">Ancienne version</a></div>
     </div>
+
     <div class="body">
-      <div class="doc" id="doc"></div>
-      <aside class="aside" id="aside"></aside>
+      <div class="doc" id="doc">
+        <!-- Vue d'ensemble (écran neuf) -->
+        <div id="home"></div>
+
+        <!-- Application réelle : chrome d'origine masquée, corps conservé -->
+        <div class="appview" id="appview">
+          <div class="scrhd">
+            <button class="lnk" id="backHome">
+              <svg viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+              Vue d'ensemble
+            </button>
+            <h1 id="scr">—</h1>
+            <span class="sp"></span>
+            <span class="hint">Application Smart BERRY — fonctionnalités d'origine</span>
+          </div>
+          <iframe class="frame" id="frame" title="Smart BERRY"></iframe>
+        </div>
+      </div>
     </div>
   </div>
 </div>

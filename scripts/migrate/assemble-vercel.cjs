@@ -57,6 +57,19 @@ if (process.env.DEMO_NO_AUTH === '1') {
     "  // [BUILD DÉMO] onglet d'accueil lisible\n"+
     "  try { if (!localStorage.getItem('lastTab')) localStorage.setItem('lastTab', 'pointage'); } catch (e) {}");
 
+  // Correctif démo : le bypass renvoyait `success: true` pour TOUTE route /api/*
+  // non mockée, charge utile vide. L'app enregistre alors un objet sans ses
+  // tableaux (ex. nouveauxData.workers) puis lit .length dessus -> ErrorBoundary.
+  // Les gardes applicatives testent `if (x.success)` : renvoyer `false` les fait
+  // court-circuiter proprement, comportement attendu hors backend.
+  // Correctif du HARNAIS de démonstration — aucun code applicatif modifié.
+  var unmocked = "{ success: true, _testui: true, note: 'unmocked-api-route' }";
+  if (t.indexOf(unmocked) < 0) {
+    console.error('🛑 MODE DÉMO : motif de route non mockée introuvable — build interrompu.');
+    process.exit(1);
+  }
+  t = t.replace(unmocked, "{ success: false, _testui: true, note: 'unmocked-api-route' }");
+
   t = t.replace("b.textContent = 'TESTUI — Auth bypass actif (no backend)';",
     "b.textContent = 'DÉMO — sans authentification · données fictives · non contractuel';");
   fs.writeFileSync(f,t);
@@ -75,13 +88,17 @@ fs.writeFileSync(p.join(OUT,'legacy.html'),legacy);
 
 // app.html — application migrée (moteur métier réel), accessible depuis v5
 const V5=p.resolve(__dirname,'../../design/v5');
-for(const f of ['index.html','app.css','app.js','data.js']){
+for(const f of ['index.html','app.css','app.js','data.js','embed.css']){
   if(!fs.existsSync(p.join(V5,f))){ console.error('🛑 design/v5/'+f+' introuvable'); process.exit(1); }
 }
 fs.mkdirSync(p.join(OUT,'v5'),{recursive:true});
 for(const f of ['app.css','app.js','data.js']) fs.copyFileSync(p.join(V5,f),p.join(OUT,'v5',f));
+fs.copyFileSync(p.join(V5,'embed.css'),p.join(OUT,'embed.css'));
 
 let app=legacy.replace(anchor,'    <script type="module" src="/app.modular.js"></script>');
+app=app.replace('</head>','    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">\n</head>');
+// injecté en fin de <body> : index.html porte un second <style> après </head>
+app=app.replace('</body>','    <link rel="stylesheet" href="/embed.css">\n</body>');
 fs.writeFileSync(p.join(OUT,'app.html'),app);
 
 // new.html — interface v5, écrite intégralement de zéro

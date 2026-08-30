@@ -1,66 +1,162 @@
-/* Interface v5 — rendu. Composants entièrement neufs : aucun balisage, aucune
-   classe et aucun jeton repris de l'application d'origine. */
+/* Interface v5 — coquille pilotant l'application réelle.
+   La chrome (rail, colonne de navigation, en-tête, volet) est neuve ; le contenu
+   est l'application Smart BERRY d'origine, dont la navigation est lue en direct
+   dans le cadre. Tous les écrans et tous les boutons restent donc fonctionnels. */
 (function () {
   'use strict';
-  var M = window.SB.MODULES, S = window.SB.SCREENS, CARDS = window.SB.CARDS, I = window.SB.I;
+  var I = window.SB.I, CARDS = window.SB.CARDS;
   var $ = function (s) { return document.querySelector(s); };
   function svg(d) { return '<svg viewBox="0 0 24 24">' + d + '</svg>'; }
-  function el(tag, cls, html) {
-    var e = document.createElement(tag);
-    if (cls) e.className = cls;
-    if (html != null) e.innerHTML = html;
-    return e;
+
+  var frame = $('#frame');
+  var doc = null;            // document de l'application
+  var navItems = [];         // éléments de navigation lus dans l'app
+  var mode = 'home';         // 'home' | 'app'
+
+  /* Raccourcis du rail -> libellé d'écran de l'application */
+  var RAIL = [
+    { t:'Vue d\'ensemble', i:I.grid,  target:null },
+    { t:'Trésorerie',      i:I.cash,  target:'Trésorerie' },
+    { t:'Factures',        i:I.file,  target:'Factures Fournisseurs' },
+    { t:'Achats',          i:I.doc,   target:'Suivi BDC' },
+    { t:'Stock',           i:I.box,   target:'Gestion de Stock' },
+    { t:'Paie',            i:I.users, target:'OJRA (Paie)' },
+    { t:'Pointage',        i:I.clock, target:'Pointage Quotidien' },
+    { t:'Production',      i:I.chart, target:'Production' },
+    { t:'Agronomie',       i:I.leaf,  target:'Dashboard Récolte' }
+  ];
+
+  /* ---------- Accès au document de l'application -------------------------- */
+  function appDoc() {
+    try { return frame.contentDocument || frame.contentWindow.document; }
+    catch (e) { return null; }
+  }
+  function ready() {
+    var d = appDoc();
+    return d && d.querySelector('.nav-item, .bnav-item') ? d : null;
+  }
+  function waitApp(cb, n) {
+    n = n || 0;
+    var d = ready();
+    if (d) { doc = d; cb(d); return; }
+    if (n > 90) return;
+    setTimeout(function () { waitApp(cb, n + 1); }, 250);
   }
 
-  var cur = 'overview';
+  /* ---------- Lecture de la navigation réelle ----------------------------- */
+  function readNav(d) {
+    var more = [].slice.call(d.querySelectorAll('.bnav-item'))
+      .filter(function (x) { return /Plus/i.test(x.innerText); })[0];
+    if (more) { try { more.click(); } catch (e) {} }
+    var seen = {}, out = [];
+    [].slice.call(d.querySelectorAll('.nav-item, .bnav-item, .more-menu-item'))
+      .forEach(function (el) {
+        var t = (el.innerText || '').trim();
+        if (!t || /^Plus$/i.test(t) || seen[t]) return;
+        seen[t] = 1;
+        out.push({ label: t, el: el });
+      });
+    return out;
+  }
+  function readProfiles(d) {
+    return [].slice.call(d.querySelectorAll('.profile-chip')).map(function (el) {
+      return { label: (el.innerText || '').trim(), el: el, on: /active/.test(el.className) };
+    });
+  }
+  function currentTitle(d) {
+    var h = d.querySelector('.content-header h1');
+    return h ? (h.innerText || '').trim() : '';
+  }
 
-  /* ---------- Rail ------------------------------------------------------- */
-  var rail = $('#rail');
-  M.forEach(function (m) {
-    var b = el('button', 'it', svg(m.i));
-    b.title = m.t;
-    b.onclick = function () { go(m.screens[0]); };
-    b.setAttribute('data-mod', m.k);
-    rail.appendChild(b);
-  });
+  /* ---------- Rendu de la chrome ------------------------------------------ */
+  function renderRail() {
+    var r = $('#rail'); r.innerHTML = '';
+    RAIL.forEach(function (m, n) {
+      var b = document.createElement('button');
+      b.className = 'it' + (n === 0 && mode === 'home' ? ' on' : '');
+      b.title = m.t; b.innerHTML = svg(m.i);
+      b.onclick = function () { m.target ? open(m.target) : home(); };
+      r.appendChild(b);
+    });
+  }
 
-  /* ---------- Navigation contextuelle ------------------------------------ */
   function renderNav() {
-    var mod = M.filter(function (m) { return m.k === S[cur].mod; })[0];
-    $('#navmod').textContent = mod.t;
-    $('#navcnt').textContent = mod.screens.length + ' écran' + (mod.screens.length > 1 ? 's' : '');
     var ls = $('#navls'); ls.innerHTML = '';
-    mod.screens.forEach(function (k) {
-      var sc = S[k];
-      var b = el('button', k === cur ? 'on' : '', svg(sc.ico) + '<span>' + sc.nav + '</span>');
-      b.onclick = function () { go(k); };
+    if (!navItems.length) {
+      ls.innerHTML = '<div style="padding:12px;color:#9B9B9B;font-size:12px">Chargement…</div>';
+      return;
+    }
+    var title = doc ? currentTitle(doc) : '';
+    navItems.forEach(function (it) {
+      var b = document.createElement('button');
+      b.className = (it.label === title ? 'on' : '');
+      b.innerHTML = svg(I.file) + '<span>' + it.label + '</span>';
+      b.onclick = function () { open(it.label); };
       ls.appendChild(b);
     });
-    [].forEach.call(rail.children, function (c) {
-      c.classList.toggle('on', c.getAttribute('data-mod') === mod.k);
+    $('#navcnt').textContent = navItems.length + ' écran' + (navItems.length > 1 ? 's' : '');
+  }
+
+  function renderProfiles() {
+    if (!doc) return;
+    var ps = readProfiles(doc), sel = $('#prof');
+    sel.innerHTML = '';
+    ps.forEach(function (p) {
+      var o = document.createElement('option');
+      o.value = p.label; o.textContent = p.label; o.selected = p.on;
+      sel.appendChild(o);
+    });
+    sel.onchange = function () {
+      var hit = readProfiles(doc).filter(function (x) { return x.label === sel.value; })[0];
+      if (!hit) return;
+      try { hit.el.click(); } catch (e) {}
+      setTimeout(function () {
+        navItems = readNav(doc); renderNav(); syncTitle();
+      }, 900);
+    };
+  }
+
+  function syncTitle() {
+    if (!doc) return;
+    var t = currentTitle(doc);
+    if (t) { $('#scr').textContent = t; }
+    renderNavActive(t);
+  }
+  function renderNavActive(t) {
+    [].forEach.call($('#navls').children, function (b) {
+      b.classList.toggle('on', (b.textContent || '').trim() === t);
     });
   }
 
-  /* ---------- Écrans ------------------------------------------------------ */
-  function renderOverview(sc) {
-    var prof = 'DG';
-    try { prof = (localStorage.getItem('lastProfile') || 'DG').toUpperCase(); } catch (e) {}
-    var h = '<div class="hero"><div><h1>' + sc.title + ' <span style="color:#9B9B9B">' + prof +
-            '</span></h1><p>' + sc.sub + '</p></div><div class="sp"></div>' +
-            '<button class="btn">' + svg(I.doc) + 'Exporter</button>' +
-            '<button class="btn pri">' + svg(I.grid) + 'Nouvel élément</button></div>';
-    h += '<div class="ov">';
-    CARDS.forEach(function (c, n) {
-      h += '<div class="c" data-go="' + c.go + '">' +
-             '<div class="h">' + svg(c.i) + c.h + '</div>' +
-             '<div class="t">' + c.t +
-               (c.v ? '<div class="v">' + c.v + '</div>' : '') +
-               (c.bars ? bars(c.bars) : '') +
-             '</div><div class="f">' + c.f + '</div></div>';
+  /* ---------- Navigation --------------------------------------------------- */
+  function open(label) {
+    mode = 'app';
+    $('#home').style.display = 'none';
+    $('#appview').style.display = 'flex';
+    [].forEach.call($('#rail').children, function (c, i) {
+      c.classList.toggle('on', RAIL[i] && RAIL[i].target === label);
     });
-    h += '</div>';
-    return h;
+    if (!doc) { waitApp(function () { open(label); }); return; }
+    var hit = navItems.filter(function (x) { return x.label === label; })[0];
+    if (!hit) {                       // libellé raccourci absent du profil courant
+      navItems = readNav(doc);
+      hit = navItems.filter(function (x) { return x.label === label; })[0];
+      renderNav();
+    }
+    if (hit) { try { hit.el.click(); } catch (e) {} }
+    setTimeout(syncTitle, 600);
+    setTimeout(syncTitle, 1600);
   }
+  function home() {
+    mode = 'home';
+    $('#appview').style.display = 'none';
+    $('#home').style.display = '';
+    $('#scr').textContent = 'Vue d\'ensemble';
+    [].forEach.call($('#rail').children, function (c, i) { c.classList.toggle('on', i === 0); });
+  }
+  $('#backHome').onclick = home;
+
+  /* ---------- Vue d'ensemble ---------------------------------------------- */
   function bars(v) {
     var mx = Math.max.apply(null, v);
     return '<div class="bars" style="height:38px">' + v.map(function (x, n) {
@@ -68,93 +164,47 @@
              Math.round(x / mx * 100) + '%"></i>';
     }).join('') + '</div>';
   }
-
-  function renderTable(sc) {
-    var h = '<div class="hero"><div><h1>' + sc.title + '</h1><p>' + sc.sub + '</p></div>' +
-            '<div class="sp"></div>' +
-            '<button class="btn">' + svg(I.doc) + 'Exporter</button>' +
-            '<button class="btn pri">' + svg(I.grid) + 'Ajouter</button></div>';
-
-    if (sc.metrics) {
-      h += '<div class="metrics">' + sc.metrics.map(function (m) {
-        return '<div class="metric"><div class="k">' + m.k + '</div><div class="v">' + m.v +
-               '</div><div class="d">' + (m.d || '') + '</div></div>';
-      }).join('') + '</div>';
-    }
-
-    h += '<div class="filters"><div class="seg">' +
-         (sc.filters || []).map(function (f, n) {
-           return '<button class="' + (n === 0 ? 'on' : '') + '">' + f + '</button>';
-         }).join('') + '</div><div class="sp"></div>' +
-         '<label class="find">' + svg('<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.2-3.2"/>') +
-         '<input placeholder="Filtrer…"></label></div>';
-
-    var isNum = function (i) { return (sc.num || []).indexOf(i) >= 0; };
-    h += '<div class="tbl"><div class="sc"><table><thead><tr>' +
-         sc.cols.map(function (c, i) { return '<th class="' + (isNum(i) ? 'n' : '') + '">' + c + '</th>'; }).join('') +
-         '</tr></thead><tbody>';
-    if (!sc.rows || !sc.rows.length) {
-      h += '<tr><td colspan="' + sc.cols.length + '"><div class="empty">' +
-           '<div class="t">Aucune donnée</div>' +
-           'Les données réelles ne sont pas chargées dans cette démonstration.</div></td></tr>';
-    } else {
-      sc.rows.forEach(function (r) {
-        h += '<tr>' + r.map(function (v, i) {
-          return '<td class="' + (isNum(i) ? 'n' : (i === 0 ? '' : 's')) + '">' + v + '</td>';
-        }).join('') + '</tr>';
-      });
-    }
-    h += '</tbody></table></div></div>';
-    return h;
-  }
-
-  function renderAside(sc) {
-    var a = sc.aside;
-    if (!a) { $('#aside').style.display = 'none'; return; }
-    $('#aside').style.display = '';
-    var h = '<div class="sec"><h3>' + (a.title || 'Détail') + '</h3>';
-    if (a.kv) h += a.kv.map(function (p) {
-      return '<div class="kv"><span>' + p[0] + '</span><b>' + p[1] + '</b></div>';
-    }).join('');
-    if (a.bars) {
-      var mx = Math.max.apply(null, a.bars);
-      h += '<div class="bars">' + a.bars.map(function (x, n) {
-        return '<i class="' + (n === 0 ? 'k' : '') + '" style="height:' +
-               Math.round(x / mx * 100) + '%"></i>';
-      }).join('') + '</div><div class="lgd"><span>plus élevé</span><span>plus faible</span></div>';
-    }
-    h += '</div>';
-    if (a.note) h += '<div class="sec"><h3>Note</h3><p class="note">' + a.note + '</p></div>';
-    $('#aside').innerHTML = h;
-  }
-
-  /* ---------- Navigation -------------------------------------------------- */
-  function go(k) {
-    if (!S[k]) return;
-    cur = k;
-    var sc = S[k];
-    $('#doc').innerHTML = '<div class="pad">' +
-      (sc.kind === 'overview' ? renderOverview(sc) : renderTable(sc)) + '</div>';
-    renderNav();
-    renderAside(sc);
-    $('#doc').scrollTop = 0;
-    [].forEach.call($('#doc').querySelectorAll('[data-go]'), function (c) {
-      c.onclick = function () { go(c.getAttribute('data-go')); };
+  var GO = { treso:'Trésorerie', bons:'Production', intrants:'Gestion de Stock',
+             bdc:'Suivi BDC', paie:'OJRA (Paie)', pointage:'Pointage Quotidien',
+             parcelles:'Dashboard Récolte', factures:'Factures Fournisseurs' };
+  (function renderHome() {
+    var prof = 'DG';
+    var h = '<div class="hero"><div><h1>Bonjour <span style="color:#9B9B9B">' + prof +
+            '</span></h1><p>L\'état de l\'exploitation, campagne 2025-2026.</p></div></div><div class="ov">';
+    CARDS.forEach(function (c) {
+      h += '<div class="c" data-go="' + c.go + '"><div class="h">' + svg(c.i) + c.h + '</div>' +
+           '<div class="t">' + c.t + (c.v ? '<div class="v">' + c.v + '</div>' : '') +
+           (c.bars ? bars(c.bars) : '') + '</div><div class="f">' + c.f + '</div></div>';
     });
-    try { location.hash = 'e=' + k; } catch (e) {}
-  }
+    $('#home').innerHTML = '<div class="pad">' + h + '</div></div>';
+    [].forEach.call($('#home').querySelectorAll('[data-go]'), function (c) {
+      c.onclick = function () {
+        var t = GO[c.getAttribute('data-go')];
+        if (t) open(t);
+      };
+    });
+  })();
 
-  /* Recherche globale : saute au premier écran correspondant */
+  /* ---------- Recherche ---------------------------------------------------- */
   $('#q').addEventListener('keydown', function (e) {
     if (e.key !== 'Enter') return;
-    var v = e.target.value.toLowerCase().trim();
-    if (!v) return;
-    var hit = Object.keys(S).filter(function (k) {
-      return (S[k].nav + ' ' + S[k].title).toLowerCase().indexOf(v) >= 0;
-    })[0];
-    if (hit) { go(hit); e.target.value = ''; e.target.blur(); }
+    var v = e.target.value.toLowerCase().trim(); if (!v) return;
+    var hit = navItems.filter(function (x) { return x.label.toLowerCase().indexOf(v) >= 0; })[0];
+    if (hit) { open(hit.label); e.target.value = ''; e.target.blur(); }
   });
 
-  var start = (/e=([a-z]+)/.exec(location.hash || '') || [])[1];
-  go(S[start] ? start : 'overview');
+  /* ---------- Démarrage ---------------------------------------------------- */
+  renderRail();
+  frame.src = '/app.html';
+  waitApp(function (d) {
+    navItems = readNav(d);
+    renderNav(); renderProfiles(); syncTitle();
+    // l'app peut re-rendre : on resynchronise périodiquement
+    setInterval(function () {
+      if (!doc) return;
+      var n = readNav(doc);
+      if (n.length !== navItems.length) { navItems = n; renderNav(); }
+      syncTitle();
+    }, 2500);
+  });
 })();
