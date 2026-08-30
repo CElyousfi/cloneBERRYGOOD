@@ -109,3 +109,8 @@ dist-migrated/
 dist-migrated-dev/
 dist-vercel/
 .vercel/
+
+# Fichiers de travail locaux (sessions antérieures, non livrables)
+extract.py
+scripts/serve-dist.js
+scripts/migrate-finance-to-postgres/_connect_test.js
