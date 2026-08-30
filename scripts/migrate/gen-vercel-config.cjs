@@ -16,10 +16,11 @@ for(const r of (h.rewrites||[])){
 }
 const skipped=(h.rewrites||[]).filter(r=>!r.function);
 
-// fallback SPA (équivalent du rewrite '**' -> /index.html de firebase.json).
-// Placé APRÈS les /api/* : Vercel évalue dans l'ordre et ne réécrit que si
-// aucun fichier statique ne correspond.
-rewrites.push({ source:'/((?!api/).*)', destination:'/index.html' });
+// Pas de fallback SPA : l'application ne fait aucun routage par URL
+// (unique usage de l'History API dans app.jsx : un replaceState qui retire les
+// query params). index.html est servi à la racine, les onglets sont gérés en
+// mémoire + localStorage. Un catch-all regex ici n'apporterait rien et
+// constitue un risque d'échec de parsing côté Vercel.
 
 const cfg={
   $schema:'https://openapi.vercel.sh/vercel.json',
@@ -39,7 +40,7 @@ const cfg={
   ]
 };
 fs.writeFileSync(p.join(ROOT,'vercel.json'),JSON.stringify(cfg,null,2)+'\n');
-console.log('vercel.json écrit —',rewrites.filter(r=>r.destination.startsWith('https://')).length,'proxys /api/* + 1 fallback SPA');
+console.log('vercel.json écrit —',rewrites.filter(r=>r.destination.startsWith('https://')).length,'proxys /api/* (pas de fallback SPA : aucun routage URL)');
 console.log('rewrites non-fonction ignorés :',skipped.length, skipped.map(r=>r.source).slice(0,5).join(', '));
 const regions=[...new Set(rewrites.filter(r=>r.destination.startsWith('https://')).map(r=>r.destination.split('//')[1].split('-'+PROJECT)[0]))];
 console.log('régions détectées :',regions.join(', '));
