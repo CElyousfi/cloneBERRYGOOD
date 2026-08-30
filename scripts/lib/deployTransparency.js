@@ -43,14 +43,70 @@
  */
 
 /**
+ * Nom de run produit par `run-name:` dans .github/workflows/deploy-prod.yml.
+ * Format figé, volontairement re-parsable :
+ *   « Deploy prod functions (dry_run=false, only=functions) »
+ *
+ * POURQUOI CE PARSING EXISTE
+ * --------------------------
+ * `gh run list --json` n'expose PAS les `inputs` d'un `workflow_dispatch`. Or un
+ * run `dry_run=true` (le DÉFAUT du workflow) réussit intégralement SANS rien
+ * déployer, et un run `only=functions:uneSeuleFonction` ne déploie qu'une
+ * function. Les deux sont indistinguables d'un vrai deploy complet sur
+ * `conclusion`/`status`/`headSha`/`displayTitle` statique. Le `run-name` est le
+ * seul endroit où ces inputs redeviennent lisibles depuis l'API.
+ *
+ * Regex ANCRÉE : `only` est une chaîne libre côté dispatch, et le run-name est
+ * évalué avant le garde-fou de cible du workflow. Un `only` contenant « ) » ne
+ * doit pas pouvoir fabriquer un nom qui parse.
+ *
+ * @param {string|null|undefined} displayTitle
+ * @returns {{dryRun: boolean, only: string}|null} null si le titre ne porte pas
+ *   l'information (runs antérieurs à cette convention, ou titre inattendu).
+ */
+function parseDeployRunName(displayTitle) {
+  if (!displayTitle || typeof displayTitle !== 'string') return null;
+  const m = /^Deploy prod functions \(dry_run=(true|false), only=([^()]*)\)$/.exec(
+    displayTitle.trim()
+  );
+  if (!m) return null;
+  return { dryRun: m[1] === 'true', only: m[2] };
+}
+
+/**
+ * Un run prouve-t-il que TOUT `functions/` est déployé au commit du run ?
+ *
+ * Fail-closed : un titre non parsable rend `false`. Un run antérieur à la
+ * convention `run-name` ne prouve rien — on préfère « information
+ * indisponible » à un faux vert.
+ *
+ * @param {GhRun|unknown} run
+ * @returns {boolean}
+ */
+function isRealFullFunctionsDeploy(run) {
+  if (!run || typeof run !== 'object') return false;
+  const parsed = parseDeployRunName(/** @type {GhRun} */ (run).displayTitle);
+  if (!parsed) return false;
+  if (parsed.dryRun) return false;
+  // `functions:uneSeuleFonction` déploie UNE function : ne pas le créditer comme
+  // « tout functions/ est à ce commit ».
+  return parsed.only === 'functions';
+}
+
+/**
  * Sélectionne le dernier run de déploiement RÉUSSI, hors runs exclus.
  *
  * Un run en cours (`status !== 'completed'`) n'est jamais retenu : il ne prouve
  * rien sur ce qui est live. `excludeRunIds` sert à écarter le run qu'on vient
  * de déclencher, si l'appelant en connaît l'id.
  *
+ * `realDeployOnly` (défaut FALSE, pour ne rien changer à l'affichage de
+ * scripts/deploy.sh) restreint aux runs qui ont réellement déployé tout
+ * `functions/` — cf. isRealFullFunctionsDeploy. À n'activer que quand la
+ * réponse sert de GARDE-FOU (scripts/preview.sh --post-merge), pas d'affichage.
+ *
  * @param {GhRun[]|unknown} runs
- * @param {{excludeRunIds?: Array<number|string>}} [options]
+ * @param {{excludeRunIds?: Array<number|string>, realDeployOnly?: boolean}} [options]
  * @returns {GhRun|null}
  */
 function selectLastSuccessfulRun(runs, options) {
@@ -60,12 +116,14 @@ function selectLastSuccessfulRun(runs, options) {
       return String(id);
     })
   );
+  const realDeployOnly = Boolean(options && options.realDeployOnly);
   const eligible = runs.filter(function (run) {
     if (!run || typeof run !== 'object') return false;
     if (run.conclusion !== 'success') return false;
     if (run.status !== 'completed') return false;
     if (!run.headSha) return false;
     if (excluded.has(String(run.databaseId))) return false;
+    if (realDeployOnly && !isRealFullFunctionsDeploy(run)) return false;
     return true;
   });
   if (eligible.length === 0) return null;
@@ -278,6 +336,8 @@ function formatDeployBlock(input) {
 
 module.exports = {
   selectLastSuccessfulRun,
+  parseDeployRunName,
+  isRealFullFunctionsDeploy,
   shortenSha,
   buildHostingReleaseMessage,
   parseHostingReleaseMessage,

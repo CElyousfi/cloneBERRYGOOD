@@ -45,7 +45,19 @@
 # franchement — c'est le comportement voulu. Les deux prompts que `--force` aurait
 # neutralisés sont traités en amont par les prérequis one-shot (activation des API +
 # `firebase functions:artifacts:setpolicy`), cf. docs/deploy-wif-prod.md.
+#
+# POURQUOI UN `run-name` PARAMÉTRÉ
+# --------------------------------
+# `gh run list --json` n'expose PAS les `inputs` d'un workflow_dispatch. Sans ce
+# run-name, un run `dry_run=true` (le DÉFAUT ci-dessous) est indistinguable d'un vrai
+# deploy : il réussit intégralement, tous les steps verts, sans rien déployer. Idem
+# pour `only=functions:uneSeuleFonction`. scripts/preview.sh --post-merge REFUSE de
+# déployer un canal QA tant que le backend de prod n'est pas à HEAD : il lit ce
+# run-name (via scripts/lib/deployTransparency.js) pour le savoir. Le FORMAT EST UN
+# CONTRAT — le changer sans changer parseDeployRunName() rend le garde-fou aveugle
+# (fail-closed : il refusera, il ne laissera pas passer).
 name: Deploy prod (functions)
+run-name: Deploy prod functions (dry_run=${{ inputs.dry_run }}, only=${{ inputs.only }})
 
 on:
   workflow_dispatch:

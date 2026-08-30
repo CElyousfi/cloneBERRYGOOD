@@ -5,6 +5,8 @@ const assert = require('node:assert');
 
 const {
   selectLastSuccessfulRun,
+  parseDeployRunName,
+  isRealFullFunctionsDeploy,
   shortenSha,
   buildHostingReleaseMessage,
   parseHostingReleaseMessage,
@@ -83,6 +85,91 @@ test('selectLastSuccessfulRun tolère une entrée non exploitable et une entrée
   assert.strictEqual(selectLastSuccessfulRun('boom'), null);
   assert.strictEqual(selectLastSuccessfulRun([]), null);
   assert.strictEqual(selectLastSuccessfulRun([null, undefined, 42]), null);
+});
+
+// ---------------------------------------------------------------------------
+// parseDeployRunName / isRealFullFunctionsDeploy / option realDeployOnly
+//
+// POURQUOI : `gh run list --json` n'expose pas les `inputs` d'un
+// workflow_dispatch. Un run `dry_run=true` (le DÉFAUT de deploy-prod.yml)
+// réussit intégralement sans rien déployer, et `only=functions:<fn>` ne déploie
+// qu'une function. Le `run-name` est le seul champ qui les distingue.
+// ---------------------------------------------------------------------------
+
+const RUN_REAL = 'Deploy prod functions (dry_run=false, only=functions)';
+const RUN_DRY = 'Deploy prod functions (dry_run=true, only=functions)';
+const RUN_PARTIAL = 'Deploy prod functions (dry_run=false, only=functions:health)';
+const RUN_LEGACY = 'Deploy prod (functions)';
+
+test('parseDeployRunName lit dry_run et only', () => {
+  assert.deepStrictEqual(parseDeployRunName(RUN_REAL), { dryRun: false, only: 'functions' });
+  assert.deepStrictEqual(parseDeployRunName(RUN_DRY), { dryRun: true, only: 'functions' });
+  assert.deepStrictEqual(parseDeployRunName(RUN_PARTIAL), {
+    dryRun: false,
+    only: 'functions:health',
+  });
+});
+
+test('parseDeployRunName rend null sur un titre hors convention', () => {
+  assert.strictEqual(parseDeployRunName(RUN_LEGACY), null);
+  assert.strictEqual(parseDeployRunName(''), null);
+  assert.strictEqual(parseDeployRunName(null), null);
+  assert.strictEqual(parseDeployRunName(undefined), null);
+  assert.strictEqual(parseDeployRunName(42), null);
+  // Regex ancrée : pas de match partiel dans une chaîne plus large.
+  assert.strictEqual(parseDeployRunName('x ' + RUN_REAL), null);
+  assert.strictEqual(parseDeployRunName(RUN_REAL + ' (bis)'), null);
+});
+
+test('parseDeployRunName ne se laisse pas fabriquer un faux titre via `only`', () => {
+  // `only` est une chaîne libre au dispatch, et le run-name est évalué AVANT le
+  // garde-fou de cible du workflow. Un `only` contenant une parenthèse ne doit
+  // pas pouvoir produire un nom qui parse.
+  assert.strictEqual(
+    parseDeployRunName('Deploy prod functions (dry_run=true, only=functions) (dry_run=false, only=functions)'),
+    null
+  );
+  assert.strictEqual(parseDeployRunName('Deploy prod functions (dry_run=false, only=functions))'), null);
+});
+
+test('isRealFullFunctionsDeploy : seul un vrai deploy de TOUT functions/ compte', () => {
+  const mk = (title) => ({ displayTitle: title });
+  assert.strictEqual(isRealFullFunctionsDeploy(mk(RUN_REAL)), true);
+  assert.strictEqual(isRealFullFunctionsDeploy(mk(RUN_DRY)), false, 'simulation : rien de déployé');
+  assert.strictEqual(isRealFullFunctionsDeploy(mk(RUN_PARTIAL)), false, 'une seule function');
+  // Fail-closed : un run antérieur à la convention ne prouve rien.
+  assert.strictEqual(isRealFullFunctionsDeploy(mk(RUN_LEGACY)), false);
+  assert.strictEqual(isRealFullFunctionsDeploy(null), false);
+  assert.strictEqual(isRealFullFunctionsDeploy('boom'), false);
+});
+
+test('selectLastSuccessfulRun({realDeployOnly}) écarte dry-run, partiel et legacy', () => {
+  const runs = [
+    { databaseId: 4, status: 'completed', conclusion: 'success', headSha: 'ddd', createdAt: '2026-08-27T12:00:00Z', displayTitle: RUN_DRY },
+    { databaseId: 3, status: 'completed', conclusion: 'success', headSha: 'ccc', createdAt: '2026-08-27T11:00:00Z', displayTitle: RUN_PARTIAL },
+    { databaseId: 2, status: 'completed', conclusion: 'success', headSha: 'bbb', createdAt: '2026-08-27T10:00:00Z', displayTitle: RUN_LEGACY },
+    { databaseId: 1, status: 'completed', conclusion: 'success', headSha: 'aaa', createdAt: '2026-08-27T09:00:00Z', displayTitle: RUN_REAL },
+  ];
+  assert.strictEqual(
+    selectLastSuccessfulRun(runs, { realDeployOnly: true }).databaseId,
+    1,
+    'le seul run qui a réellement déployé tout functions/'
+  );
+  assert.strictEqual(selectLastSuccessfulRun(runs, { realDeployOnly: true, excludeRunIds: [1] }), null);
+});
+
+test('selectLastSuccessfulRun : realDeployOnly est OPT-IN (affichage deploy.sh inchangé)', () => {
+  // NON-RÉGRESSION : scripts/deploy.sh appelle sans option et doit continuer à
+  // voir le dernier run réussi, run-name ou pas.
+  const runs = [
+    { databaseId: 4, status: 'completed', conclusion: 'success', headSha: 'ddd', createdAt: '2026-08-27T12:00:00Z', displayTitle: RUN_DRY },
+    { databaseId: 1, status: 'completed', conclusion: 'success', headSha: 'aaa', createdAt: '2026-08-27T09:00:00Z', displayTitle: RUN_REAL },
+  ];
+  assert.strictEqual(selectLastSuccessfulRun(runs).databaseId, 4);
+  assert.strictEqual(selectLastSuccessfulRun(runs, {}).databaseId, 4);
+  assert.strictEqual(selectLastSuccessfulRun(runs, { realDeployOnly: false }).databaseId, 4);
+  // Et les runs SANS displayTitle (jeu RUNS historique) restent sélectionnables.
+  assert.strictEqual(selectLastSuccessfulRun(RUNS).databaseId, 3);
 });
 
 // ---------------------------------------------------------------------------

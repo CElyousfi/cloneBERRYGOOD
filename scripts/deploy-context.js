@@ -14,10 +14,18 @@
  *   node scripts/deploy-context.js hosting --release-message
  *       → imprime UNIQUEMENT le message de release à passer à
  *         `firebase deploy -m` (c'est lui qui rend le prochain deploy lisible).
+ *   node scripts/deploy-context.js functions --last-sha
+ *       → imprime UNIQUEMENT le SHA du dernier deploy functions RÉEL (mode
+ *         machine) : les runs `--dry-run` et les deploys partiels
+ *         `functions:<fn>` sont ignorés — ils ne prouvent rien sur ce qui est
+ *         live. Exit 1 + raison sur stderr si l'information est indisponible.
+ *         Seule cible supportée : functions.
  *
- * Contrat : ce script ne fait ÉCHOUER aucun deploy. Toute panne (réseau, gh
- * absent, ADC expiré, historique tronqué) se traduit par « information
- * indisponible » et un exit 0.
+ * Contrat (mode affichage) : ce script ne fait ÉCHOUER aucun deploy. Toute
+ * panne (réseau, gh absent, ADC expiré, historique tronqué) se traduit par
+ * « information indisponible » et un exit 0. Seul `--last-sha` sort en 1 quand
+ * l'information manque — c'est un mode machine dont le résultat sert de
+ * garde-fou, pas d'affichage.
  *
  * Sources du « dernier déploiement » :
  *   - functions : `gh run list --workflow deploy-prod.yml` (chaque run porte son headSha).
@@ -89,9 +97,15 @@ function readCommitsSince(sha) {
 
 /**
  * Dernier déploiement functions = dernier run CI réussi.
+ *
+ * @param {{realDeployOnly?: boolean}} [options] realDeployOnly restreint aux runs
+ *   qui ont RÉELLEMENT déployé tout functions/ (ni `--dry-run`, ni deploy d'une
+ *   seule function). Réservé aux appelants qui prennent une DÉCISION avec la
+ *   réponse ; l'affichage de deploy.sh, lui, veut voir le dernier run tel quel.
  * @returns {{lastDeploy: import('./lib/deployTransparency').LastDeploy|null, reason: string|null}}
  */
-function readLastFunctionsDeploy() {
+function readLastFunctionsDeploy(options) {
+  const realDeployOnly = Boolean(options && options.realDeployOnly);
   if (tryExec('gh', ['--version']) === null) {
     return { lastDeploy: null, reason: 'gh indisponible' };
   }
@@ -113,8 +127,20 @@ function readLastFunctionsDeploy() {
     .split(',')
     .map(function (s) { return s.trim(); })
     .filter(Boolean);
-  const run = lib.selectLastSuccessfulRun(runs, { excludeRunIds: excludeRunIds });
-  if (!run) return { lastDeploy: null, reason: 'aucun run réussi trouvé' };
+  const run = lib.selectLastSuccessfulRun(runs, {
+    excludeRunIds: excludeRunIds,
+    realDeployOnly: realDeployOnly,
+  });
+  if (!run) {
+    return {
+      lastDeploy: null,
+      reason: realDeployOnly
+        ? 'aucun deploy functions RÉEL trouvé sur les 20 derniers runs ' +
+          '(runs --dry-run, deploys partiels `functions:<fn>` et runs antérieurs ' +
+          'à la convention run-name sont ignorés : ils ne prouvent rien)'
+        : 'aucun run réussi trouvé',
+    };
+  }
   const subject = tryExec('git', ['log', '-1', '--format=%s', run.headSha]);
   return {
     lastDeploy: {
@@ -202,6 +228,33 @@ async function main() {
 
   if (process.argv.includes('--release-message')) {
     process.stdout.write(lib.buildHostingReleaseMessage(head.sha, head.subject));
+    return;
+  }
+
+  // Mode machine : imprime UNIQUEMENT le SHA du dernier déploiement, rien d'autre.
+  // Contrat DIFFÉRENT du mode affichage : ici l'appelant PREND UNE DÉCISION avec la
+  // réponse (scripts/preview.sh --post-merge refuse de déployer un canal QA sur un
+  // backend périmé), donc « information indisponible » doit se voir — exit 1 + raison
+  // sur stderr, jamais un stdout vide qui passerait pour « rien à signaler ».
+  if (process.argv.includes('--last-sha')) {
+    // Cible restreinte à functions : sur hosting, le SHA vient du message de
+    // release et peut être COURT (7 car.) — une comparaison avec un SHA complet
+    // serait toujours fausse, et l'appelant conclurait « en retard » à tort (ou
+    // l'inverse s'il compare autrement). À cadrer le jour où le besoin existe.
+    if (target.indexOf('functions') === -1) {
+      process.stderr.write('--last-sha : seule la cible « functions » est supportée\n');
+      process.exitCode = 2;
+      return;
+    }
+    // realDeployOnly : la réponse sert de garde-fou — un run --dry-run ou un
+    // deploy partiel ne doit PAS passer pour un deploy.
+    const res = readLastFunctionsDeploy({ realDeployOnly: true });
+    if (!res.lastDeploy) {
+      process.stderr.write((res.reason || 'dernier déploiement inconnu') + '\n');
+      process.exitCode = 1;
+      return;
+    }
+    process.stdout.write(res.lastDeploy.sha + '\n');
     return;
   }
 
