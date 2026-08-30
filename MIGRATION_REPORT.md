@@ -317,16 +317,50 @@ correctif du harnais plus bas). Pour rétablir l'écran de connexion, une ligne 
 ### Correctif du harnais de démonstration
 
 `public/lib/local-test-bypass.js` renvoyait `success: true` pour **toute** route `/api/*`
-non mockée, avec une charge utile vide. L'application enregistrait alors un objet sans
-ses tableaux (`nouveauxData.workers` absent) puis lisait `.length` dessus — plantage à
-`app.jsx:4931`, sur 5 écrans. La garde applicative est correcte ; c'est le mock qui
-annonçait un succès sans données.
+non mockée, avec une charge utile **vide**. L'application enregistrait alors des objets
+dépourvus de leurs champs, puis les lisait en profondeur — d'où des ErrorBoundary sur
+plusieurs écrans, dans les **deux** versions (monolithe comme modulaire).
 
-Le correctif renvoie `success: false` pour les routes non mockées : les gardes
-`if (x.success)` court-circuitent proprement. Appliqué **uniquement à la sortie de build
-de démonstration** — `public/` et `src/modules/` restent inchangés, la fidélité 353/355
-est préservée.
+Le correctif renvoie un succès accompagné d'une charge utile **bien formée** : tableaux
+vides, objets vides et scalaires à zéro. Zéro signifie « pas de donnée », ce n'est pas un
+chiffre inventé. Cas traités :
 
-> Le défaut sous-jacent subsiste en production : si l'API réelle renvoie `success: true`
-> sans le tableau `workers`, `DashboardTab` plantera de la même façon. Une garde d'une
-> ligne le corrigerait — hors périmètre non-régression, à traiter en régie après accord.
+| Écran | Champ attendu | Valeur fournie |
+|---|---|---|
+| Dashboard Pointage | `nouveauxData.workers` | `[]` |
+| CPC / Dashboard | `nouveauxData.summary.totalQuinzaine` | `{ totalQuinzaine: 0 }` |
+| Carburant | `carb.prixMoyenLitre.toFixed()` | `0` |
+| Maroc Télécom | `telecom.coutMoyenLigne.toLocaleString()` | `0` |
+| Dashboard Quinzaine | `parFerme.forEach()` | `[]` (et non `{}`) |
+| Prédiction Récolte | `prediction.today.isActual` | `{ today: { kg: 0, isActual: false } }` |
+| Pointage Divers | `res.data?.entries \|\| []` | `data: {}` |
+
+> Le dernier cas mérite une note : `data` doit rester un **objet**. Sur un tableau,
+> `data.entries` résout vers `Array.prototype.entries` — une fonction, donc *truthy* —
+> et le repli `|| []` ne joue jamais ; l'écran recevait une fonction au lieu d'une liste.
+
+Correctif appliqué **uniquement à la sortie de build de démonstration** :
+`public/lib/local-test-bypass.js` et `src/modules/` restent inchangés, la fidélité
+353/355 de l'extraction est préservée.
+
+### Contrôle final — parité complète
+
+Parcours automatisé des 20 profils, clic réel sur chaque onglet, sur les deux versions :
+
+| | `legacy.html` (monolithe) | `index.html` (modulaire) |
+|---|---|---|
+| Profils parcourus | 20 | 20 |
+| Écrans ouverts | **350** | **350** |
+| Rendus propres | **350** | **350** |
+| ErrorBoundary | **0** | **0** |
+| « Erreur chargement » | **0** | **0** |
+
+Comparatif détaillé (345 paires profil/onglet) : **0 différence d'erreur**, **0 onglet
+manquant** d'un côté ou de l'autre. Seul `Suivi Modifications` varie en taille de DOM —
+non déterministe dans les deux versions (écouteur Firestore temps réel, vérifié sur
+3 exécutions).
+
+> Ces défauts de robustesse subsistent en production : plusieurs écrans lisent des champs
+> imbriqués sans garde et planteraient si l'API réelle renvoyait `success: true` avec une
+> charge utile incomplète. Des gardes d'une ligne les corrigeraient — hors périmètre
+> non-régression, à traiter en régie après accord.

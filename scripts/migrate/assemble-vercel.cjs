@@ -68,7 +68,31 @@ if (process.env.DEMO_NO_AUTH === '1') {
     console.error('🛑 MODE DÉMO : motif de route non mockée introuvable — build interrompu.');
     process.exit(1);
   }
-  t = t.replace(unmocked, "{ success: false, _testui: true, note: 'unmocked-api-route' }");
+  // Le bypass renvoyait `success: true` avec une charge utile VIDE. L'app
+  // enregistre alors un objet sans ses tableaux (ex. nouveauxData.workers) puis
+  // lit .length dessus -> ErrorBoundary sur 5 écrans (app.jsx:4931).
+  // Renvoyer `success: false` supprimait le plantage mais affichait
+  // « Erreur chargement ». On renvoie donc un succès avec des tableaux vides
+  // BIEN FORMÉS : les écrans se rendent proprement, sans données.
+  // Correctif du HARNAIS de démonstration — aucun code applicatif modifié.
+  t = t.replace(unmocked,
+    "{ success: true, _testui: true, note: 'unmocked-api-route', " +
+    // tableaux vides bien formés
+    "rows: [], workers: [], cueillette: [], periodes: [], equipes: [], " +
+    // `data` doit rester un OBJET : le code fait `res.data?.entries || []`,
+    // et sur un tableau `.entries` résout vers Array.prototype.entries (une
+    // fonction, donc truthy) — le repli `|| []` ne jouerait jamais.
+    "items: [], list: [], transactions: [], caisses: [], data: {}, " +
+    "anomalies: [], cartes: [], lignes: [], factures: [], " +
+    // objets attendus par certains écrans (Object.entries, accès imbriqués)
+    "summary: { totalQuinzaine: 0, totalToday: 0, total: 0 }, " +
+    "byFerme: {}, parFerme: [], totaux: {}, stats: {}, mapping: {}, " +
+    // scalaires attendus (.toFixed / .toLocaleString) — zéro = absence de donnée
+    "prixMoyenLitre: 0, totalLitres: 0, totalCout: 0, nbCartes: 0, " +
+    "coutMoyenLigne: 0, nbLignes: 0, consommationMoyenne: 0, " +
+    // /api/harvest-prediction : objet `prediction` déstructuré puis lu en profondeur
+    "varieties: [], history: [], alerts: [], correlationTable: [], " +
+    "prediction: { today: { kg: 0, isActual: false }, tomorrow: { kg: 0 }, j2: { kg: 0 } } }");
 
   t = t.replace("b.textContent = 'TESTUI — Auth bypass actif (no backend)';",
     "b.textContent = 'DÉMO — sans authentification · données fictives · non contractuel';");
