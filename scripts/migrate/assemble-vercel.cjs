@@ -30,6 +30,41 @@ let copied=0,bytes=0;
 // 2. bundle migré
 fs.copyFileSync(BUNDLE,p.join(OUT,'app.modular.js'));
 
+// 2bis. MODE DÉMO (DEMO_NO_AUTH=1) — uniquement dans la sortie de build.
+// public/lib/local-test-bypass.js n'est JAMAIS modifié : l'hébergement Firebase
+// de production ne peut pas embarquer ce contournement par accident.
+if (process.env.DEMO_NO_AUTH === '1') {
+  const f = p.join(OUT,'lib/local-test-bypass.js');
+  let t = fs.readFileSync(f,'utf8');
+  const guardHost = "  if (!isLocalHost) return;";
+  const guardParam = "  if (params.get('testui') !== '1') return;";
+  if (!t.includes(guardHost) || !t.includes(guardParam)) {
+    console.error('🛑 MODE DÉMO : gardes introuvables dans local-test-bypass.js — build interrompu.');
+    process.exit(1);
+  }
+  t = t.replace(guardHost,
+    "  // [BUILD DÉMO] garde hôte neutralisée : contournement actif sur le domaine de préversion.\n"+
+    "  void isLocalHost;");
+  t = t.replace(guardParam,
+    "  // [BUILD DÉMO] ?testui=1 non requis : la démo s'active à l'ouverture de la page.\n"+
+    "  void params;");
+  // Onglet d'accueil de la démo : 'dashboard' tombe en ErrorBoundary sans données
+  // Firestore (comportement identique dans le monolithe d'origine). On ouvre sur
+  // 'pointage', qui s'affiche correctement. Aucune modification du code applicatif :
+  // on se contente de pré-remplir localStorage avant le boot de l'app.
+  t = t.replace("  showBadge();",
+    "  showBadge();\n"+
+    "  // [BUILD DÉMO] onglet d'accueil lisible\n"+
+    "  try { if (!localStorage.getItem('lastTab')) localStorage.setItem('lastTab', 'pointage'); } catch (e) {}");
+
+  t = t.replace("b.textContent = 'TESTUI — Auth bypass actif (no backend)';",
+    "b.textContent = 'DÉMO — sans authentification · données fictives · non contractuel';");
+  fs.writeFileSync(f,t);
+  console.log('  ⚠️  MODE DÉMO ACTIF : aucune authentification, aucune donnée réelle (Firestore refuse les lectures non authentifiées).');
+} else {
+  console.log('  mode normal : écran de connexion actif (DEMO_NO_AUTH non défini)');
+}
+
 // 3. index.html migré + legacy.html d'origine
 const legacy=fs.readFileSync(p.join(PUB,'index.html'),'utf8');
 fs.writeFileSync(p.join(OUT,'legacy.html'),legacy);

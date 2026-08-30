@@ -25,7 +25,8 @@
     "migrate:walk": "node scripts/migrate/walk-tabs.cjs",
     "migrate:all": "npm run migrate:extract && npm run migrate:verify && npm run migrate:build",
     "build:vercel": "npm run migrate:build && node scripts/migrate/assemble-vercel.cjs",
-    "vercel:config": "node scripts/migrate/gen-vercel-config.cjs"
+    "vercel:config": "node scripts/migrate/gen-vercel-config.cjs",
+    "build:vercel:demo": "DEMO_NO_AUTH=1 npm run build:vercel"
   },
   "keywords": [],
   "author": "",

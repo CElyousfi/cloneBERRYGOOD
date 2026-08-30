@@ -23,7 +23,9 @@ rewrites.push({ source:'/((?!api/).*)', destination:'/index.html' });
 
 const cfg={
   $schema:'https://openapi.vercel.sh/vercel.json',
-  buildCommand:'npm run build:vercel',
+  // MODE DÉMO : déploiement sans écran de connexion, pour revue d'équipe.
+  // Pour REMETTRE LE LOGIN : remplacer par 'npm run build:vercel' et redéployer.
+  buildCommand:'npm run build:vercel:demo',
   outputDirectory:'dist-vercel',
   framework:null,
   // playwright n'est utile qu'aux tests locaux : on évite le téléchargement

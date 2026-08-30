@@ -196,3 +196,79 @@ reste la source de vérité tant que la bascule n'est pas validée.
 
 Le sort de l'arborescence `src/features/*DomainView.jsx` (réécriture Supabase) est une **décision
 client** : elle n'a pas été supprimée.
+
+---
+
+## 8. Déploiement de préversion Vercel — MODE DÉMO (sans authentification)
+
+Le déploiement Vercel est configuré en **mode démo** : l'écran de connexion est
+contourné pour que l'équipe puisse parcourir l'application sans compte.
+
+### Ce que le mode démo fait
+
+Le contournement réutilise `public/lib/local-test-bypass.js`, déjà présent dans le
+dépôt. Il est **patché uniquement dans la sortie de build** (`dist-vercel/`) par
+`scripts/migrate/assemble-vercel.cjs` quand `DEMO_NO_AUTH=1` :
+
+- garde `isLocalHost` neutralisée (le contournement s'active sur le domaine Vercel) ;
+- `?testui=1` n'est plus requis : la démo s'active à l'ouverture de la page ;
+- bandeau permanent « DÉMO — sans authentification · données fictives · non contractuel » ;
+- onglet d'accueil forcé à `pointage` via `localStorage` (l'onglet `dashboard` par
+  défaut tombe en ErrorBoundary sans données — **comportement identique dans le
+  monolithe d'origine**).
+
+`public/` n'est **jamais modifié** : l'hébergement Firebase de production ne peut pas
+embarquer ce contournement par accident.
+
+### Aucune donnée réelle n'est exposée
+
+`firestore.rules` refuse toute lecture non authentifiée : la règle catch-all est
+`allow read, write: if false` et les 59 règles de lecture exigent toutes
+`request.auth != null`. Aucune règle `if true` n'existe. Un visiteur non authentifié
+ne récupère donc **rien** de la base de production.
+
+L'équipe voit l'interface, la navigation, les 20 profils et les ~120 écrans, avec des
+données vides ou fictives — **pas les chiffres réels de l'exploitation**.
+
+### État des écrans en démo (sans données Firestore)
+
+Mesuré sur le profil DG, 44 onglets parcourus :
+
+| | Migré | Monolithe |
+|---|---|---|
+| Rendu correct | **39** | **39** |
+| ErrorBoundary | **5** | **5** |
+
+Les 5 mêmes écrans (`Dashboard Pointage`, `Dashboard Récolte`, `CPC / Dashboard`,
+`Carburant`, `Maroc Télécom`) tombent en ErrorBoundary **des deux côtés** : ils
+dépendent de données Firestore indisponibles hors authentification. Ce n'est pas une
+régression de la migration.
+
+> Correctif du rapport initial : la campagne de comparaison de la section 4 utilisait
+> un motif de détection qui ne reconnaissait pas le libellé « Erreur dans : X ». Le
+> chiffre « 0 crash » y désignait donc l'absence d'écran blanc, pas l'absence
+> d'ErrorBoundary. La conclusion de non-régression reste valide : les deux versions
+> présentent exactement les mêmes écrans en erreur, et les ensembles d'erreurs console
+> comparés étaient identiques (0 différence sur 345 paires).
+
+### Remettre l'authentification
+
+Une seule ligne dans `vercel.json` :
+
+```diff
+- "buildCommand": "npm run build:vercel:demo"
++ "buildCommand": "npm run build:vercel"
+```
+
+Puis redéployer. L'écran de connexion Firebase revient ; aucun code applicatif n'a
+été modifié pour la démo.
+
+### Points d'attention
+
+- **Connexion Google** : hors démo, elle échouera tant que le domaine Vercel n'est pas
+  ajouté dans Firebase Console → Authentication → Authorized domains (`authDomain`
+  reste `berrygood-farms-dashboard.firebaseapp.com`). L'e-mail/mot de passe fonctionne.
+- **URL publique** : en mode démo, toute personne disposant du lien accède à
+  l'interface. Restreindre via la protection de déploiement Vercel si nécessaire.
+- **`/api/*`** : proxifié vers les Cloud Functions `europe-west1`. Les appels partent
+  avec un jeton fictif et seront rejetés — attendu en démo.
