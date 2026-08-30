@@ -275,56 +275,43 @@ Puis redéployer. L'écran de connexion Firebase revient ; aucun code applicatif
 
 ---
 
-## 9. Page d'accueil et nouvelle interface (thème v3 — sombre)
+## 9. Page d'accueil et nouvelle interface (v4)
 
-Le déploiement expose trois pages :
+Le déploiement expose quatre pages :
 
 | Page | Contenu |
 |---|---|
 | `index.html` | Page d'accueil — choix entre les deux versions |
 | `legacy.html` | Interface d'origine, monolithe `app.js`, **inchangée** |
-| `new.html` | Application migrée (334 modules ES) + `design/theme-v3.css` |
+| `new.html` | **Coquille v4**, écrite intégralement de zéro (`design/v4/`) |
+| `app.html` | Application migrée, habillée v4, chargée dans le cadre de la coquille |
 
-### Pourquoi une inversion filtrée, et non une redéfinition de jetons
+### Architecture retenue
 
-Une refonte par jetons a été tentée puis écartée sur mesure. L'application :
+Une refonte « 0 % similaire » de l'intégralité des 120 écrans supposerait de réécrire
+les **11 861 styles inline** de l'application — donc de refaire l'applicatif, ce que le
+périmètre non-régression interdit. L'interface v4 sépare donc les deux plans :
 
-| Mesure | Valeur |
-|---|---|
-| `style={{` (styles inline) | **11 861** |
-| `className=` | 2 902 |
-| Références `var(--x)` dans les inline | 5 655 |
-| **`var(--white)`** | **0** |
-| **Littéraux blancs en dur** (`'#fff'`, `'white'`) | **1 100** |
-| **Couleurs hex en dur** | **3 855** |
+- **Le tableau de bord est neuf**, écrit de zéro (`design/v4/shell.{html,css,js}`) :
+  aucune classe, aucun jeton, aucun balisage hérités de l'ancienne interface. Rail
+  d'icônes 64 px, recherche globale, titre en serif éditorial, grille de cartes à filets
+  1 px, micro-graphiques SVG, panneau d'intentions.
+- **Les écrans métier restent l'application réelle**, chargée dans un cadre depuis
+  `app.html` — fonctionnalités, calculs et parcours strictement inchangés. Ils reçoivent
+  `design/v4/embed.css`, qui les aligne sur le langage visuel v4 : `grayscale(1)`
+  neutralise d'un coup les 3 855 couleurs codées en dur, puis les classes structurelles
+  sont redessinées en monochrome à filets.
 
-Redéfinir les jetons ne pouvait donc pas produire une interface sombre : 1 100 surfaces
-blanches et 3 855 couleurs codées en dur seraient restées claires — résultat à moitié
-sombre, cassé. Le thème applique donc un filtre d'inversion sur `<body>`, qui bascule
-**toutes** les surfaces d'un coup, y compris le codé en dur, puis ré-inverse les médias
-(`img`, `canvas`, `video`, `iframe`) pour qu'ils gardent leurs couleurs.
-
-Détails d'implémentation :
-
-- `<html>` conserve un fond sombre **non filtré** : c'est lui qui peint le canvas
-  (zones de sur-défilement), sinon le fond de page reste clair ;
-- les ombres portées deviennent des halos clairs après inversion — elles sont
-  neutralisées au profit de filets nets ;
-- tout ce qui est écrit dans la feuille est en **espace pré-filtre** : une valeur claire
-  écrite dans le CSS apparaît sombre à l'écran ;
-- le magenta de marque vire au rose par `hue-rotate(180deg)` — ce virage est assumé et
-  rendu franc plutôt que délavé ;
-- vérifié au préalable : aucun élément du shell n'est en `position: fixed`, le filtre ne
-  casse donc aucun ancrage de mise en page.
+Le rail passe le contexte au cadre via `#tab=<libellé>` ; `embed.js` ouvre l'écran
+correspondant. Aucune ligne de code applicatif n'est modifiée.
 
 ### Non-régression de l'habillage
 
 Mêmes conditions, profil DG, 44 onglets parcourus :
 
-| | Nouvelle UI (sombre) | Ancienne UI |
+| | `app.html` (v4) | `legacy.html` |
 |---|---|---|
 | Rendu correct | **39** | **39** |
 | ErrorBoundary | **5** | **5** |
 
-Les mêmes 5 écrans dépendants de Firestore tombent en ErrorBoundary des deux côtés : le
-thème ne casse aucun écran et ne modifie aucun comportement.
+Les mêmes 5 écrans dépendants de Firestore tombent en ErrorBoundary des deux côtés.
