@@ -7,16 +7,25 @@
     "module": "commonjs",
     "skipLibCheck": true,
     "resolveJsonModule": true,
+    "baseUrl": ".",
     "paths": {
-      "@features/*": ["src/features/*"],
-      "@shared/*": ["src/shared/*"],
-      "@app/*": ["src/*"]
+      "@features/*": [
+        "src/features/*"
+      ],
+      "@shared/*": [
+        "src/shared/*"
+      ],
+      "@app/*": [
+        "src/*"
+      ]
     }
   },
   "include": [
     "public/lib/**/*.js",
     "functions/lib/**/*.js",
-    "tests/unit/**/*.js"
+    "tests/unit/**/*.js",
+    "src/**/*.js",
+    "src/**/*.jsx"
   ],
   "exclude": [
     "**/node_modules",

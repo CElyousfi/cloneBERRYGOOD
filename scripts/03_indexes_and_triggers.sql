@@ -1,0 +1,31 @@
+-- PART 3: INDEXES & TRIGGERS
+CREATE INDEX IF NOT EXISTS idx_invoices_ferme ON invoices(ferme);
+CREATE INDEX IF NOT EXISTS idx_caisse_ferme ON caisse_transactions(ferme);
+CREATE INDEX IF NOT EXISTS idx_virements_ferme ON virements(ferme);
+CREATE INDEX IF NOT EXISTS idx_ojra_payroll_ferme ON ojra_payroll(ferme);
+CREATE INDEX IF NOT EXISTS idx_liquidations_ferme ON liquidations(ferme);
+CREATE INDEX IF NOT EXISTS idx_encaissements_ferme ON encaissements(ferme);
+CREATE INDEX IF NOT EXISTS idx_inspections_ferme ON inspections(ferme);
+CREATE INDEX IF NOT EXISTS idx_expeditions_ferme ON expeditions(ferme);
+CREATE INDEX IF NOT EXISTS idx_ecarts_ferme ON ecarts(ferme);
+CREATE INDEX IF NOT EXISTS idx_brix_ferme ON brix_readings(ferme);
+CREATE INDEX IF NOT EXISTS idx_bons_apport_ferme ON bons_apport(ferme);
+CREATE INDEX IF NOT EXISTS idx_pfq_records_ferme ON pfq_records(ferme);
+
+CREATE OR REPLACE TRIGGER trg_invoices_upd BEFORE UPDATE ON invoices FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE OR REPLACE TRIGGER trg_caisse_upd BEFORE UPDATE ON caisse_transactions FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE OR REPLACE TRIGGER trg_virements_upd BEFORE UPDATE ON virements FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE OR REPLACE TRIGGER trg_ojra_upd BEFORE UPDATE ON ojra_payroll FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE OR REPLACE TRIGGER trg_liquidations_upd BEFORE UPDATE ON liquidations FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE OR REPLACE TRIGGER trg_encaissements_upd BEFORE UPDATE ON encaissements FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE OR REPLACE TRIGGER trg_comptes_clients_upd BEFORE UPDATE ON comptes_clients FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE OR REPLACE TRIGGER trg_codes_ana_upd BEFORE UPDATE ON codes_analytiques FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE OR REPLACE TRIGGER trg_budget_upd BEFORE UPDATE ON budget_campagne FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE OR REPLACE TRIGGER trg_fuel_upd BEFORE UPDATE ON fuel_transactions FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE OR REPLACE TRIGGER trg_telecom_upd BEFORE UPDATE ON telecom_bills FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE OR REPLACE TRIGGER trg_inspections_upd BEFORE UPDATE ON inspections FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE OR REPLACE TRIGGER trg_expeditions_upd BEFORE UPDATE ON expeditions FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE OR REPLACE TRIGGER trg_ecarts_upd BEFORE UPDATE ON ecarts FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE OR REPLACE TRIGGER trg_brix_upd BEFORE UPDATE ON brix_readings FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE OR REPLACE TRIGGER trg_bons_apport_upd BEFORE UPDATE ON bons_apport FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE OR REPLACE TRIGGER trg_pfq_upd BEFORE UPDATE ON pfq_records FOR EACH ROW EXECUTE FUNCTION update_updated_at();
