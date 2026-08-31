@@ -79,8 +79,16 @@ function listeFicheStock(balances) {
   const fin = SRC.indexOf('\n', iSort);
   const bloc = SRC.slice(debut, fin);
   assert.match(bloc, /json\.balances/, 'le bloc extrait n’est pas celui de la Fiche de Stock');
+  // Le bloc déduplique sur `canonArt` (copie front de `canon`) : on l'extrait lui
+  // aussi du source plutôt que d'en recopier un miroir.
+  const mCanon = SRC.match(/const canonArt = \(a\) => \{[\s\S]*?\n\s*\};/);
+  assert.ok(mCanon, 'canonArt introuvable dans public/app.jsx');
   // eslint-disable-next-line no-new-func
-  return new Function('json', bloc + '\nreturn list;')({ balances });
+  const canonArt = new Function(
+    'return (' + mCanon[0].replace(/^const canonArt = /, '').replace(/;$/, '') + ')'
+  )();
+  // eslint-disable-next-line no-new-func
+  return new Function('json', 'canonArt', bloc + '\nreturn list;')({ balances }, canonArt);
 }
 
 // ── données : le cas de production ─────────────────────────────────────────

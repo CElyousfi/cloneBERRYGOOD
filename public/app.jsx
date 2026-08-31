@@ -51468,6 +51468,20 @@ ${rejetHtml}
             );
         }
 
+        // Canonicalisation d'un libellé d'article — COPIE FRONT de
+        // functions/lib/stock/articleKey.js `canon` (le monolithe ne peut rien
+        // require ; la parité est verrouillée par tests/unit/articleKey.test.js).
+        // MAJUSCULE + espaces réduits + suffixe d'unité final retiré : c'est la clé
+        // qui résout les mouvements, les soldes et le PMP côté backend. Un seul
+        // exemplaire dans app.jsx — toute copie locale rouvre la divergence que
+        // articleKey.js a fermée.
+        const canonArt = (a) => {
+            let s = (a == null ? '' : String(a)).toUpperCase().trim();
+            s = s.replace(/\s+/g, ' ');
+            s = s.replace(/\s*\((L|KG|G|ML|UNITE|U)\)\s*$/, '');
+            return s.trim();
+        };
+
         // ===================== MAGASINIER: SOLDES STOCK TAB =====================
         function MagFicheStockTab() {
             const [articles, setArticles] = useState([]);
@@ -51494,18 +51508,30 @@ ${rejetHtml}
                     .then(r => r.json())
                     .then(json => {
                         if (json.success) {
+                            // UNE entrée par ARTICLE, c'est-à-dire par clé `canonArt` — celle
+                            // qui résout déjà l'historique, les soldes et le PMP. Sur le nom
+                            // BRUT, « ALGA 600 » et « Alga 600 » donnaient deux entrées au
+                            // stock et aux mouvements identiques : l'écran affirmait deux
+                            // articles là où il n'y en a qu'un.
+                            // Libellé retenu — déterministe et indépendant de l'ordre d'arrivée
+                            // des soldes : l'écriture canonique si elle figure telle quelle
+                            // parmi les variantes (« ALGA 600 » l'emporte sur « Alga 600 »),
+                            // sinon la plus petite en comparaison binaire.
                             const seen = {};
-                            const list = [];
                             (json.balances || []).forEach(b => {
                                 // NOM d'abord : clé portée par les mouvements (cf. get-article-history).
                                 // Avec la ref d'abord, un article fusionné (solde sur docId) s'affichait
                                 // dans la liste mais son grand livre revenait vide.
                                 const ref = b.article_nom || b.article_ref;
-                                if (!ref || seen[ref]) return;
-                                seen[ref] = true;
-                                list.push({ ref, label: b.article_nom || b.article_ref });
+                                const key = canonArt(ref);
+                                if (!ref || !key) return;
+                                const prev = seen[key];
+                                if (prev === undefined) { seen[key] = ref; return; }
+                                if (prev === key) return;
+                                if (ref === key || ref < prev) seen[key] = ref;
                             });
-                            list.sort((a, b) => a.label.localeCompare(b.label, 'fr', { sensitivity: 'base' }));
+                            const list = Object.keys(seen).map(k => ({ ref: seen[k], label: seen[k] }));
+                            list.sort((a, b) => a.label.localeCompare(b.label, 'fr', { sensitivity: 'base' }) || (a.label < b.label ? -1 : a.label > b.label ? 1 : 0));
                             setArticles(list);
                             setSelectedArticle(prev => (!prev && list.length > 0) ? list[0].ref : prev);
                         }
@@ -51944,15 +51970,9 @@ ${rejetHtml}
             // de clic distincte du badge PMP). Borné à la date d'inventaire affichée.
             const [mvtDetailLine, setMvtDetailLine] = useState(null);
 
-            // Canonicalisation identique au backend (scripts/reconstruct-stock.js) :
+            // canonArt (défini au-dessus de MagFicheStockTab) aligne les deux côtés :
             // les soldes (stock_balances) sont canonicalisés (suffixe d'unité retiré),
-            // alors que le catalogue garde souvent "NOM (KG)". On aligne les deux côtés.
-            const canonArt = (a) => {
-                let s = (a == null ? '' : String(a)).toUpperCase().trim();
-                s = s.replace(/\s+/g, ' ');
-                s = s.replace(/\s*\((L|KG|G|ML|UNITE|U)\)\s*$/, '');
-                return s.trim();
-            };
+            // alors que le catalogue garde souvent "NOM (KG)".
 
             useEffect(() => {
                 fetch('/api/stock?action=get-locations').then(r => r.json())

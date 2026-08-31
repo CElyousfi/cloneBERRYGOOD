@@ -53,6 +53,15 @@ test('parité avec la copie front canonArt (public/app.jsx)', () => {
   // Le backend ne peut pas require('../public/…') : la copie front est assumée,
   // mais sa PARITÉ est vérifiée ici, sinon elle dérive en silence.
   const SRC = fs.readFileSync(path.join(ROOT, 'public/app.jsx'), 'utf8');
+  // UNICITÉ d'abord : ce verrou prend le PREMIER littéral du fichier. Si une copie
+  // locale de canonArt réapparaissait plus haut dans app.jsx, il verrouillerait
+  // silencieusement la mauvaise et la divergence front/back qu'il existe pour
+  // empêcher passerait inaperçue. Le verrou doit tenir par PROPRIÉTÉ, pas par
+  // position : une seule définition, donc rien à choisir.
+  const toutes = SRC.match(/const canonArt = \(a\) => \{[\s\S]*?\n\s*\};/g) || [];
+  assert.equal(toutes.length, 1,
+    'public/app.jsx doit contenir EXACTEMENT une définition de canonArt (trouvé : ' +
+    toutes.length + ') — toute copie locale rouvre la divergence fermée par articleKey.js');
   const m = SRC.match(/const canonArt = \(a\) => \{[\s\S]*?\n\s*\};/);
   assert.ok(m, 'canonArt introuvable dans public/app.jsx');
   // eslint-disable-next-line no-new-func
