@@ -14,7 +14,7 @@
           "score": 27
         },
         "testCoverage": {
-          "detail": "74/176 modules avec ≥1 test",
+          "detail": "75/176 modules avec ≥1 test",
           "max": 30,
           "score": 13
         }
@@ -27,15 +27,15 @@
         "file": "public/app.jsx"
       },
       {
-        "commits": 43,
+        "commits": 45,
         "file": "public/components/CampagneAnalytiqueTab.js"
       },
       {
-        "commits": 42,
+        "commits": 44,
         "file": "public/components/CampagneAnalytiqueTab.jsx"
       },
       {
-        "commits": 34,
+        "commits": 33,
         "file": "functions/index.js"
       },
       {
@@ -68,7 +68,7 @@
     "stats": {
       "backendModules": 99,
       "cloudFunctions": 91,
-      "coverageScore": 42,
+      "coverageScore": 43,
       "domains": 10,
       "extractedComponents": 32,
       "firestoreCollections": 61,
@@ -883,7 +883,7 @@
       },
       "gitCoupling": [
         {
-          "coCommits": 41,
+          "coCommits": 43,
           "domain": null,
           "file": "public/components/CampagneAnalytiqueTab.js",
           "note": "probabilistic",
@@ -997,6 +997,13 @@
         {
           "coCommits": 5,
           "domain": null,
+          "file": "tests/unit/campagneExportUtils.test.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 5,
+          "domain": null,
           "file": "tests/unit/campagneRapprochement.test.js",
           "note": "probabilistic",
           "windowDays": 90
@@ -1018,6 +1025,13 @@
         {
           "coCommits": 4,
           "domain": null,
+          "file": "public/components/CampagneAnalytiqueTab.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 4,
+          "domain": null,
           "file": "tests/unit/campagneAnalytiquePivot.test.js",
           "note": "probabilistic",
           "windowDays": 90
@@ -1026,13 +1040,6 @@
           "coCommits": 4,
           "domain": null,
           "file": "tests/unit/campagneExportUtils.test.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 3,
-          "domain": null,
-          "file": "public/components/CampagneAnalytiqueTab.js",
           "note": "probabilistic",
           "windowDays": 90
         },
@@ -1054,13 +1061,6 @@
           "coCommits": 3,
           "domain": null,
           "file": "tests/unit/campagneBudgetQuinzaine.test.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 3,
-          "domain": null,
-          "file": "tests/unit/campagneExportUtils.test.js",
           "note": "probabilistic",
           "windowDays": 90
         },
@@ -1127,7 +1127,7 @@
         ]
       },
       "confidence": "medium",
-      "coverageScore": 60,
+      "coverageScore": 67,
       "firestore": {
         "collections": [
           "security_mouvements",
@@ -1190,12 +1190,15 @@
           "functions/lib/stock/__tests__/demandeCreationArticle.test.js",
           "functions/lib/stock/__tests__/demandesCreationIO.test.js",
           "functions/lib/stock/__tests__/identiteArticle.test.js",
+          "functions/lib/stock/__tests__/recleSoldes.test.js",
           "functions/lib/stockCaneva/__tests__/mappings.test.js",
           "functions/lib/stockCaneva/__tests__/parseWorkbook.test.js",
           "functions/lib/stockFiles/__tests__/allowedMime.test.js",
           "functions/lib/stockFiles/__tests__/farmDetection.test.js",
           "functions/lib/stockFiles/__tests__/recordSubmission.test.js",
           "functions/lib/stockFiles/__tests__/reminders.test.js",
+          "functions/lib/stockMerge/__tests__/reunionSoldes.test.js",
+          "functions/lib/stockMerge/__tests__/soldesMaster.test.js",
           "functions/lib/stockRoles/__tests__/articleClassement.test.js",
           "functions/lib/stockRoles/__tests__/articleConversionPermissions.test.js",
           "functions/lib/stockRoles/__tests__/articleFusionPermissions.test.js",

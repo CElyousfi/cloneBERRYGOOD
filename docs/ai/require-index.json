@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:249b0749a6d7d998",
+    "sourceFingerprint": "sha256:b4c180462d1eed20",
     "stats": {
-      "targetFiles": 289,
-      "targetFilesWithDirectTests": 172,
-      "targetFilesWithTransitiveTests": 194,
-      "testFilesScanned": 266
+      "targetFiles": 292,
+      "targetFilesWithDirectTests": 175,
+      "targetFilesWithTransitiveTests": 197,
+      "testFilesScanned": 271
     }
   },
   "index": {
@@ -1281,6 +1281,7 @@
         "functions/lib/stock/__tests__/demandeCreationArticle.test.js",
         "functions/lib/stock/__tests__/demandesCreationIO.test.js",
         "functions/lib/stock/__tests__/identiteArticle.test.js",
+        "functions/lib/stock/__tests__/recleSoldes.test.js",
         "tests/unit/articleHistoryIndex.test.js",
         "tests/unit/articleHistoryKeyReconciliation.test.js",
         "tests/unit/articleKey.test.js",
@@ -1351,12 +1352,14 @@
       "directTests": [
         "functions/lib/stock/__tests__/demandeCreationArticle.test.js",
         "functions/lib/stock/__tests__/demandesCreationIO.test.js",
-        "functions/lib/stock/__tests__/identiteArticle.test.js"
+        "functions/lib/stock/__tests__/identiteArticle.test.js",
+        "functions/lib/stock/__tests__/recleSoldes.test.js"
       ],
       "transitiveTests": [
         "functions/lib/stock/__tests__/demandeCreationArticle.test.js",
         "functions/lib/stock/__tests__/demandesCreationIO.test.js",
-        "functions/lib/stock/__tests__/identiteArticle.test.js"
+        "functions/lib/stock/__tests__/identiteArticle.test.js",
+        "functions/lib/stock/__tests__/recleSoldes.test.js"
       ]
     },
     "functions/lib/stock/locationsConfig.js": {
@@ -1396,6 +1399,14 @@
         "functions/lib/receptionValorisation/__tests__/receptionBdc.test.js",
         "tests/unit/articleKey.test.js",
         "tests/unit/pmpDetail.test.js"
+      ]
+    },
+    "functions/lib/stock/recleSoldes.js": {
+      "directTests": [
+        "functions/lib/stock/__tests__/recleSoldes.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/stock/__tests__/recleSoldes.test.js"
       ]
     },
     "functions/lib/stock/scanAttachment.js": {
@@ -1530,6 +1541,9 @@
         "functions/lib/receptionValorisation/__tests__/prixLigne.test.js",
         "functions/lib/receptionValorisation/__tests__/receptionBdc.test.js",
         "functions/lib/stock/__tests__/identiteArticle.test.js",
+        "functions/lib/stock/__tests__/recleSoldes.test.js",
+        "functions/lib/stockMerge/__tests__/reunionSoldes.test.js",
+        "functions/lib/stockMerge/__tests__/soldesMaster.test.js",
         "functions/lib/stockRoles/__tests__/articleClassement.test.js",
         "functions/lib/stockRoles/__tests__/articleConversionPermissions.test.js",
         "tests/unit/articleCatalogMergeButton.test.js",
@@ -1556,6 +1570,9 @@
         "functions/lib/receptionValorisation/__tests__/prixLigne.test.js",
         "functions/lib/receptionValorisation/__tests__/receptionBdc.test.js",
         "functions/lib/stock/__tests__/identiteArticle.test.js",
+        "functions/lib/stock/__tests__/recleSoldes.test.js",
+        "functions/lib/stockMerge/__tests__/reunionSoldes.test.js",
+        "functions/lib/stockMerge/__tests__/soldesMaster.test.js",
         "functions/lib/stockRoles/__tests__/articleClassement.test.js",
         "functions/lib/stockRoles/__tests__/articleConversionPermissions.test.js",
         "tests/unit/articleCatalogMergeButton.test.js",
@@ -1569,6 +1586,26 @@
         "tests/unit/bcSuppression.test.js",
         "tests/unit/classer-article-cablage.test.js",
         "tests/unit/fetchBonsSupprimes.test.js"
+      ]
+    },
+    "functions/lib/stockMerge/reunionSoldes.js": {
+      "directTests": [
+        "functions/lib/stock/__tests__/recleSoldes.test.js",
+        "functions/lib/stockMerge/__tests__/reunionSoldes.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/stock/__tests__/recleSoldes.test.js",
+        "functions/lib/stockMerge/__tests__/reunionSoldes.test.js"
+      ]
+    },
+    "functions/lib/stockMerge/soldesMaster.js": {
+      "directTests": [
+        "functions/lib/stockMerge/__tests__/soldesMaster.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/stock/__tests__/recleSoldes.test.js",
+        "functions/lib/stockMerge/__tests__/reunionSoldes.test.js",
+        "functions/lib/stockMerge/__tests__/soldesMaster.test.js"
       ]
     },
     "functions/lib/stockRoles/articleClassement.js": {

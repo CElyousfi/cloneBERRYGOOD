@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:1a77a6c2b664d03c -->
-# Code Map — Modules lib (222)
+<!-- sourceFingerprint: sha256:8bb5334db4c3b2f9 -->
+# Code Map — Modules lib (225)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
 
@@ -157,6 +157,7 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/stock/movementGuard.js | — | IMPORT_CREATED_BY, VALIDATED_STATUS, isImportedMovement, isValidatedMovement, isDeletedMovement, isCreator, evaluateMutable, canEditMovement, canDeleteMovement, ADMIN_DELETE_ROLES, isAdminDeleter, evaluateAdminDelete, canAdminDeleteMovement, refusalMessage |
 | functions/lib/stock/movementImpact.js | — | isImpactApplied, IMPACT_STATUS |
 | functions/lib/stock/pmpDetail.js | — | canon, canonUnite, isTonne, normalizeFactureLine, dominantUnite, computeFacturePMP |
+| functions/lib/stock/recleSoldes.js | — | ISSUE_DEJA_CANONIQUE, ISSUE_DEPLACEMENT, ISSUE_REUNION, ISSUE_ORPHELIN, uniteComparable, anomaliesUnites, documentCible, planifierRecle, incrementConserve |
 | functions/lib/stock/scanAttachment.js | — | SIGNED_URL_TTL_MS, MAX_ATTACHMENT_BYTES, ALLOWED_ATTACHMENT_MIME, validateAttachmentMetadata, generateSignedUrl, extractPdfText, downloadBuffer, utils |
 | functions/lib/stock/scanAttachmentUtils.js | — | ENTITY_MAP, ALLOWED_EXTENSIONS, isValidEntityType, collectionForEntity, folderForEntity, extOf, mimeFromFilename, sanitizeFilename, buildScanPath, isScanPathForEntity, validateUploadAttachmentParams |
 | functions/lib/stock/stockGuard.js | — | — voir fichier — |
@@ -172,6 +173,8 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/stockMerge/articleCategories.js | — | CATEGORIES_ARTICLE, SYNONYMES_CATEGORIE, categorieCanonique, estCategorieCanonique |
 | functions/lib/stockMerge/articleMerge.js | — | normalizeArticleName, groupDuplicates, verifierIntegriteFiche, buildArticleIndex, resolveArticleTarget, rememberArticle, isMovementOpen, isBdcOpen, BDC_CLOSED_STATUSES |
 | functions/lib/stockMerge/masterSuggestion.js | — | choisirMaster, pmpArticle, prixHtArticle, prixArticle, nbAchatsArticle, formatDh, cleDocument, REGLE_PMP, REGLE_PRIX_HT, REGLE_NB_ACHATS |
+| functions/lib/stockMerge/reunionSoldes.js | — | planifierReunion, casExecutables, incrementConserve, indexerCatalogue, ficheDuSolde |
+| functions/lib/stockMerge/soldesMaster.js | — | identifiantSoldeCanonique, clesMaster, estSoldeDuMaster, choisirSoldeCible, indexerSoldesMaster |
 | functions/lib/stockRoles/articleClassement.js | — | fichesAClasserParNom, referencesAClasserParNom |
 | functions/lib/stockRoles/articlePermissions.js | — | peutModifierArticle, peutModifierChampsArticle, champsDemandes, peutFusionnerArticles, peutSupprimerBonConso, ROLE_CATALOGUE, ROLE_SUPERVISEUR, ROLE_MAGASINIER, CHAMPS_CONVERSION_UNITE, REFUS, REFUS_HORS_CONVERSION, REFUS_SUPPRESSION_BC |
 | functions/lib/stockRoles/index.js | — | peutModifierArticle, peutModifierChampsArticle, champsDemandes, peutFusionnerArticles, peutSupprimerBonConso, fichesAClasserParNom, referencesAClasserParNom, ROLE_CATALOGUE, ROLE_SUPERVISEUR, ROLE_MAGASINIER, CHAMPS_CONVERSION_UNITE, REFUS, REFUS_HORS_CONVERSION, REFUS_SUPPRESSION_BC |
