@@ -1187,6 +1187,7 @@
       "label": "Stock & Magasin",
       "tests": {
         "backend": [
+          "functions/lib/stock/__tests__/correctionUniteAcide.test.js",
           "functions/lib/stock/__tests__/demandeCreationArticle.test.js",
           "functions/lib/stock/__tests__/demandesCreationIO.test.js",
           "functions/lib/stock/__tests__/identiteArticle.test.js",

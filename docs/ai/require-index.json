@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:b4c180462d1eed20",
+    "sourceFingerprint": "sha256:d52576737fefcdc9",
     "stats": {
-      "targetFiles": 292,
-      "targetFilesWithDirectTests": 175,
-      "targetFilesWithTransitiveTests": 197,
-      "testFilesScanned": 271
+      "targetFiles": 293,
+      "targetFilesWithDirectTests": 176,
+      "targetFilesWithTransitiveTests": 198,
+      "testFilesScanned": 273
     }
   },
   "index": {
@@ -1278,6 +1278,7 @@
       "transitiveTests": [
         "functions/lib/receptionValorisation/__tests__/prixLigne.test.js",
         "functions/lib/receptionValorisation/__tests__/receptionBdc.test.js",
+        "functions/lib/stock/__tests__/correctionUniteAcide.test.js",
         "functions/lib/stock/__tests__/demandeCreationArticle.test.js",
         "functions/lib/stock/__tests__/demandesCreationIO.test.js",
         "functions/lib/stock/__tests__/identiteArticle.test.js",
@@ -1331,6 +1332,14 @@
         "tests/unit/bcSuppression.test.js"
       ]
     },
+    "functions/lib/stock/correctionUniteAcide.js": {
+      "directTests": [
+        "functions/lib/stock/__tests__/correctionUniteAcide.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/stock/__tests__/correctionUniteAcide.test.js"
+      ]
+    },
     "functions/lib/stock/demandeCreationArticle.js": {
       "directTests": [
         "functions/lib/stock/__tests__/demandeCreationArticle.test.js"
@@ -1356,6 +1365,7 @@
         "functions/lib/stock/__tests__/recleSoldes.test.js"
       ],
       "transitiveTests": [
+        "functions/lib/stock/__tests__/correctionUniteAcide.test.js",
         "functions/lib/stock/__tests__/demandeCreationArticle.test.js",
         "functions/lib/stock/__tests__/demandesCreationIO.test.js",
         "functions/lib/stock/__tests__/identiteArticle.test.js",
