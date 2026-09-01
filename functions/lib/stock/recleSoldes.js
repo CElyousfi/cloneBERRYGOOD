@@ -90,6 +90,11 @@ const ISSUE_ORPHELIN = 'orphelin';
  * @property {string[]} supprimes docIds absorbés/vidés.
  * @property {string[]} anomalies Motifs de blocage (vide = exécutable).
  * @property {string} motif Explication en français, pour le rapport.
+ * @property {boolean} cible_existante Le document `conserve` figure-t-il parmi
+ *   `docs` ? Décisif à l'exécution : une réunion vers une cible EXISTANTE
+ *   s'incrémente (les champs de structure sont déjà là), une réunion vers une
+ *   cible ABSENTE doit écrire le document COMPLET. Confondre les deux crée un
+ *   solde sans `lieu_type` ni `article_ref` — invisible de l'inventaire.
  */
 
 /** @param {number} n @returns {number} */
@@ -188,6 +193,7 @@ function planifierRecle(soldes, fiches) {
         supprimes: [],
         anomalies: [r.erreur],
         motif: 'laissé en place — ' + r.erreur,
+        cible_existante: true,
       });
       continue;
     }
@@ -219,6 +225,7 @@ function planifierRecle(soldes, fiches) {
         supprimes: [],
         anomalies: [],
         motif: 'déjà rangé sous la fiche',
+        cible_existante: true,
       });
       continue;
     }
@@ -237,6 +244,7 @@ function planifierRecle(soldes, fiches) {
         supprimes,
         anomalies: [],
         motif: 'déplacé de « ' + docs[0].docId + ' » vers « ' + cible + ' » — solde inchangé',
+        cible_existante: false,
       });
       continue;
     }
@@ -258,6 +266,7 @@ function planifierRecle(soldes, fiches) {
       motif:
         docs.length + ' documents réunis sous « ' + cible + ' » — somme ' + total +
         (dejaLa ? '' : ' (la cible n\'existe pas encore, elle est créée)'),
+      cible_existante: dejaLa,
     });
   }
 

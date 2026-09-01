@@ -27,11 +27,11 @@
         "file": "public/app.jsx"
       },
       {
-        "commits": 45,
+        "commits": 44,
         "file": "public/components/CampagneAnalytiqueTab.js"
       },
       {
-        "commits": 44,
+        "commits": 43,
         "file": "public/components/CampagneAnalytiqueTab.jsx"
       },
       {
@@ -883,7 +883,7 @@
       },
       "gitCoupling": [
         {
-          "coCommits": 43,
+          "coCommits": 42,
           "domain": null,
           "file": "public/components/CampagneAnalytiqueTab.js",
           "note": "probabilistic",

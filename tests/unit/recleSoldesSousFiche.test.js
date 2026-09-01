@@ -47,8 +47,8 @@ function fauxFirestore(donnees) {
   const collections = {
     stock_balances: donnees.stock_balances || {},
     articles_catalog: donnees.articles_catalog || {},
-    stock_balance_recles: {},
-    stock_balance_reunions: {},
+    stock_balance_recles: donnees.stock_balance_recles || {},
+    stock_balance_reunions: donnees.stock_balance_reunions || {},
   };
   let compteur = 0;
 
@@ -65,6 +65,10 @@ function fauxFirestore(donnees) {
       journal.transactions++;
       const ops = [];
       const t = {
+        get: async (r) => {
+          const data = (collections[r.__collection] || {})[r.id];
+          return { exists: data !== undefined, id: r.id, data: () => data };
+        },
         getAll: async (...refs) =>
           refs.map((r) => {
             const data = (collections[r.__collection] || {})[r.id];
@@ -467,4 +471,175 @@ test('exécution — un second passage ne trouve plus rien à faire', async () =
   assert.strictEqual(apres.executables.length, 0, 'la re-clé est idempotente');
   assert.strictEqual(apres.bloques.length, 1, 'sauf les cas bloqués, qui restent à trancher');
   assert.strictEqual(apres.orphelins.length, 1, 'et les orphelins, qui restent en place');
+});
+
+// ── 9. RÉUNION VERS UNE CIBLE ABSENTE — LE DOCUMENT NE DOIT PAS NAÎTRE CREUX ─
+//
+// Défaut CONSTATÉ en production le 2026-09-01 : `reunirUnCas` incrémente le
+// document conservé avec `merge: true`. Quand ce document n'existe pas, merge
+// le CRÉE avec les seules clés écrites — `balance` et `updated_at`. Le solde
+// était juste (3 406 kg d'acide sulfurique) et le document était mort : sans
+// lieu, sans article, sans unité, invisible de tout écran.
+// Les tests d'alors vérifiaient l'ARITHMÉTIQUE de ce cas, jamais les CHAMPS.
+
+function donneesCibleAbsente() {
+  return {
+    articles_catalog: { 'IMP-001': { nom: 'ACIDE SULFRIQUE', active: true } },
+    stock_balances: {
+      magasin_F2_ACIDE_SULFRIQUE: { lieu_type: 'magasin', lieu_id: 'F2', article_ref: 'ACIDE SULFRIQUE', article_nom: 'ACIDE SULFRIQUE', balance: 3420, unite: 'kg' },
+      'magasin_F2_ACIDE_SULFRIQUE_(L)': { lieu_type: 'magasin', lieu_id: 'F2', article_ref: 'ACIDE SULFRIQUE (L)', article_nom: 'ACIDE SULFRIQUE (L)', balance: -14, unite: 'kg' },
+    },
+  };
+}
+
+test('le plan distingue cible existante et cible absente', async () => {
+  const fb = fauxFirestore(donneesCibleAbsente());
+  const r = await lancer([], fb);
+  assert.strictEqual(r.executables.length, 1);
+  assert.strictEqual(r.executables[0].issue, 'reunion');
+  assert.strictEqual(r.executables[0].cible_existante, false);
+});
+
+test('réunion vers une cible ABSENTE — le document créé est COMPLET', async () => {
+  const fb = fauxFirestore(donneesCibleAbsente());
+  await lancer(['--execute'], fb);
+  const d = fb.collections.stock_balances['magasin_F2_IMP-001'];
+  assert.ok(d, 'la cible est créée');
+  assert.strictEqual(d.balance, 3406, 'la somme est juste');
+  // C'est ICI que le défaut de production se serait vu.
+  assert.strictEqual(d.lieu_type, 'magasin', 'un solde sans lieu est invisible de l\'inventaire');
+  assert.strictEqual(d.lieu_id, 'F2');
+  assert.strictEqual(d.article_ref, 'IMP-001', 'un solde sans article n\'appartient à personne');
+  assert.strictEqual(d.article_nom, 'ACIDE SULFRIQUE');
+  assert.strictEqual(d.unite, 'kg');
+});
+
+test('AUCUN solde écrit ne peut être amputé d\'un champ de structure', async () => {
+  // Garde générale : quel que soit le chemin d'exécution, tout document de
+  // solde présent après coup porte ses champs de structure.
+  const fb = fauxFirestore(donnees());
+  await lancer(['--execute'], fb);
+  for (const [id, d] of Object.entries(fb.collections.stock_balances)) {
+    for (const k of SCRIPT.CHAMPS_STRUCTURE) {
+      assert.ok(d[k] !== undefined && d[k] !== null && d[k] !== '', id + ' est amputé de « ' + k + ' »');
+    }
+  }
+});
+
+test('réunion vers cible absente — la cible apparue entre-temps fait ÉCHOUER', async () => {
+  const d = donneesCibleAbsente();
+  d.stock_balances['magasin_F2_IMP-001'] = { lieu_type: 'magasin', lieu_id: 'F2', article_ref: 'IMP-001', balance: 7, unite: 'kg' };
+  const fb = fauxFirestore(d);
+  const c = {
+    issue: 'reunion', article_id: 'IMP-001', article_nom: 'ACIDE SULFRIQUE',
+    lieu_type: 'magasin', lieu_id: 'F2', conserve: 'magasin_F2_IMP-001',
+    supprimes: ['magasin_F2_ACIDE_SULFRIQUE'], total: 3406, anomalies: [], cible_existante: false,
+    docs: [{ docId: 'magasin_F2_ACIDE_SULFRIQUE', balance: 3420 }],
+  };
+  await assert.rejects(() => SCRIPT.reunirEnCreant(c, fb), /apparue depuis le rapport/);
+  assert.strictEqual(fb.collections.stock_balances['magasin_F2_IMP-001'].balance, 7, 'non écrasée');
+});
+
+test('réunion vers cible absente — journal écrit AVANT les suppressions', async () => {
+  const fb = fauxFirestore(donneesCibleAbsente());
+  await lancer(['--execute'], fb);
+  const audits = Object.values(fb.collections.stock_balance_recles);
+  assert.strictEqual(audits.length, 1);
+  assert.strictEqual(audits[0].cible_creee, true);
+  assert.strictEqual(audits[0].soldes_avant.length, 2);
+  const iAudit = fb.journal.ordre.findIndex((o) => o.startsWith('set:stock_balance_recles'));
+  const iSuppr = fb.journal.ordre.findIndex((o) => o.startsWith('delete:stock_balances'));
+  assert.ok(iAudit > -1 && iSuppr > -1 && iAudit < iSuppr);
+});
+
+// ── 10. MODE --completer : RÉPARER UN DOCUMENT DÉJÀ CREUX ───────────────────
+
+function donneesCreux() {
+  return {
+    articles_catalog: { 'IMP-001': { nom: 'ACIDE SULFRIQUE', active: true } },
+    stock_balances: {
+      // le document tel qu'il est né en production : juste, et muet
+      'magasin_F2_IMP-001': { balance: 3406, updated_at: 1 },
+    },
+    stock_balance_reunions: {
+      j1: {
+        conserve: 'magasin_F2_IMP-001', article_id: 'IMP-001', article_nom: 'ACIDE SULFRIQUE',
+        soldes_avant: [
+          { docId: 'magasin_F2_ACIDE_SULFRIQUE', article_ref: 'ACIDE SULFRIQUE', article_nom: 'ACIDE SULFRIQUE', lieu_type: 'magasin', lieu_id: 'F2', balance: 3420, unite: 'kg' },
+          { docId: 'magasin_F2_ACIDE_SULFRIQUE_(L)', article_ref: 'ACIDE SULFRIQUE (L)', article_nom: 'ACIDE SULFRIQUE (L)', lieu_type: 'magasin', lieu_id: 'F2', balance: -14, unite: 'kg' },
+        ],
+      },
+    },
+  };
+}
+
+test('soldesIncomplets repère les documents creux, et eux seuls', () => {
+  const creux = SCRIPT.soldesIncomplets([
+    { docId: 'a', lieu_type: 'magasin', lieu_id: 'F2', article_ref: 'X', unite: 'kg' },
+    { docId: 'b', balance: 10 },
+    { docId: 'c', lieu_type: 'magasin', lieu_id: 'F2', article_ref: 'X', unite: '' },
+  ]);
+  assert.deepStrictEqual(creux.map((s) => s.docId), ['b', 'c']);
+});
+
+test('--completer (rapport) — reconstruit depuis le journal, n\'écrit rien', async () => {
+  const fb = fauxFirestore(donneesCreux());
+  const r = await lancer(['--completer'], fb);
+  assert.strictEqual(fb.journal.transactions, 0);
+  assert.strictEqual(r.completions.length, 1);
+  assert.deepStrictEqual(r.completions[0].champs, {
+    lieu_type: 'magasin', lieu_id: 'F2', article_ref: 'IMP-001',
+    article_nom: 'ACIDE SULFRIQUE', unite: 'kg',
+  });
+});
+
+test('--completer --execute — les champs reviennent, le balance NE BOUGE PAS', async () => {
+  const fb = fauxFirestore(donneesCreux());
+  await lancer(['--completer', '--execute'], fb);
+  const d = fb.collections.stock_balances['magasin_F2_IMP-001'];
+  assert.strictEqual(d.balance, 3406, 'la complétion répare la structure, pas le chiffre');
+  assert.strictEqual(d.lieu_type, 'magasin');
+  assert.strictEqual(d.lieu_id, 'F2');
+  assert.strictEqual(d.article_ref, 'IMP-001');
+  assert.strictEqual(d.unite, 'kg');
+  const audits = Object.values(fb.collections.stock_balance_recles);
+  assert.strictEqual(audits.length, 1);
+  assert.strictEqual(audits[0].issue, 'completion');
+  assert.strictEqual(audits[0].balance_inchangee, 3406);
+});
+
+test('--completer — sans journal d\'origine, REFUS : on ne devine pas un lieu', async () => {
+  const d = donneesCreux();
+  d.stock_balance_reunions = {};
+  const fb = fauxFirestore(d);
+  const r = await lancer(['--completer', '--execute'], fb);
+  assert.strictEqual(r.completions.length, 0);
+  assert.strictEqual(fb.journal.transactions, 0);
+  assert.strictEqual(fb.collections.stock_balances['magasin_F2_IMP-001'].lieu_type, undefined);
+});
+
+test('--completer — la reconstruction ne DÉCOUPE jamais le docId', () => {
+  // Un lieu_id contenant un « _ » rendrait tout découpage faux. La seule
+  // source est le journal : sans lui, refus, jamais une déduction.
+  const r = SCRIPT.reconstruireDepuisJournal({ docId: 'magasin_F_2_IMP-001', balance: 1 }, []);
+  assert.strictEqual(r.ok, false);
+  assert.match(r.motif, /aucun journal/);
+});
+
+test('--completer — fragments d\'origine en désaccord sur l\'unité, REFUS', () => {
+  const r = SCRIPT.reconstruireDepuisJournal({ docId: 'x', balance: 1 }, [
+    { docId: 'j', conserve: 'x', article_id: 'IMP-001', soldes_avant: [
+      { lieu_type: 'magasin', lieu_id: 'F2', unite: 'kg', article_nom: 'A' },
+      { lieu_type: 'magasin', lieu_id: 'F2', unite: 'l', article_nom: 'A' },
+    ] },
+  ]);
+  assert.strictEqual(r.ok, false);
+  assert.match(r.motif, /unité/);
+});
+
+test('--completer — deux journaux pour la même cible, REFUS', () => {
+  const j = { conserve: 'x', article_id: 'IMP-001', soldes_avant: [{ lieu_type: 'm', lieu_id: 'F2', unite: 'kg' }] };
+  const r = SCRIPT.reconstruireDepuisJournal({ docId: 'x', balance: 1 }, [Object.assign({docId:'a'},j), Object.assign({docId:'b'},j)]);
+  assert.strictEqual(r.ok, false);
+  assert.match(r.motif, /lequel décrit/);
 });

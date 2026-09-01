@@ -104,6 +104,7 @@ function parseArgs(argv, env) {
     json: get('--json'),
     backup: get('--backup'),
     only: get('--only'),
+    completer: args.includes('--completer'),
   }
 }
 
@@ -223,6 +224,93 @@ async function deplacerUnCas(c, fb) {
 }
 
 /**
+ * Réunit des fragments vers une cible qui N'EXISTE PAS ENCORE.
+ *
+ * ── LE DÉFAUT QUE CETTE FONCTION FERME (constaté en production) ───────────
+ * `reunirUnCas` incrémente le document conservé (`FieldValue.increment`,
+ * `merge: true`) : c'est juste quand ce document EXISTE — ses champs de
+ * structure sont déjà là. Quand il n'existe pas, `merge` le CRÉE avec les
+ * seules clés écrites : `balance` et `updated_at`. Le document naît alors sans
+ * `lieu_type`, `lieu_id`, `article_ref` ni `unite` : le solde est juste, mais
+ * plus aucun écran ne le voit — il n'appartient à aucun lieu et à aucun article.
+ * C'est arrivé une fois, le 2026-09-01, sur `magasin_F2_IMP-001` (3 406 kg
+ * d'acide sulfurique). Le montant était bon, le document était mort.
+ *
+ * Ici, la cible est donc écrite ENTIÈRE, en valeur ABSOLUE (la somme des
+ * fragments) — pas en incrément : incrémenter un document qui n'existe pas est
+ * précisément ce qui produit le document creux.
+ *
+ * Les champs de structure viennent de `docs[0]` (le plus petit docId, ordre
+ * déterministe) : tous les fragments partagent le même lieu par construction du
+ * plan, et la même unité — le fail-closed sur les unités l'a déjà garanti.
+ *
+ * @param {*} c cas `reunion` dont `cible_existante === false`.
+ * @param {*} [fb] accès Firestore ({db, admin}) — injectable pour les tests.
+ * @returns {Promise<string>} id du document d'audit
+ */
+async function reunirEnCreant(c, fb) {
+  const { db, admin } = fb || firebase()
+  const auditRef = db.collection('stock_balance_recles').doc()
+  const cibleRef = db.collection('stock_balances').doc(String(c.conserve))
+  await db.runTransaction(async (t) => {
+    const refs = c.docs.map((d) => db.collection('stock_balances').doc(String(d.docId)))
+    const snaps = await t.getAll(cibleRef, ...refs)
+    if (snaps[0].exists) {
+      throw new Error(
+        'la cible ' + c.conserve + ' est apparue depuis le rapport : la somme écraserait ' +
+          'un solde existant — relancer --report'
+      )
+    }
+    const avant = []
+    for (let i = 0; i < c.docs.length; i++) {
+      const s = snaps[i + 1]
+      const attendu = c.docs[i]
+      if (!s.exists) throw new Error('le solde ' + attendu.docId + ' a disparu depuis le rapport')
+      const data = s.data()
+      const balance = Number(data.balance) || 0
+      if (Math.round(balance * 100) !== Math.round((Number(attendu.balance) || 0) * 100)) {
+        throw new Error(
+          'le solde ' + attendu.docId + ' a changé depuis le rapport (' +
+            fmt(attendu.balance) + ' -> ' + fmt(balance) + ') — relancer --report'
+        )
+      }
+      avant.push({
+        docId: String(attendu.docId),
+        article_ref: data.article_ref == null ? '' : String(data.article_ref),
+        article_nom: data.article_nom == null ? '' : String(data.article_nom),
+        lieu_type: data.lieu_type == null ? '' : String(data.lieu_type),
+        lieu_id: data.lieu_id == null ? '' : String(data.lieu_id),
+        balance,
+        unite: data.unite == null ? '' : String(data.unite),
+      })
+    }
+    const cible = Object.assign(
+      recleSoldes.documentCible(avant[0], { ficheId: c.article_id, nom: c.article_nom }),
+      { balance: c.total }
+    )
+    // Journal AVANT mutation, dans la MÊME transaction.
+    t.set(auditRef, {
+      at: admin.firestore.FieldValue.serverTimestamp(),
+      source: 'scripts/recle-soldes-sous-fiche.js',
+      issue: c.issue,
+      cible_creee: true,
+      article_id: c.article_id,
+      article_nom: c.article_nom,
+      lieu_type: c.lieu_type,
+      lieu_id: c.lieu_id,
+      ancien_doc_id: avant.map((a) => a.docId).join(' + '),
+      nouveau_doc_id: String(c.conserve),
+      soldes_avant: avant,
+      solde_apres: cible,
+      total_attendu: c.total,
+    })
+    t.set(cibleRef, Object.assign({}, cible, { updated_at: Date.now() }))
+    for (const d of c.docs) t.delete(db.collection('stock_balances').doc(String(d.docId)))
+  })
+  return auditRef.id
+}
+
+/**
  * Exécute le plan, cas par cas, en S'ARRÊTANT à la première anomalie.
  * Les déplacements d'abord (sans risque de somme), les réunions ensuite.
  * @param {Array<*>} cas @param {*} [fb] accès Firestore injectable.
@@ -233,10 +321,18 @@ async function executerPlan(cas, fb) {
   for (const c of cas) {
     const etiquette = (c.article_nom || '(sans fiche)') + ' @ ' + c.lieu_type + '/' + c.lieu_id
     try {
-      const auditId =
-        c.issue === recleSoldes.ISSUE_REUNION
-          ? await reunion.reunirUnCas(c, fb) // délégation : somme + journal
-          : await deplacerUnCas(c, fb)
+      let auditId
+      if (c.issue !== recleSoldes.ISSUE_REUNION) {
+        auditId = await deplacerUnCas(c, fb)
+      } else if (c.cible_existante) {
+        // Délégation : somme, incrément RELATIF et journal `stock_balance_reunions`
+        // sont déjà écrits et testés dans `reunir-soldes-fragmentes`.
+        auditId = await reunion.reunirUnCas(c, fb)
+      } else {
+        // La cible n'existe pas : l'incrémenter la créerait CREUSE (sans lieu ni
+        // article). Elle est écrite entière. Cf. `reunirEnCreant`.
+        auditId = await reunirEnCreant(c, fb)
+      }
       resultats.push({ cas: etiquette, issue: c.issue, ok: true, audit_id: auditId })
       console.log('   ✅ [' + c.issue + '] ' + etiquette + '  → ' + c.conserve + '  (journal ' + auditId + ')')
     } catch (e) {
@@ -249,6 +345,118 @@ async function executerPlan(cas, fb) {
     }
   }
   return resultats
+}
+
+/** Champs de structure sans lesquels un solde n'est visible d'aucun écran. */
+const CHAMPS_STRUCTURE = ['lieu_type', 'lieu_id', 'article_ref', 'unite']
+
+/**
+ * Soldes CREUX : un `balance` juste, mais amputés d'au moins un champ de
+ * structure. Ils n'appartiennent à aucun lieu et à aucun article — invisibles.
+ * @param {Array<*>} soldes @returns {Array<*>}
+ */
+function soldesIncomplets(soldes) {
+  return (Array.isArray(soldes) ? soldes : []).filter((s) => {
+    if (!s || !s.docId) return false
+    return CHAMPS_STRUCTURE.some((k) => s[k] === undefined || s[k] === null || s[k] === '')
+  })
+}
+
+/**
+ * Reconstruit les champs manquants d'un solde creux À PARTIR DU JOURNAL D'AUDIT.
+ *
+ * ⚠️ La reconstruction ne DÉDUIT rien du docId. Découper
+ * `magasin_F2_IMP-001` pour en tirer un lieu et un article fabriquerait une
+ * SIXIÈME règle d'identité, celle-là implicite et fausse dès qu'un identifiant
+ * de lieu contient un « _ ». La seule source légitime est le journal écrit au
+ * moment où le document a été créé : il porte l'état AVANT de chaque fragment.
+ *
+ * FAIL-CLOSED : sans journal, ou si les fragments d'origine ne s'accordent pas
+ * sur le lieu ou l'unité, on REFUSE — on ne devine pas un lieu de stock.
+ *
+ * @param {*} solde Document creux.
+ * @param {Array<*>} journaux Documents `stock_balance_reunions` + `stock_balance_recles`.
+ * @returns {{ok: boolean, motif: string, champs: (Object|null), journal_id: string}}
+ */
+function reconstruireDepuisJournal(solde, journaux) {
+  const cible = String(solde.docId)
+  const j = (Array.isArray(journaux) ? journaux : []).filter(
+    (x) => String(x.conserve || x.nouveau_doc_id || '') === cible
+  )
+  if (!j.length) return { ok: false, motif: 'aucun journal d\'audit ne mentionne ' + cible, champs: null, journal_id: '' }
+  if (j.length > 1) {
+    return {
+      ok: false,
+      motif: j.length + ' journaux mentionnent ' + cible + ' — lequel décrit l\'état d\'origine ?',
+      champs: null,
+      journal_id: '',
+    }
+  }
+  const avant = Array.isArray(j[0].soldes_avant) ? j[0].soldes_avant : []
+  if (!avant.length) return { ok: false, motif: 'le journal de ' + cible + ' ne porte aucun état AVANT', champs: null, journal_id: String(j[0].docId || '') }
+  const lieux = new Set(avant.map((a) => String(a.lieu_type) + '|' + String(a.lieu_id)))
+  if (lieux.size !== 1) {
+    return { ok: false, motif: 'les fragments d\'origine de ' + cible + ' ne s\'accordent pas sur le lieu', champs: null, journal_id: String(j[0].docId || '') }
+  }
+  const unites = new Set(avant.map((a) => (a.unite == null ? '' : String(a.unite).trim().toLowerCase())).filter(Boolean))
+  if (unites.size > 1) {
+    return { ok: false, motif: 'les fragments d\'origine de ' + cible + ' ne s\'accordent pas sur l\'unité (' + Array.from(unites).join(' / ') + ')', champs: null, journal_id: String(j[0].docId || '') }
+  }
+  const ficheId = String(j[0].article_id || '')
+  if (!ficheId) return { ok: false, motif: 'le journal de ' + cible + ' ne nomme pas la fiche', champs: null, journal_id: String(j[0].docId || '') }
+  const ref = avant[0]
+  return {
+    ok: true,
+    motif: '',
+    journal_id: String(j[0].docId || ''),
+    champs: {
+      lieu_type: String(ref.lieu_type),
+      lieu_id: String(ref.lieu_id),
+      article_ref: ficheId,
+      article_nom: String(ref.article_nom || ref.article_ref || j[0].article_nom || ''),
+      unite: Array.from(unites)[0] || String(ref.unite || ''),
+    },
+  }
+}
+
+/**
+ * Écrit les champs reconstruits, sans jamais toucher au `balance`.
+ * @param {*} solde @param {Object} champs @param {string} journalId @param {*} [fb]
+ * @returns {Promise<string>} id du document d'audit
+ */
+async function completerUnSolde(solde, champs, journalId, fb) {
+  const { db, admin } = fb || firebase()
+  const auditRef = db.collection('stock_balance_recles').doc()
+  const ref = db.collection('stock_balances').doc(String(solde.docId))
+  await db.runTransaction(async (t) => {
+    const snap = await t.get(ref)
+    if (!snap.exists) throw new Error('le solde ' + solde.docId + ' a disparu depuis le rapport')
+    const data = snap.data()
+    const balance = Number(data.balance) || 0
+    if (Math.round(balance * 100) !== Math.round((Number(solde.balance) || 0) * 100)) {
+      throw new Error(
+        'le solde ' + solde.docId + ' a changé depuis le rapport (' + fmt(solde.balance) +
+          ' -> ' + fmt(balance) + ') — relancer --report'
+      )
+    }
+    t.set(auditRef, {
+      at: admin.firestore.FieldValue.serverTimestamp(),
+      source: 'scripts/recle-soldes-sous-fiche.js --completer',
+      issue: 'completion',
+      motif:
+        'document créé creux par une réunion vers une cible absente ; champs de ' +
+        'structure reconstruits depuis le journal d\'origine ' + journalId,
+      journal_origine: journalId,
+      nouveau_doc_id: String(solde.docId),
+      champs_avant: data,
+      champs_ajoutes: champs,
+      balance_inchangee: balance,
+    })
+    // `balance` n'est PAS réécrit : la complétion répare la structure, elle ne
+    // touche pas au chiffre — qui est juste, et peut avoir bougé légitimement.
+    t.set(ref, Object.assign({}, champs, { updated_at: Date.now() }), { merge: true })
+  })
+  return auditRef.id
 }
 
 /**
@@ -275,6 +483,58 @@ async function main(argv, fb) {
     lireCollection('stock_balances', fb),
     lireCollection('articles_catalog', fb),
   ])
+
+  // ── MODE COMPLÉTION ─────────────────────────────────────────────────────
+  // Répare les soldes CREUX laissés par une réunion vers une cible absente
+  // (défaut fermé par `reunirEnCreant`). Mode à part : il ne déplace rien et
+  // ne touche jamais à un `balance`.
+  if (opts.completer) {
+    const creux = soldesIncomplets(soldes)
+    const journaux = (await lireCollection('stock_balance_reunions', fb)).concat(
+      await lireCollection('stock_balance_recles', fb)
+    )
+    console.log('')
+    console.log('═══ COMPLÉTION DES SOLDES CREUX ═══')
+    console.log('Documents incomplets : ' + creux.length + ' / ' + soldes.length)
+    const aFaire = []
+    for (const s of creux) {
+      const r = reconstruireDepuisJournal(s, journaux)
+      const manque = CHAMPS_STRUCTURE.filter((k) => s[k] === undefined || s[k] === null || s[k] === '')
+      console.log('')
+      console.log('── ' + s.docId + '   balance=' + fmt(s.balance) + '   manque=[' + manque.join(', ') + ']')
+      if (!r.ok) {
+        console.log('   ⛔ NON RÉPARABLE — ' + r.motif)
+        continue
+      }
+      console.log('   journal d\'origine : ' + r.journal_id)
+      for (const k of Object.keys(r.champs)) console.log('      ' + k + ' = « ' + r.champs[k] + ' »')
+      console.log('   balance INCHANGÉE : ' + fmt(s.balance))
+      aFaire.push({ solde: s, champs: r.champs, journal_id: r.journal_id })
+    }
+    if (opts.mode !== 'execute') {
+      console.log('')
+      console.log('Mode RAPPORT : aucune écriture. Relire ci-dessus, puis --execute --completer.')
+      return { completions: aFaire, resultats: [] }
+    }
+    console.log('')
+    console.log('═══ EXÉCUTION ═══')
+    const resultats = []
+    for (const a of aFaire) {
+      try {
+        const id = await completerUnSolde(a.solde, a.champs, a.journal_id, fb)
+        resultats.push({ docId: a.solde.docId, ok: true, audit_id: id })
+        console.log('   ✅ ' + a.solde.docId + '  (journal ' + id + ')')
+      } catch (e) {
+        resultats.push({ docId: a.solde.docId, ok: false, error: e.message })
+        console.log('   ⛔ ' + a.solde.docId + ' : ' + e.message)
+        console.log('ARRÊT à la première anomalie.')
+        process.exitCode = 1
+        break
+      }
+    }
+    return { completions: aFaire, resultats }
+  }
+
   const plan = recleSoldes.planifierRecle(soldes, articles)
 
   let deplacements = plan.deplacements
@@ -396,4 +656,15 @@ if (require.main === module) {
   })
 }
 
-module.exports = { parseArgs, rendreCas, deplacerUnCas, executerPlan, main }
+module.exports = {
+  parseArgs,
+  rendreCas,
+  deplacerUnCas,
+  reunirEnCreant,
+  executerPlan,
+  soldesIncomplets,
+  reconstruireDepuisJournal,
+  completerUnSolde,
+  CHAMPS_STRUCTURE,
+  main,
+}
