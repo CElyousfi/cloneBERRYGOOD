@@ -400,6 +400,41 @@
       setCreateArticleLineIdx(typeof lineIdx === 'number' ? lineIdx : null);
       setShowCreateArticle(true);
     };
+    // Le magasinier n'a pas le droit de créer une fiche (canCreateArticle
+    // = achats | dg). Depuis le refus fail-closed du résolveur d'identité,
+    // le laisser sans issue reviendrait à bloquer sa saisie sans recours :
+    // il peut donc DEMANDER la création, et le DG crée l'article depuis
+    // son écran Catalogue. Le serveur dédoublonne les demandes.
+    const [demandeArticleEnCours, setDemandeArticleEnCours] = useState('');
+    const [demandesEnvoyees, setDemandesEnvoyees] = useState([]);
+    const demanderCreationArticle = async nom => {
+      const libelle = (nom || '').trim();
+      if (!libelle || demandeArticleEnCours) return;
+      setDemandeArticleEnCours(libelle);
+      try {
+        const r = await fetch('/api/stock?action=request-article-creation', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            libelle,
+            origine: 'bon_consommation'
+          })
+        });
+        const j = await r.json();
+        if (j.success) {
+          setDemandesEnvoyees(prev => prev.includes(libelle) ? prev : [...prev, libelle]);
+          alert(j.message || 'Demande de création envoyée au DG pour « ' + libelle + ' ».');
+        } else {
+          alert(j.error || 'La demande de création n\'a pas pu être envoyée.');
+        }
+      } catch (e) {
+        alert('La demande de création n\'a pas pu être envoyée : ' + e.message);
+      } finally {
+        setDemandeArticleEnCours('');
+      }
+    };
     const handleCreateArticle = async () => {
       if (!newArticle.nom.trim() || !newArticle.reference.trim()) return alert('Le nom et la référence sont requis');
       setCreatingArt(true);
@@ -1650,10 +1685,11 @@
       }, catalogueArticlesAffichage.map(a => /*#__PURE__*/React.createElement("option", {
         key: a.id,
         value: a.nom
-      }, a.nom, " (stock: ", getStock(a.nom), ")"))), canCreateArticle && (() => {
+      }, a.nom, " (stock: ", getStock(a.nom), ")"))), (() => {
         const v = (it.article || '').trim();
         if (!v || catalogueArticles.some(a => a.nom.toLowerCase() === v.toLowerCase())) return null;
-        return /*#__PURE__*/React.createElement("button", {
+        // Achats/DG créent la fiche eux-mêmes ; le magasinier la DEMANDE.
+        if (canCreateArticle) return /*#__PURE__*/React.createElement("button", {
           type: "button",
           onClick: () => openCreateArticle(idx, v),
           title: "Cr\xE9er cet article au catalogue",
@@ -1675,6 +1711,30 @@
             marginRight: 3
           }
         }), "Cr\xE9er \xAB ", v.length > 18 ? v.slice(0, 18) + '…' : v, " \xBB");
+        const envoyee = demandesEnvoyees.includes(v);
+        return /*#__PURE__*/React.createElement("button", {
+          type: "button",
+          disabled: envoyee || demandeArticleEnCours === v,
+          onClick: () => demanderCreationArticle(v),
+          title: envoyee ? 'Demande déjà envoyée au DG' : 'Demander au DG de créer cet article au catalogue',
+          style: {
+            marginTop: 3,
+            padding: '2px 6px',
+            borderRadius: 5,
+            border: '1px dashed #e67e22',
+            background: '#fdf3e7',
+            color: '#e67e22',
+            cursor: envoyee ? 'default' : 'pointer',
+            fontSize: 10,
+            fontWeight: 600,
+            whiteSpace: 'nowrap'
+          }
+        }, /*#__PURE__*/React.createElement("i", {
+          className: 'fa-solid ' + (envoyee ? 'fa-check' : 'fa-paper-plane'),
+          style: {
+            marginRight: 3
+          }
+        }), envoyee ? 'Demande envoyée' : 'Demander la création au DG');
       })()), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("select", {
         value: it.groupe_id ? 'GRP::' + it.groupe_id : it.parcelle,
         onChange: e => selectParcelleForItem(idx, e.target.value),

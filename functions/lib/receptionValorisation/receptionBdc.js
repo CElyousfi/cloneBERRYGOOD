@@ -38,6 +38,18 @@ function lignesDepuisBl(blItems) {
   const list = Array.isArray(blItems) ? blItems : [];
   return list
     .map((it) => ({
+      // ⚠️ `article_ref` porte ici le LIBELLÉ du bon de livraison, PAS une
+      // identité. Ce module est PUR : il n'a pas le catalogue, il ne peut donc
+      // pas résoudre. C'est `create-bl` qui substitue le docId de la fiche
+      // (lib/stock/identiteArticle) AVANT d'écrire le mouvement et d'appliquer
+      // l'impact stock.
+      // Une RÉCEPTION N'EST JAMAIS REFUSÉE pour un article inconnu (décision
+      // d'Omar) : la ligne vient d'un BDC déjà validé par le DG. `create-bl`
+      // ne lui passe que les lignes dont l'identité est résolue ; les autres
+      // sont reçues, écartées du stock et signalées.
+      // Ne jamais écrire ces lignes telles quelles dans `stock_balances` :
+      // c'est ce chemin-là qui rangeait le solde sous le nom, à côté de celui
+      // rangé sous la référence.
       article_ref: (it && it.article) || '',
       article_nom: (it && it.article) || '',
       quantite: parseFloat(String(it && it.quantite_recue)) || 0,

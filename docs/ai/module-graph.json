@@ -14,28 +14,28 @@
           "score": 27
         },
         "testCoverage": {
-          "detail": "73/176 modules avec ≥1 test",
+          "detail": "74/176 modules avec ≥1 test",
           "max": 30,
-          "score": 12
+          "score": 13
         }
       },
-      "total": 64
+      "total": 65
     },
     "heatmap": [
       {
-        "commits": 48,
-        "file": "public/components/CampagneAnalytiqueTab.js"
-      },
-      {
-        "commits": 47,
-        "file": "public/components/CampagneAnalytiqueTab.jsx"
-      },
-      {
-        "commits": 45,
+        "commits": 46,
         "file": "public/app.jsx"
       },
       {
-        "commits": 32,
+        "commits": 43,
+        "file": "public/components/CampagneAnalytiqueTab.js"
+      },
+      {
+        "commits": 42,
+        "file": "public/components/CampagneAnalytiqueTab.jsx"
+      },
+      {
+        "commits": 34,
         "file": "functions/index.js"
       },
       {
@@ -64,11 +64,11 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:e92cdbe066ab5538",
+    "sourceFingerprint": "sha256:a785dd30e2369b35",
     "stats": {
       "backendModules": 99,
       "cloudFunctions": 91,
-      "coverageScore": 41,
+      "coverageScore": 42,
       "domains": 10,
       "extractedComponents": 32,
       "firestoreCollections": 61,
@@ -883,7 +883,7 @@
       },
       "gitCoupling": [
         {
-          "coCommits": 46,
+          "coCommits": 41,
           "domain": null,
           "file": "public/components/CampagneAnalytiqueTab.js",
           "note": "probabilistic",
@@ -967,30 +967,9 @@
           "windowDays": 90
         },
         {
-          "coCommits": 8,
-          "domain": null,
-          "file": "tests/unit/campagneExportUtils.test.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
           "coCommits": 7,
           "domain": null,
           "file": "functions/pointageService.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 7,
-          "domain": null,
-          "file": "public/components/CampagneAnalytiqueTab.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 7,
-          "domain": null,
-          "file": "tests/unit/campagneExportUtils.test.js",
           "note": "probabilistic",
           "windowDays": 90
         },
@@ -1044,6 +1023,20 @@
           "windowDays": 90
         },
         {
+          "coCommits": 4,
+          "domain": null,
+          "file": "tests/unit/campagneExportUtils.test.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 3,
+          "domain": null,
+          "file": "public/components/CampagneAnalytiqueTab.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
           "coCommits": 3,
           "domain": null,
           "file": "scripts/build-frontend.js",
@@ -1061,6 +1054,13 @@
           "coCommits": 3,
           "domain": null,
           "file": "tests/unit/campagneBudgetQuinzaine.test.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 3,
+          "domain": null,
+          "file": "tests/unit/campagneExportUtils.test.js",
           "note": "probabilistic",
           "windowDays": 90
         },
@@ -1127,7 +1127,7 @@
         ]
       },
       "confidence": "medium",
-      "coverageScore": 53,
+      "coverageScore": 60,
       "firestore": {
         "collections": [
           "security_mouvements",
@@ -1187,6 +1187,9 @@
       "label": "Stock & Magasin",
       "tests": {
         "backend": [
+          "functions/lib/stock/__tests__/demandeCreationArticle.test.js",
+          "functions/lib/stock/__tests__/demandesCreationIO.test.js",
+          "functions/lib/stock/__tests__/identiteArticle.test.js",
           "functions/lib/stockCaneva/__tests__/mappings.test.js",
           "functions/lib/stockCaneva/__tests__/parseWorkbook.test.js",
           "functions/lib/stockFiles/__tests__/allowedMime.test.js",

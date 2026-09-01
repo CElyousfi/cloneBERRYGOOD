@@ -289,6 +289,35 @@
                 setCreateArticleLineIdx(typeof lineIdx === 'number' ? lineIdx : null);
                 setShowCreateArticle(true);
             };
+            // Le magasinier n'a pas le droit de créer une fiche (canCreateArticle
+            // = achats | dg). Depuis le refus fail-closed du résolveur d'identité,
+            // le laisser sans issue reviendrait à bloquer sa saisie sans recours :
+            // il peut donc DEMANDER la création, et le DG crée l'article depuis
+            // son écran Catalogue. Le serveur dédoublonne les demandes.
+            const [demandeArticleEnCours, setDemandeArticleEnCours] = useState('');
+            const [demandesEnvoyees, setDemandesEnvoyees] = useState([]);
+            const demanderCreationArticle = async (nom) => {
+                const libelle = (nom || '').trim();
+                if (!libelle || demandeArticleEnCours) return;
+                setDemandeArticleEnCours(libelle);
+                try {
+                    const r = await fetch('/api/stock?action=request-article-creation', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ libelle, origine: 'bon_consommation' }),
+                    });
+                    const j = await r.json();
+                    if (j.success) {
+                        setDemandesEnvoyees(prev => prev.includes(libelle) ? prev : [...prev, libelle]);
+                        alert(j.message || ('Demande de création envoyée au DG pour « ' + libelle + ' ».'));
+                    } else {
+                        alert(j.error || 'La demande de création n\'a pas pu être envoyée.');
+                    }
+                } catch (e) {
+                    alert('La demande de création n\'a pas pu être envoyée : ' + e.message);
+                } finally {
+                    setDemandeArticleEnCours('');
+                }
+            };
             const handleCreateArticle = async () => {
                 if (!newArticle.nom.trim() || !newArticle.reference.trim()) return alert('Le nom et la référence sont requis');
                 setCreatingArt(true);
@@ -899,9 +928,18 @@
                                             <tr key={idx}><td>
                                                 <input list={'stock-list-'+type} value={it.article} onChange={e => { const val = e.target.value; const items = [...form.items]; const next = { ...items[idx], article: val }; /* L'unité par défaut est celle du STOCK, écrite comme sur la fiche (« KG », pas « kg ») : c'est la valeur des options du sélecteur juste à côté. */ const permises = unitesPourArticle(val); const u = permises.length ? permises[0] : catalogUnit(val); if (u) next.unite = u; items[idx] = next; setForm({ ...form, items }); }} placeholder="Article" style={{width:'100%',padding:'4px 8px',borderRadius:6,border:'1px solid #ddd',fontSize:12}} />
                                                 <datalist id={'stock-list-'+type}>{catalogueArticlesAffichage.map(a => <option key={a.id} value={a.nom}>{a.nom} (stock: {getStock(a.nom)})</option>)}</datalist>
-                                                {canCreateArticle && (() => { const v = (it.article || '').trim(); if (!v || catalogueArticles.some(a => a.nom.toLowerCase() === v.toLowerCase())) return null; return (
+                                                {(() => { const v = (it.article || '').trim(); if (!v || catalogueArticles.some(a => a.nom.toLowerCase() === v.toLowerCase())) return null;
+                                                    // Achats/DG créent la fiche eux-mêmes ; le magasinier la DEMANDE.
+                                                    if (canCreateArticle) return (
                                                     <button type="button" onClick={() => openCreateArticle(idx, v)} title="Créer cet article au catalogue" style={{marginTop:3,padding:'2px 6px',borderRadius:5,border:'1px dashed var(--berry)',background:'var(--berry-pale)',color:'var(--berry)',cursor:'pointer',fontSize:10,fontWeight:600,whiteSpace:'nowrap'}}>
                                                         <i className="fa-solid fa-plus" style={{marginRight:3}}></i>Créer « {v.length > 18 ? v.slice(0,18)+'…' : v} »
+                                                    </button>
+                                                    );
+                                                    const envoyee = demandesEnvoyees.includes(v);
+                                                    return (
+                                                    <button type="button" disabled={envoyee || demandeArticleEnCours === v} onClick={() => demanderCreationArticle(v)} title={envoyee ? 'Demande déjà envoyée au DG' : 'Demander au DG de créer cet article au catalogue'} style={{marginTop:3,padding:'2px 6px',borderRadius:5,border:'1px dashed #e67e22',background:'#fdf3e7',color:'#e67e22',cursor: envoyee ? 'default' : 'pointer',fontSize:10,fontWeight:600,whiteSpace:'nowrap'}}>
+                                                        <i className={'fa-solid ' + (envoyee ? 'fa-check' : 'fa-paper-plane')} style={{marginRight:3}}></i>
+                                                        {envoyee ? 'Demande envoyée' : 'Demander la création au DG'}
                                                     </button>
                                                 ); })()}
                                             </td>

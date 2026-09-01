@@ -62,6 +62,9 @@ const bcScanJournal = require("./lib/stock/bcScanJournal");
 const bcDate = require("./lib/stock/bcDate");
 const bcDoublons = require("./lib/stock/bcDoublons");
 const bcSuppression = require("./lib/stock/bcSuppression");
+const identiteArticle = require("./lib/stock/identiteArticle");
+const demandeCreationArticle = require("./lib/stock/demandeCreationArticle");
+const demandesCreationIO = require("./lib/stock/demandesCreationIO");
 const stockFilesRecord = require("./lib/stockFiles/recordSubmission");
 const { createStockFileReminders } = require("./lib/stockFiles/reminders");
 const { STOCK_FILE_ALLOWED_MIME, STOCK_FILE_ALLOWED_FORMATS_LABEL } = require("./lib/stockFiles/allowedMime");
@@ -96,6 +99,130 @@ async function getArticleHistoryIndex(db_firestore) {
   const index = buildArticleHistoryIndex(snap.docs, stockMovementGuard);
   _articleHistoryCache = { index, expiresAt: now + ARTICLE_HISTORY_CACHE_TTL_MS };
   return index;
+}
+
+// --- Index d'IDENTITÉ d'article (résolution libellé -> docId de fiche) ----
+// Même mécanisme de cache mémoire que l'index grand-livre ci-dessus, et même
+// TTL : `create-bl` et `create-movement` doivent résoudre l'identité de chaque
+// ligne AVANT d'écrire un solde, ce qui coûterait sinon une lecture complète
+// d'`articles_catalog` par bon saisi.
+//
+// ⚠️ Le catalogue est lu ENTIER (pas `where active == true`) : suivre une
+// chaîne `merged_into` exige de voir les fiches DÉSACTIVÉES par une fusion.
+// C'est précisément ce chaînage qui fait qu'un article fusionné écrit dans le
+// solde de son MAÎTRE au lieu d'en créer un second à côté.
+//
+// ⚠️ INVALIDATION EXPLICITE (`invalidateIdentiteArticleIndex`), contrairement à
+// l'index grand-livre : depuis le refus fail-closed, un index périmé de 5 min
+// signifie qu'un magasinier qui vient de créer un article au catalogue se voit
+// REFUSER son bon pendant 5 minutes. Le cache est donc purgé à chaque création
+// de fiche, et les appelants réessaient une fois sur un refus.
+const IDENTITE_ARTICLE_CACHE_TTL_MS = 5 * 60 * 1000;
+let _identiteArticleCache = null; // { index, expiresAt }
+
+function invalidateIdentiteArticleIndex() {
+  _identiteArticleCache = null;
+}
+
+async function getIdentiteArticleIndex(db_firestore, opts) {
+  const now = Date.now();
+  if (!(opts && opts.force) && _identiteArticleCache && _identiteArticleCache.expiresAt > now) {
+    return _identiteArticleCache.index;
+  }
+  const snap = await db_firestore.collection("articles_catalog").get();
+  const index = identiteArticle.indexerFiches(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+  _identiteArticleCache = { index, expiresAt: now + IDENTITE_ARTICLE_CACHE_TTL_MS };
+  return index;
+}
+
+/**
+ * Résout les lignes d'un mouvement, FAIL-CLOSED, en rattrapant l'index périmé.
+ * Un premier refus déclenche UNE relecture forcée du catalogue : sans elle, un
+ * article créé il y a moins de 5 minutes ferait échouer le bon alors qu'il
+ * existe. Un vrai article inconnu coûte une lecture de plus, ce qui est le bon
+ * arbitrage : ce chemin est rare et il bloque un utilisateur.
+ */
+async function resoudreLignesStock(db_firestore, lignes) {
+  let index = await getIdentiteArticleIndex(db_firestore);
+  let resolution = identiteArticle.resoudreLignes(lignes, index);
+  if (!resolution.ok) {
+    index = await getIdentiteArticleIndex(db_firestore, { force: true });
+    resolution = identiteArticle.resoudreLignes(lignes, index);
+  }
+  return resolution;
+}
+
+/**
+ * Traite TOUTES les résolutions fautives : demande de création pour ce qui est
+ * introuvable, ALERTE pour ce qui ne se crée pas.
+ *
+ * ⚠️ LA LOGIQUE N'EST PLUS ICI. Elle vit dans `lib/stock/demandesCreationIO`,
+ * avec ses dépendances INJECTÉES, parce qu'une fonction enfermée dans ce
+ * monolithe n'est gardée que par des assertions de SOURCE — et deux mutants
+ * ont prouvé que cela ne suffit pas :
+ *   R2 — un `throw` avant les notifications ;
+ *   R3 — `if (ecarts.length)` devenu `if (ecarts.length && enregistres.length)`,
+ *        qui rendait 0 dispatch sur un article ambigu pendant que le bon
+ *        affirmait « Le DG a été alerté », avec 35 tests de câblage VERTS.
+ * Ne pas réintroduire de logique ici : elle redeviendrait invérifiable.
+ *
+ * @param {*} db_firestore
+ * @param {Array<Object>} resolutions résolutions fautives
+ * @param {*} demandePar {uid, profileId, name}
+ * @param {*} contexte {origine, type, numero}
+ * @returns {Promise<string[]>} libellés RÉELLEMENT enregistrés
+ */
+async function enregistrerDemandesCreation(db_firestore, resolutions, demandePar, contexte) {
+  return demandesCreationIO.enregistrerDemandesCreation(
+    {
+      db: db_firestore,
+      dispatchNotification,
+      increment: (n) => admin.firestore.FieldValue.increment(n),
+      serverTimestamp: () => admin.firestore.FieldValue.serverTimestamp(),
+      logError: (message, e) => console.error(message, e && e.message ? e.message : e),
+    },
+    resolutions,
+    demandePar,
+    contexte
+  );
+}
+
+/**
+ * Clôt les demandes que le catalogue satisfait désormais.
+ *
+ * C'est ce qui remplace un bouton « valider » : le DG crée l'article sur
+ * l'écran Catalogue qu'il a déjà, et la demande se ferme d'elle-même. La règle
+ * de correspondance est `canon`, la MÊME que l'identité — pas une comparaison
+ * de noms réécrite pour l'occasion.
+ *
+ * @param {*} db_firestore
+ * @returns {Promise<number>} nombre de demandes closes
+ */
+async function cloturerDemandesCreationSatisfaites(db_firestore) {
+  const snap = await db_firestore.collection(demandeCreationArticle.COLLECTION)
+    .where("statut", "==", demandeCreationArticle.STATUT_EN_ATTENTE).get();
+  if (snap.empty) return 0;
+  const index = await getIdentiteArticleIndex(db_firestore, { force: true });
+  const aClore = demandeCreationArticle.demandesAClore(
+    snap.docs.map((d) => ({ id: d.id, ...d.data() })),
+    index
+  );
+  if (!aClore.length) return 0;
+  const now = Date.now();
+  // Chunks de 400 (limite Firestore 500/batch, marge de 100).
+  for (let i = 0; i < aClore.length; i += 400) {
+    const batch = db_firestore.batch();
+    for (const c of aClore.slice(i, i + 400)) {
+      batch.update(db_firestore.collection(demandeCreationArticle.COLLECTION).doc(c.id), {
+        statut: demandeCreationArticle.STATUT_CREE,
+        cree_at: now,
+        cree_article_id: c.article_id,
+        updated_at: now,
+      });
+    }
+    await batch.commit();
+  }
+  return aClore.length;
 }
 
 // --- Index facture par article stock (pour get-pmp-detail) ---------------
@@ -7538,8 +7665,7 @@ exports.stockManagement = functions
           return res.status(reliquatRejection.status).json({ success: false, error: reliquatRejection.error });
         }
 
-        const numero = await getNextNumber("delivery_note", "BL");
-        const blItems = items.map((it) => ({
+        const blItemsSaisis = items.map((it) => ({
           article: it.article || "",
           quantite_commandee: parseFloat(it.quantite_commandee) || 0,
           quantite_recue: parseFloat(it.quantite_recue) || 0,
@@ -7550,6 +7676,64 @@ exports.stockManagement = functions
           note: it.note || "",
         }));
 
+        // --- IDENTITÉ D'ARTICLE (lib/stock/identiteArticle) ----------------
+        //
+        // ⚠️ LA RÉCEPTION NE BLOQUE JAMAIS — DÉCISION D'OMAR.
+        // Une ligne de BL vient d'un BDC déjà validé par le DG : le magasinier
+        // n'a pas choisi ce libellé. Le refuser reviendrait à le punir pour une
+        // décision d'achat qui n'est pas la sienne, et à retenir une
+        // marchandise physiquement livrée. Mesuré : 16 lignes de BDC en attente
+        // sont dans ce cas (rouleau adhésif, film, souffleur, substrat) — du
+        // matériel qui n'a pas vocation à être tenu en stock.
+        //
+        // Donc : la réception est ENREGISTRÉE, la ligne non résolue n'entre PAS
+        // en stock (écrire un mouvement sous un libellé non résolu recréerait
+        // le solde orphelin que tout ce chantier supprime), elle est MARQUÉE
+        // sur le BL, et une demande de création part au DG.
+        //
+        // Seules les lignes RÉELLEMENT reçues sont examinées — filtre exact de
+        // `receptionBdc.lignesDepuisBl` : une ligne commandée mais non livrée
+        // n'entre pas en stock, elle n'a donc pas besoin d'identité.
+        const blIndexIdentite = await getIdentiteArticleIndex(db_firestore);
+        const blLignesRecues = blItemsSaisis.filter((it) => it.quantite_recue > 0);
+        const blPartition = demandeCreationArticle.partitionnerLignesReception(
+          blLignesRecues,
+          blIndexIdentite
+        );
+        const blDemandes = blPartition.ecartees.length
+          ? await enregistrerDemandesCreation(
+            db_firestore,
+            blPartition.resolutions,
+            { uid: authUser.uid, profileId: (created_by || {}).profileId || "", name: (created_by || {}).name || "" },
+            { origine: "create-bl", type: "reception", numero: bdc.numero || "" }
+          )
+          : [];
+        // Le BL garde TOUTES ses lignes — c'est le document du fournisseur.
+        // Les écartées portent seulement la raison de leur absence du stock :
+        // sans cette marque, l'écart entre le BL et le mouvement de réception
+        // serait invisible et passerait pour une perte.
+        const blItems = demandeCreationArticle.marquerLignesEcartees(
+          blItemsSaisis,
+          blPartition.ecartees,
+          // Le motif est DÉRIVÉ de l'issue de chaque ligne : « absent du
+          // catalogue » et « en double au catalogue » appellent des gestes
+          // opposés (créer / fusionner). Un motif constant en envoyait un seul,
+          // et se trompait dans l'autre cas.
+          blPartition.resolutions
+        );
+        // Table libellé -> docId de fiche, pour les seules lignes retenues.
+        const blIdentites = new Map(
+          blPartition.retenues.map((it) => [
+            it.article || "",
+            identiteArticle.identiteImpact(it, blIndexIdentite),
+          ])
+        );
+
+        // Numéro alloué SEULEMENT maintenant : tous les refus de cette action
+        // (BDC absent, statut, reliquat) sont derrière nous. Il était pris plus
+        // haut, si bien qu'une réception rejetée consommait un numéro de
+        // séquence pour rien.
+        const numero = await getNextNumber("delivery_note", "BL");
         const blData = {
           numero, bdc_id, bdc_numero: bdc.numero,
           fournisseur_nom: bdc.fournisseur?.nom || "",
@@ -7592,7 +7776,12 @@ exports.stockManagement = functions
           });
         }
 
-        const brNumero = await getNextNumber("stock_reception", "BR");
+        // Numéro BR alloué SEULEMENT s'il y a une réception à créer : sans
+        // ligne retenue (BDC 100 % hors catalogue), il n'y a pas de mouvement,
+        // et prendre un numéro laisserait un trou dans la séquence.
+        const brNumero = blPartition.retenues.length
+          ? await getNextNumber("stock_reception", "BR")
+          : "";
         // Identité créateur du mouvement de réception : userId = uid du TOKEN
         // (anti-spoof), profileId/name conservés. Cf. stockMovementGuard.
         const brCreatedBy = { ...(created_by || {}), userId: authUser.uid };
@@ -7600,9 +7789,13 @@ exports.stockManagement = functions
         // module pur, donc testées. Ici il ne reste que deux gestes : écrire, et
         // appliquer l'impact stock. La source `facture` n'est pas encore branchée
         // sur Firestore (lot suivant) ; le module l'accepte déjà.
-        const brMovement = receptionBdc.construireMouvementReception({
+        const brMovement = brNumero ? receptionBdc.construireMouvementReception({
           numero: brNumero,
-          blItems,
+          // ⚠️ Les lignes RETENUES, jamais `blItems` : une ligne écartée ne
+          // doit produire AUCUN mouvement de stock. La lui passer ici la
+          // ferait entrer en stock sous son libellé — exactement le solde
+          // orphelin que ce lot supprime.
+          blItems: blPartition.retenues,
           bdc,
           magasinDemande: req.body.magasin,
           bdcId: bdc_id,
@@ -7611,9 +7804,18 @@ exports.stockManagement = functions
           refBlFournisseur: numero_bl_fournisseur,
           scanUrl: scan_url,
           createdBy: brCreatedBy,
-        });
-        // null = aucune ligne réellement reçue → aucune réception à créer.
+        }) : null;
+        // null = aucune ligne retenue → aucune réception à créer. Le BL, lui,
+        // existe : la livraison est enregistrée même si rien n'entre en stock.
         if (brMovement) {
+          // `receptionBdc.lignesDepuisBl` recopie le libellé du BL dans
+          // `article_ref` — le module est PUR, il n'a pas le catalogue. On
+          // substitue ici le docId de la fiche, en gardant le libellé dans
+          // `article_nom` (ce que la valorisation lit en priorité).
+          brMovement.items = brMovement.items.map((it) => ({
+            ...it,
+            article_ref: blIdentites.get(it.article_nom || it.article_ref || "") || it.article_ref,
+          }));
           await db_firestore.collection("stock_movements").add(brMovement);
           // Entrée en stock immédiate : c'est ce que l'étape Achats retenait.
           await applyStockImpact(brMovement);
@@ -7631,6 +7833,14 @@ exports.stockManagement = functions
           success: true, id: docRef.id, numero, delivery_status: deliveryStatus,
           reception_numero: brMovement ? brMovement.numero : null,
           valorisation: brMovement ? brMovement.valorisation : null,
+          // Ce qui N'EST PAS entré en stock, et pourquoi. La réception réussit
+          // (statut 200) même si zéro ligne est entrée : sans ces champs, la
+          // réponse serait un succès muet, et l'appelant ne pourrait pas
+          // distinguer « tout est en stock » de « rien ne l'est ».
+          // ⚠️ Aucun écran ne les affiche encore — `public/app.jsx` est gelé.
+          // C'est la limite N4 remontée par la QA, à lever au dégel.
+          lignes_hors_stock: blPartition.ecartees.length,
+          demandes_creation: blDemandes,
         });
       }
 
@@ -7916,8 +8126,23 @@ exports.stockManagement = functions
         // et remontée dans `lignes_non_convertibles`, pour être signalée au
         // magasinier et rester repérable après coup. Aucun facteur n'est
         // deviné : une densité est propre au produit.
-        const bcCatalogSnap = await db_firestore.collection("articles_catalog").where("active", "==", true).get();
-        const bcIndexUnites = uniteConso.indexerArticles(bcCatalogSnap.docs.map((d) => d.data()));
+        //
+        // ⚠️ Le catalogue est désormais lu ENTIER (le `where active == true` a
+        // sauté) pour un SEUL usage supplémentaire : l'index d'IDENTITÉ, qui
+        // doit voir les fiches désactivées par une fusion pour suivre leur
+        // chaîne `merged_into`. Toujours UNE lecture — c'est le branchement le
+        // moins coûteux du dépôt, le catalogue était déjà sur ce chemin
+        // critique. La conversion d'unité, elle, continue de ne voir QUE les
+        // fiches actives : son comportement est strictement inchangé.
+        const bcCatalogSnap = await db_firestore.collection("articles_catalog").get();
+        const bcCatalogDocs = bcCatalogSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        // `active === true` STRICTEMENT, pas `!== false` : la requête d'avant
+        // (`where("active","==",true)`) excluait les documents SANS champ
+        // `active` — les 5 fantômes de production. Le filtre mémoire doit
+        // rendre exactement le même ensemble, sinon ce lot changerait la
+        // conversion d'unité par effet de bord.
+        const bcIndexUnites = uniteConso.indexerArticles(bcCatalogDocs.filter((a) => a.active === true));
+        const bcIndexIdentite = identiteArticle.indexerFiches(bcCatalogDocs);
         const bcConversion = uniteConso.analyserLignes(bcItemsSaisis, bcIndexUnites);
         const bcItems = bcItemsSaisis.map((it, i) => {
           const v = bcConversion.lignes[i];
@@ -7933,6 +8158,44 @@ exports.stockManagement = functions
             conversion_motif: v.convertible ? "" : v.motif,
           });
         });
+        // --- IDENTITÉ D'ARTICLE (lib/stock/identiteArticle) ----------------
+        // Résolution AVANT `getNextNumber` et avant toute écriture : un bon
+        // refusé ne doit consommer ni numéro de séquence, ni document.
+        // FAIL-CLOSED (décision d'Omar) : un article inconnu ou ambigu fait
+        // échouer le bon, en le nommant.
+        //
+        // Le BON, lui, garde le libellé dans `items[].article` : c'est ce qui
+        // est écrit sur le papier. Seules les LIGNES DE STOCK reçoivent
+        // l'identité, via cette table.
+        const bcResolution = identiteArticle.resoudreLignes(
+          bcItems.map((it) => ({ article: it.article })),
+          bcIndexIdentite
+        );
+        if (!bcResolution.ok) {
+          // Même sortie que create-movement : le refus ouvre la demande.
+          const bcDemandes = await enregistrerDemandesCreation(
+            db_firestore,
+            bcResolution.refus.details,
+            { uid: authUser.uid, profileId: (created_by || {}).profileId || "", name: (created_by || {}).name || "" },
+            { origine: "create-bc", type: type || "", numero: "" }
+          );
+          return res.status(400).json({
+            success: false,
+            error: demandeCreationArticle.messageRefus(bcResolution.refus.details, bcDemandes),
+            code: bcResolution.refus.code,
+            demandes_creation: bcDemandes,
+          });
+        }
+        // Table construite par le CONSTRUCTEUR de Map, jamais par mutation :
+        // le cliquet createBcDoublonsWiring interdit toute forme d'écriture
+        // avant le refus de doublon, pour prouver qu'un bon refusé n'écrit
+        // rien. Il lit le source brut et ne peut pas distinguer une mutation
+        // mémoire d'une écriture Firestore — l'affaiblir pour lui plaire serait
+        // exactement le mauvais arbitrage.
+        const bcFicheParArticle = new Map(
+          bcItems.map((it, i) => [it.article || "", bcResolution.lignes[i].article_ref])
+        );
+
         const allParcelles = [...new Set(bcItems.map(i => i.parcelle).filter(Boolean))];
         const allFermes = [...new Set(bcItems.map(i => i.ferme).filter(Boolean))];
         // Date résolue UNE fois : le bon et ses mouvements de stock doivent
@@ -8035,7 +8298,10 @@ exports.stockManagement = functions
           // garde sa quantité et son unité de saisie — comportement d'avant —
           // et porte `conversion_manquante` pour rester repérable.
           const bcsItems = parcItems.map((it) => ({
-            article_ref: it.article || "", article_nom: it.article || "",
+            // IDENTITÉ = docId de fiche (résolu plus haut) ; le libellé saisi
+            // reste dans `article_nom`.
+            article_ref: bcFicheParArticle.get(it.article || "") || "",
+            article_nom: it.article || "",
             quantite: it.conversion_appliquee ? it.quantite_stock : (it.quantite || 0),
             unite: it.conversion_appliquee ? it.unite_stock : (it.unite || "kg"),
             quantite_saisie: it.quantite || 0,
@@ -9161,7 +9427,19 @@ exports.stockManagement = functions
           return res.status(400).json({ success: false, error: "Cette référence est celle d'un article fusionné dans un autre. Choisir une autre référence." });
         }
         await db_firestore.collection("articles_catalog").doc(reference).set({ ...createData, created_at: now });
-        return res.json({ success: true, id: reference });
+        // Purge de l'index d'identité : depuis le refus fail-closed, un index
+        // périmé refuserait pendant 5 minutes un bon portant l'article qu'on
+        // vient précisément de créer pour pouvoir le saisir. C'est la sortie
+        // « Créer cet article au catalogue » — elle doit être immédiate.
+        invalidateIdentiteArticleIndex();
+        // ── LA VALIDATION DU DG, C'EST LA CRÉATION ELLE-MÊME ────────────────
+        // Il n'y a pas de bouton « valider la demande » à cliquer : le DG crée
+        // l'article sur l'écran Catalogue qu'il a déjà, et la demande se ferme
+        // d'elle-même. La correspondance passe par `canon`, la MÊME règle que
+        // l'identité — pas une comparaison de noms réécrite pour l'occasion.
+        const demandesClosesCreate = await cloturerDemandesCreationSatisfaites(db_firestore)
+          .catch((e) => { console.error("clôture demandes création:", e.message); return 0; });
+        return res.json({ success: true, id: reference, demandes_closes: demandesClosesCreate });
       }
 
       if (action === "request-delete-article" && req.method === "POST") {
@@ -9199,6 +9477,10 @@ exports.stockManagement = functions
         const now = Date.now();
         if (approved) {
           await db_firestore.collection("articles_catalog").doc(data.article_id).update({ active: false, updated_at: now });
+          // La fiche n'est plus une identité valide : l'index doit le voir tout
+          // de suite, sinon la saisie continuerait 5 min à écrire du stock sous
+          // un article supprimé.
+          invalidateIdentiteArticleIndex();
           await docRef.update({ status: "approved", validated_by: validated_by || {}, validated_at: now });
         } else {
           await docRef.update({ status: "rejected", validated_by: validated_by || {}, validated_at: now });
@@ -9214,6 +9496,81 @@ exports.stockManagement = functions
         const requests = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         requests.sort((a, b) => (b.requested_at || 0) - (a.requested_at || 0));
         return res.json({ success: true, requests });
+      }
+
+      // ========== DEMANDES DE CRÉATION D'ARTICLE (magasinier → DG) ==========
+      //
+      // Bâti sur le patron d'`article_delete_requests`, MAIS SANS SES DEUX
+      // DÉFAUTS : ses actions `request-*` / `list-*` n'ont AUCUNE garde de rôle
+      // (n'importe quel utilisateur authentifié pouvait demander la suppression
+      // de n'importe quel article, et lire toutes les demandes), et elle
+      // n'envoie AUCUNE notification — ni au valideur, ni au demandeur. Une
+      // demande que personne ne voit n'est pas une demande.
+
+      // --- DEMANDER la création d'un article (saisie explicite) ---
+      if (action === "request-article-creation" && req.method === "POST") {
+        // Rôle résolu SERVEUR, jamais depuis le body. Périmètre = les profils
+        // qui saisissent réellement des bons de stock, plus ceux qui créent
+        // l'article au bout de la chaîne.
+        const demandeRole = await resolveCallerRole(authUser);
+        const DEMANDE_ROLES = ["magasinier", "achats", "dg", "chef_f1", "chef_f5", "chef_avo"];
+        if (!DEMANDE_ROLES.includes(demandeRole)) {
+          return res.status(403).json({ success: false, error: "Profil non autorisé à demander la création d'un article" });
+        }
+        const libelleDemande = String((req.body && req.body.libelle) || "").trim();
+        if (!libelleDemande) return res.status(400).json({ success: false, error: "libelle requis" });
+        // Un article qui EXISTE déjà ne se demande pas : on le dit, plutôt que
+        // d'ouvrir une demande que le DG refermerait aussitôt.
+        const demandeIndex = await getIdentiteArticleIndex(db_firestore, { force: true });
+        const dejaLa = identiteArticle.resoudreIdentite(libelleDemande, demandeIndex);
+        if (dejaLa.issue === identiteArticle.ISSUE_RESOLU) {
+          return res.json({
+            success: true, deja_au_catalogue: true, article_id: dejaLa.ficheId,
+            message: "L'article « " + dejaLa.nom + " » existe déjà au catalogue.",
+          });
+        }
+        const demandesFaites = await enregistrerDemandesCreation(
+          db_firestore,
+          [{ issue: identiteArticle.ISSUE_INTROUVABLE, libelle: libelleDemande }],
+          { uid: authUser.uid, profileId: demandeRole, name: (authUser && (authUser.name || authUser.email)) || "" },
+          { origine: "request-article-creation", type: (req.body && req.body.origine) || "", numero: (req.body && req.body.numero) || "" }
+        );
+        return res.json({
+          success: true,
+          demandes_creation: demandesFaites,
+          message: "Demande de création envoyée au DG pour « " + libelleDemande + " ».",
+        });
+      }
+
+      // --- LISTER les demandes (écran DG / suivi) ---
+      if (action === "list-article-creation-requests") {
+        // Garde de rôle : lecture d'un flux de travail interne.
+        const listeRole = await resolveCallerRole(authUser);
+        const LISTE_ROLES = ["dg", "achats", "finance", "audit_interne", "magasinier"];
+        if (!LISTE_ROLES.includes(listeRole)) {
+          return res.status(403).json({ success: false, error: "Profil non autorisé" });
+        }
+        // Balayage de clôture AVANT de lister : sans lui, une demande satisfaite
+        // par un autre chemin que `create-article` (import CANEVA, fusion)
+        // resterait affichée indéfiniment.
+        const closes = await cloturerDemandesCreationSatisfaites(db_firestore)
+          .catch((e) => { console.error("clôture demandes création:", e.message); return 0; });
+        let demandeQuery = db_firestore.collection(demandeCreationArticle.COLLECTION);
+        if (req.query && req.query.statut) demandeQuery = demandeQuery.where("statut", "==", req.query.statut);
+        const demandeSnap = await demandeQuery.get();
+        const demandes = demandeSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        demandes.sort((a, b) => (b.derniere_demande_at || 0) - (a.derniere_demande_at || 0));
+        return res.json({ success: true, demandes, demandes_closes: closes });
+      }
+
+      // --- CLÔTURER les demandes satisfaites (idempotent, sans effet de bord) ---
+      if (action === "close-article-creation-requests" && req.method === "POST") {
+        const clotureRole = await resolveCallerRole(authUser);
+        if (clotureRole !== "dg" && clotureRole !== "achats") {
+          return res.status(403).json({ success: false, error: "Réservé au DG et aux achats" });
+        }
+        const closes = await cloturerDemandesCreationSatisfaites(db_firestore);
+        return res.json({ success: true, demandes_closes: closes });
       }
 
       // ========== FUSION D'ARTICLES EN DOUBLON ==========
@@ -9568,6 +9925,10 @@ exports.stockManagement = functions
           await batch.commit();
         }
 
+        // Une fusion pose `merged_into` et désactive des fiches : l'index
+        // d'identité change, la résolution doit le voir tout de suite (sans
+        // quoi une saisie continuerait 5 min à viser la fiche absorbée).
+        invalidateIdentiteArticleIndex();
         return res.json({ success: true, counts, audit_id: auditRef.id });
       }
 
@@ -11345,8 +11706,17 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
       // ========== STOCK MOVEMENTS (Gestion de stock) ==========
 
       // --- Helper: update stock_balances atomically ---
-      async function updateStockBalance(lieuType, lieuId, articleRef, articleNom, unite, delta) {
-        const balanceId = `${lieuType}_${lieuId}_${articleRef}`.replace(/\s+/g, '_');
+      //
+      // ⚠️ `ficheId` DOIT être une identité DÉJÀ RÉSOLUE (docId d'une fiche
+      // active du catalogue), jamais un libellé. C'est la règle que ce lot
+      // installe : l'identifiant du document de solde est
+      // `${lieu_type}_${lieu_id}_${docId de fiche}`. Passer un libellé ici
+      // recrée exactement le défaut d'origine — deux documents de solde pour le
+      // même article au même lieu, 47 cas mesurés le 2026-08-31.
+      // La résolution se fait chez l'appelant (`resoudreLignesStock`), qui peut
+      // REFUSER le bon ; ce helper, lui, ne sait pas refuser : il écrit.
+      async function updateStockBalance(lieuType, lieuId, ficheId, articleNom, unite, delta) {
+        const balanceId = identiteArticle.identifiantSoldeCanonique(lieuType, lieuId, ficheId);
         const balRef = db_firestore.collection("stock_balances").doc(balanceId);
         await db_firestore.runTransaction(async (t) => {
           const snap = await t.get(balRef);
@@ -11354,7 +11724,9 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
           const newBalance = Math.round((current + delta) * 100) / 100;
           t.set(balRef, {
             lieu_type: lieuType, lieu_id: lieuId,
-            article_ref: articleRef, article_nom: articleNom,
+            // `article_ref` porte l'IDENTITÉ (docId de fiche) ; `article_nom`
+            // garde le libellé saisi, qui reste ce que le magasinier lit.
+            article_ref: ficheId, article_nom: articleNom,
             unite: unite || "kg", balance: newBalance,
             updated_at: Date.now()
           }, { merge: true });
@@ -11362,10 +11734,29 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
       }
 
       // --- Helper: apply stock impact for a validated movement ---
+      //
+      // Le repli `item.article_ref || item.article` A DISPARU : il prenait un
+      // LIBELLÉ pour une identité, et c'est lui qui rangeait le solde dans un
+      // second document à côté de celui de la fiche. La règle est désormais
+      // `identiteArticle.identiteImpact`, module PUR et testé.
+      //
+      // ⚠️ CE QUE CETTE SYMÉTRIE GARANTIT — ET CE QU'ELLE NE GARANTIT PAS.
+      // `apply` et `reverse` partagent la MÊME fonction : pour un mouvement
+      // donné, ils calculent forcément la même clé. Mais cela ne vaut que si
+      // les deux passent par ce code. Ce n'est PAS le cas des 4 355 mouvements
+      // ANTÉRIEURS à ce lot : leur aller a débité la clé BRUTE (le libellé),
+      // et leur annulation, elle, visera la clé RÉSOLUE. Le retour tombe donc
+      // dans un autre document que l'aller (vérifié sur BCG-5620).
+      // Ce n'est pas une perte — la SOMME des deux fragments reste juste, et la
+      // re-clé des soldes prévue au déploiement les réunit. Mais tant que cette
+      // re-clé n'a pas eu lieu, ne pas lire ce helper comme « l'annulation vise
+      // exactement le document que l'application a touché » : c'est vrai des
+      // mouvements créés APRÈS ce lot, faux des précédents.
       async function applyStockImpact(movement) {
         const promises = [];
+        const identiteIndex = await getIdentiteArticleIndex(db_firestore);
         for (const item of (movement.items || [])) {
-          const ref = item.article_ref || item.article || "";
+          const ref = identiteArticle.identiteImpact(item, identiteIndex);
           const nom = item.article_nom || item.article || "";
           const qty = parseFloat(item.quantite) || 0;
           const unite = item.unite || "kg";
@@ -11388,8 +11779,12 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
       // matérialisé (status === valide_chef), sinon double-comptage.
       async function reverseStockImpact(movement) {
         const promises = [];
+        // MÊME résolution que applyStockImpact, par la MÊME fonction pure —
+        // avec la réserve documentée là-bas sur les mouvements antérieurs au
+        // lot, dont l'aller avait débité la clé brute.
+        const identiteIndex = await getIdentiteArticleIndex(db_firestore);
         for (const item of (movement.items || [])) {
-          const ref = item.article_ref || item.article || "";
+          const ref = identiteArticle.identiteImpact(item, identiteIndex);
           const nom = item.article_nom || item.article || "";
           const qty = parseFloat(item.quantite) || 0;
           const unite = item.unite || "kg";
@@ -11502,14 +11897,24 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
         }
         // Rebuild ALL stock_balances from inventory baseline + full movement ledger
         async function rebuildBalances(balancesInit) {
-          const bal = new Map(); // balanceId -> {fields, balance}
-          const keyOf = (lt, li, ref) => `${lt}_${li}_${ref}`.replace(/\s+/g, "_");
+          // ⚠️ GÉNÉRATION ET PURGE PARTAGENT LA MÊME RÈGLE DE CLÉ.
+          // Ce helper portait sa PROPRE copie de la formule (`keyOf`) et
+          // rangeait les soldes sous le LIBELLÉ des mouvements, tandis que la
+          // purge supprimait « tout ce qui n'a pas été régénéré ». Un import
+          // effaçait donc les soldes rangés sous la référence de la fiche, que
+          // la saisie courante recréait aussitôt à côté : c'est l'aggravant qui
+          // faisait remonter le compte de fragments après chaque import.
+          // Désormais la clé vient d'`identifiantSoldeCanonique`, alimentée par
+          // l'identité RÉSOLUE, et la purge est dérivée des clés réellement
+          // générées (`docsAPurger`) — la divergence n'est plus exprimable.
+          //
+          // Les 4 516 mouvements gardent leur libellé (décision d'Omar) : c'est
+          // ici, à la lecture, qu'il devient une identité.
+          const identiteIndex = await getIdentiteArticleIndex(db_firestore, { force: true });
+          /** @type {Array<Object>} */
+          const deltas = [];
           const add = (lt, li, ref, nom, unite, delta) => {
-            const k = keyOf(lt, li, ref);
-            const cur = bal.get(k) || { lieu_type: lt, lieu_id: li, article_ref: ref, article_nom: nom, unite: unite || "kg", balance: 0 };
-            cur.balance = Math.round((cur.balance + delta) * 100) / 100;
-            if (nom) cur.article_nom = nom;
-            bal.set(k, cur);
+            deltas.push({ lieu_type: lt, lieu_id: li, article_ref: ref, article_nom: nom, unite, delta });
           };
           for (const b of balancesInit) add(b.lieu_type, b.lieu_id, b.article_ref, b.article_nom, b.unite, b.balance);
           const allMovSnap = await db_firestore.collection("stock_movements").get();
@@ -11522,16 +11927,26 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
             if (!isImpactApplied(mData)) continue;
             for (const d of stockCaneva.movementDelta(mData)) add(d.lieu_type, d.lieu_id, d.article_ref, d.article_nom, d.unite, d.delta);
           }
+          // Une SEULE agrégation, une SEULE règle de clé (identité résolue).
+          const { soldes, non_resolus } = identiteArticle.agregerSoldes(deltas, identiteIndex);
+          if (non_resolus.length) {
+            // Repli assumé (cf. identiteArticle.agregerSoldes) : un libellé
+            // historique orphelin garde sa clé brute et survit donc à la purge.
+            // Tracé, parce qu'un solde qu'aucune fiche ne réclame est du stock
+            // que plus personne ne voit.
+            console.warn("rebuildBalances : libellés sans fiche au catalogue —", non_resolus.join(", "));
+          }
           // Write computed balances; delete stale ones absent from the rebuild
           const existingBalSnap = await db_firestore.collection("stock_balances").get();
           const ops = [];
-          const seen = new Set();
-          for (const [k, v] of bal) {
-            seen.add(k);
+          for (const [k, v] of soldes) {
             ops.push({ type: "set", ref: db_firestore.collection("stock_balances").doc(k), data: { ...v, updated_at: Date.now() } });
           }
+          // La purge est DÉRIVÉE des clés générées, jamais recalculée : un
+          // import ne peut plus supprimer un solde qu'il sait régénérer.
+          const aPurger = new Set(identiteArticle.docsAPurger(soldes, existingBalSnap.docs.map((d) => d.id)));
           for (const doc of existingBalSnap.docs) {
-            if (!seen.has(doc.id)) ops.push({ type: "delete", ref: doc.ref });
+            if (aPurger.has(doc.id)) ops.push({ type: "delete", ref: doc.ref });
           }
           await commitOps(ops);
         }
@@ -11763,7 +12178,7 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
         // Une évolution Réception/Sortie qui enverrait une parcelle par item se
         // croirait fonctionnelle en silence : la propager explicitement ici
         // AVANT de s'appuyer dessus en aval.
-        const movItems = items.map((it) => ({
+        const movItemsSaisis = items.map((it) => ({
           article_ref: it.article_ref || it.article || "",
           article_nom: it.article_nom || it.article || "",
           quantite: parseFloat(it.quantite) || 0,
@@ -11775,6 +12190,43 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
           // divergence silencieuse que ce lot existe pour rendre impossible.
           unite: it.unite || "",
         }));
+
+        // --- IDENTITÉ D'ARTICLE (lib/stock/identiteArticle) ----------------
+        // Le front envoie un LIBELLÉ dans `article_ref` (transfert et sortie le
+        // remplissent explicitement avec le nom : le champ « référence » existe
+        // et il est faux). On le RÉSOUT ici, une fois, vers le docId de la
+        // fiche active — avant la garde de stock, avant la valorisation, avant
+        // toute écriture.
+        //
+        // FAIL-CLOSED (décision d'Omar) : un article inconnu ou ambigu fait
+        // échouer le bon, en le nommant. Rien n'entre en stock sous une
+        // identité inventée.
+        const movResolution = await resoudreLignesStock(db_firestore, movItemsSaisis);
+        if (!movResolution.ok) {
+          // DÉCISION D'OMAR : « on demande au magasinier de demander la
+          // création de l'article et de la soumettre au DG ». Le refus n'est
+          // donc pas une impasse — il OUVRE la demande lui-même. Ces écrans
+          // (transfert, sortie) n'ont pas le bouton « Créer cet article », et
+          // `public/app.jsx` est gelé : la sortie ne peut être que serveur.
+          const movDemandes = await enregistrerDemandesCreation(
+            db_firestore,
+            movResolution.refus.details,
+            { uid: authUser.uid, profileId: (created_by || {}).profileId || "", name: (created_by || {}).name || "" },
+            { origine: "create-movement", type, numero: "" }
+          );
+          return res.status(400).json({
+            success: false,
+            // Le message part tel quel dans l'`alert()` existant du front :
+            // aucune modification de `public/app.jsx` n'est nécessaire.
+            error: demandeCreationArticle.messageRefus(movResolution.refus.details, movDemandes),
+            code: movResolution.refus.code,
+            demandes_creation: movDemandes,
+          });
+        }
+        // `article_nom` conserve le libellé saisi : la valorisation
+        // (prixLigne.valoriserLignes) le lit en priorité, elle voit donc
+        // toujours le même article qu'avant ce lot.
+        const movItems = movResolution.lignes;
 
         if (type === "reception") {
           const negativeItem = movItems.find((it) => it.quantite < 0);
@@ -11793,17 +12245,22 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
         // pour ces types ET quand un lieu de départ est défini.
         const STOCK_GUARDED_TYPES = ["sortie", "transfert"];
         if (STOCK_GUARDED_TYPES.includes(type) && lieu_source && lieu_source.id) {
-          const refs = [...new Set(movItems.map((it) => it.article_ref).filter(Boolean))];
+          //
+          // ⚠️ POINT LE PLUS VICIEUX DU CHANTIER. Cette garde reconstruisait
+          // l'identifiant du solde AVEC SA PROPRE COPIE de la formule, à partir
+          // du libellé. Si elle lit sous une clé que l'écriture n'emploie plus,
+          // elle interroge un seau VIDE : elle laisse alors sortir du stock qui
+          // n'existe pas, sans la moindre erreur. La clé de LECTURE est donc
+          // dérivée de la MÊME fonction que la clé d'ÉCRITURE
+          // (`identifiantSoldeCanonique`), à partir des lignes DÉJÀ RÉSOLUES.
+          const gardeCles = identiteArticle.identifiantsGardeStock(lieu_source, movItems);
           const availableByRef = {};
           const balSnaps = await Promise.all(
-            refs.map((ref) => {
-              const balanceId = `${lieu_source.type}_${lieu_source.id}_${ref}`.replace(/\s+/g, "_");
-              return db_firestore.collection("stock_balances").doc(balanceId).get();
-            })
+            gardeCles.map((c) => db_firestore.collection("stock_balances").doc(c.balanceId).get())
           );
-          refs.forEach((ref, idx) => {
+          gardeCles.forEach((c, idx) => {
             const snap = balSnaps[idx];
-            availableByRef[ref] = snap.exists ? (snap.data().balance || 0) : 0;
+            availableByRef[c.ficheId] = snap.exists ? (snap.data().balance || 0) : 0;
           });
           const guardResult = checkStockAvailability({ type, items: movItems }, availableByRef);
           if (!guardResult.allowed) {
@@ -15573,6 +16030,20 @@ exports.notifications = functions
             .where("payment_status", "==", "validee_finance").get()
             .then(snap => {
               if (snap.size > 0) categories.validations.push({ key: "factures_dg", label: "Factures à valider", count: snap.size, icon: "fa-file-invoice-dollar", color: "#e74c3c", tab: "dg_validations" });
+            })
+        );
+        // Articles réclamés par les magasiniers, que seul le DG peut créer.
+        // Sans ce compteur, la demande n'existerait que dans une collection que
+        // personne n'ouvre : un refus fail-closed sans destinataire visible
+        // n'est pas un flux de travail, c'est une impasse.
+        // `tab` pointe vers l'écran Catalogue EXISTANT — celui qui porte déjà
+        // le bouton « Nouvel article » (canCreateArticle = achats | dg). Rien à
+        // ajouter côté front : l'agrégateur est générique.
+        promises.push(
+          db_firestore.collection(demandeCreationArticle.COLLECTION)
+            .where("statut", "==", demandeCreationArticle.STATUT_EN_ATTENTE).get()
+            .then(snap => {
+              if (snap.size > 0) categories.validations.push({ key: "articles_a_creer", label: "Articles à créer (demandes magasinier)", count: snap.size, icon: "fa-box-open", color: "#e67e22", tab: "achats_catalogue" });
             })
         );
       }

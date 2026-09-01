@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:2e962d13768cac5a",
+    "sourceFingerprint": "sha256:249b0749a6d7d998",
     "stats": {
-      "targetFiles": 286,
-      "targetFilesWithDirectTests": 169,
-      "targetFilesWithTransitiveTests": 191,
-      "testFilesScanned": 262
+      "targetFiles": 289,
+      "targetFilesWithDirectTests": 172,
+      "targetFilesWithTransitiveTests": 194,
+      "testFilesScanned": 266
     }
   },
   "index": {
@@ -1278,6 +1278,9 @@
       "transitiveTests": [
         "functions/lib/receptionValorisation/__tests__/prixLigne.test.js",
         "functions/lib/receptionValorisation/__tests__/receptionBdc.test.js",
+        "functions/lib/stock/__tests__/demandeCreationArticle.test.js",
+        "functions/lib/stock/__tests__/demandesCreationIO.test.js",
+        "functions/lib/stock/__tests__/identiteArticle.test.js",
         "tests/unit/articleHistoryIndex.test.js",
         "tests/unit/articleHistoryKeyReconciliation.test.js",
         "tests/unit/articleKey.test.js",
@@ -1325,6 +1328,35 @@
       ],
       "transitiveTests": [
         "tests/unit/bcSuppression.test.js"
+      ]
+    },
+    "functions/lib/stock/demandeCreationArticle.js": {
+      "directTests": [
+        "functions/lib/stock/__tests__/demandeCreationArticle.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/stock/__tests__/demandeCreationArticle.test.js",
+        "functions/lib/stock/__tests__/demandesCreationIO.test.js"
+      ]
+    },
+    "functions/lib/stock/demandesCreationIO.js": {
+      "directTests": [
+        "functions/lib/stock/__tests__/demandesCreationIO.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/stock/__tests__/demandesCreationIO.test.js"
+      ]
+    },
+    "functions/lib/stock/identiteArticle.js": {
+      "directTests": [
+        "functions/lib/stock/__tests__/demandeCreationArticle.test.js",
+        "functions/lib/stock/__tests__/demandesCreationIO.test.js",
+        "functions/lib/stock/__tests__/identiteArticle.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/stock/__tests__/demandeCreationArticle.test.js",
+        "functions/lib/stock/__tests__/demandesCreationIO.test.js",
+        "functions/lib/stock/__tests__/identiteArticle.test.js"
       ]
     },
     "functions/lib/stock/locationsConfig.js": {
@@ -1485,6 +1517,7 @@
     },
     "functions/lib/stockMerge/articleMerge.js": {
       "directTests": [
+        "functions/lib/stock/__tests__/identiteArticle.test.js",
         "tests/unit/articleCatalogWiring.test.js",
         "tests/unit/articleCategorieCanonique.test.js",
         "tests/unit/articleMasterPick.test.js",
@@ -1496,6 +1529,7 @@
         "functions/lib/consoBons/__tests__/bonsToConsoRows.test.js",
         "functions/lib/receptionValorisation/__tests__/prixLigne.test.js",
         "functions/lib/receptionValorisation/__tests__/receptionBdc.test.js",
+        "functions/lib/stock/__tests__/identiteArticle.test.js",
         "functions/lib/stockRoles/__tests__/articleClassement.test.js",
         "functions/lib/stockRoles/__tests__/articleConversionPermissions.test.js",
         "tests/unit/articleCatalogMergeButton.test.js",
@@ -1521,6 +1555,7 @@
         "functions/lib/consoBons/__tests__/bonsToConsoRows.test.js",
         "functions/lib/receptionValorisation/__tests__/prixLigne.test.js",
         "functions/lib/receptionValorisation/__tests__/receptionBdc.test.js",
+        "functions/lib/stock/__tests__/identiteArticle.test.js",
         "functions/lib/stockRoles/__tests__/articleClassement.test.js",
         "functions/lib/stockRoles/__tests__/articleConversionPermissions.test.js",
         "tests/unit/articleCatalogMergeButton.test.js",
