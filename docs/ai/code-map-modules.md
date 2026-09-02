@@ -1,5 +1,5 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:5fb54f7c2aebfa2a -->
+<!-- sourceFingerprint: sha256:d0acbd91dfdcb266 -->
 # Code Map — Modules lib (226)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
@@ -150,7 +150,7 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/stock/bcScan.js | — | SIMILARITY_THRESHOLD, INCLUSION_THRESHOLD, AMBIGUITY_MARGIN, VARIETY_ALIASES, CULTURE_TOKENS, VARIETE_EST_CULTURE, extractCulture, ALLOWED_SCAN_MIME, EXT_TO_MIME, resolveScanMedia, normalizeLabel, toNumber, buildBcScanPrompt, sanitizeVocabList, buildVocabulaireSection, selectVocabArticles, VOCAB_MAX_ENTRIES, parseAiJson, flattenBcScan, diceCoefficient, matchArticle, extractSecteurs, extractVariete, aliasMatchParcelle, parcelleAliasDocId, nextParcelleAliasCount, matchParcelle |
 | functions/lib/stock/bcScanJournal.js | — | STATUTS, MAX_LIGNES, PALMARES_TAILLE, PERIODES_MAX, normalizeJournalLigne, buildJournalDocs, computeScanPrecision, periodeDe, moisDe, periodesEntre, periodesCouvertes |
 | functions/lib/stock/bcSuppression.js | — | HISTORY_ACTION, MOTIF_MIN, validerSuppression, trierMouvements, buildSuppressionUpdate |
-| functions/lib/stock/correctionUniteAcide.js | — | FACTEUR_KG_PAR_LITRE, UNITE_CIBLE, litresEnKilos, verifierRenommage, planifierCorrection |
+| functions/lib/stock/correctionUniteStock.js | — | CONVERSIONS_ARBITREES, conversionArbitree, UNITE_CIBLE, litresEnKilos, verifierRenommage, planifierCorrection |
 | functions/lib/stock/demandeCreationArticle.js | — | COLLECTION, STATUT_EN_ATTENTE, STATUT_CREE, identifiantDemande, libellesADemander, ecartsASignaler, messageSignalement, motifEcart, construireDemande, messageRefus, partitionnerLignesReception, marquerLignesEcartees, demandesAClore, messageWhatsApp |
 | functions/lib/stock/demandesCreationIO.js | — | enregistrerDemandesCreation |
 | functions/lib/stock/identiteArticle.js | — | ISSUE_RESOLU, ISSUE_INTROUVABLE, ISSUE_AMBIGU, MAX_SAUTS_FUSION, indexerFiches, resoudreIdentite, libelleDeLigne, resoudreLignes, identiteImpact, identifiantSoldeCanonique, identifiantsGardeStock, agregerSoldes, docsAPurger |

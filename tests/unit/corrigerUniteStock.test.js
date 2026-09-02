@@ -1,7 +1,7 @@
 'use strict';
 
 /*
- * scripts/corriger-unite-acide.js — LES TROIS GESTES, ET LE JOURNAL.
+ * scripts/corriger-unite-stock.js — LES TROIS GESTES, ET LE JOURNAL.
  *
  * MUTATIONS QUI DOIVENT FAIRE ROUGIR CE FICHIER :
  *  - le mode rapport écrit en base ;
@@ -20,7 +20,7 @@ const path = require('node:path');
 const os = require('node:os');
 const fs = require('node:fs');
 
-const SCRIPT = require('../../scripts/corriger-unite-acide');
+const SCRIPT = require('../../scripts/corriger-unite-stock');
 
 const HORODATAGE = Symbol('serverTimestamp');
 
@@ -83,6 +83,8 @@ function donnees() {
 
 const SILENCE = () => {};
 
+const CIBLE_ACIDE = ['--fiche', 'IMP-001', '--lieu', 'magasin/F2'];
+
 async function lancer(argv, fb, opts) {
   const vrai = console.log;
   const vraiErr = console.error;
@@ -114,12 +116,40 @@ async function lancer(argv, fb, opts) {
 
 // ── DOUBLE VERROU ───────────────────────────────────────────────────────────
 
-test('parseArgs — rapport par défaut, cibles par défaut', () => {
+test('parseArgs — rapport par défaut, AUCUNE cible par défaut', () => {
   const o = SCRIPT.parseArgs(['node', 's'], {});
   assert.strictEqual(o.mode, 'report');
-  assert.strictEqual(o.ficheId, 'IMP-001');
-  assert.strictEqual(o.lieuType, 'magasin');
-  assert.strictEqual(o.lieuId, 'F2');
+  assert.strictEqual(o.ficheId, '', 'un article visé par défaut est un piège');
+  assert.strictEqual(o.lieuType, '');
+  assert.strictEqual(o.lieuId, '');
+});
+
+test('sans --fiche/--lieu : REFUS, aucune lecture, aucune écriture, sortie 2', async () => {
+  const fb = fauxFirestore(donnees());
+  const r = await lancer(['--execute'], fb);
+  assert.strictEqual(r.exitCode, 2);
+  assert.strictEqual(fb.journal.transactions, 0);
+  assert.strictEqual(fb.collections.articles_catalog['IMP-001'].unite, 'L');
+});
+
+test('le journal porte la décision de CET article, pas une phrase figée', async () => {
+  const d = donnees();
+  d.articles_catalog['Ref-Eng0056'] = { nom: 'Rhizo amine', unite: 'KG', active: true };
+  d.stock_balances.station_Station_F5_Ref_Eng0056 = { lieu_type: 'station', lieu_id: 'Station F5', article_ref: 'Ref-Eng0056', article_nom: 'Rhizo amine', balance: -25.1, unite: 'l' };
+  const fb = fauxFirestore(d);
+  await lancer(['--fiche', 'Ref-Eng0056', '--lieu', 'station/Station F5', '--execute'], fb);
+  const a = Object.values(fb.collections.stock_unite_corrections)[0];
+  assert.match(a.decision, /20 kg = 18 L/);
+  assert.strictEqual(Math.round(a.facteur_kg_par_litre * 1e6) / 1e6, 1.111111);
+  assert.strictEqual(fb.collections.stock_balances.station_Station_F5_Ref_Eng0056.balance, -27.89);
+  assert.strictEqual(fb.collections.stock_balances.station_Station_F5_Ref_Eng0056.unite, 'kg');
+});
+
+test('une fiche hors table arbitrée — REFUS, aucune écriture', async () => {
+  const fb = fauxFirestore(donnees());
+  const r = await lancer(['--fiche', 'IMP-005', '--lieu', 'magasin/F2', '--execute'], fb);
+  assert.strictEqual(r.plan.ok, false);
+  assert.strictEqual(fb.journal.transactions, 0);
 });
 
 test('parseArgs — --execute sans la variable = REFUS', () => {
@@ -136,7 +166,7 @@ test('parseArgs — une valeur approchante ne déverrouille pas', () => {
 
 test('--execute sans la variable : AUCUNE écriture, sortie 2', async () => {
   const fb = fauxFirestore(donnees());
-  const r = await lancer(['--execute'], fb, { sansVerrou: true });
+  const r = await lancer(CIBLE_ACIDE.concat(['--execute']), fb, { sansVerrou: true });
   assert.strictEqual(r.exitCode, 2);
   assert.strictEqual(fb.journal.transactions, 0);
   assert.strictEqual(fb.collections.articles_catalog['IMP-001'].unite, 'L');
@@ -146,7 +176,7 @@ test('--execute sans la variable : AUCUNE écriture, sortie 2', async () => {
 
 test('rapport — aucune transaction, aucune écriture', async () => {
   const fb = fauxFirestore(donnees());
-  const r = await lancer([], fb);
+  const r = await lancer(CIBLE_ACIDE, fb);
   assert.strictEqual(fb.journal.transactions, 0);
   assert.strictEqual(fb.journal.writes.length, 0);
   assert.strictEqual(r.plan.ok, true, (r.plan.refus || []).join(' | '));
@@ -155,7 +185,7 @@ test('rapport — aucune transaction, aucune écriture', async () => {
 
 test('rapport — le nom cible est déduit en retirant le suffixe d\'unité', async () => {
   const fb = fauxFirestore(donnees());
-  const r = await lancer([], fb);
+  const r = await lancer(CIBLE_ACIDE, fb);
   assert.strictEqual(r.plan.fiche.nom_apres, 'ACIDE SULFRIQUE');
 });
 
@@ -163,7 +193,7 @@ test('rapport — le nom cible est déduit en retirant le suffixe d\'unité', as
 
 test('exécution — fiche au kg, nom sans suffixe', async () => {
   const fb = fauxFirestore(donnees());
-  await lancer(['--execute'], fb);
+  await lancer(CIBLE_ACIDE.concat(['--execute']), fb);
   const f = fb.collections.articles_catalog['IMP-001'];
   assert.strictEqual(f.unite, 'kg');
   assert.strictEqual(f.nom, 'ACIDE SULFRIQUE');
@@ -172,7 +202,7 @@ test('exécution — fiche au kg, nom sans suffixe', async () => {
 
 test('exécution — le fragment litres devient -14 kg, le solde kg est INTACT', async () => {
   const fb = fauxFirestore(donnees());
-  await lancer(['--execute'], fb);
+  await lancer(CIBLE_ACIDE.concat(['--execute']), fb);
   const l = fb.collections.stock_balances['magasin_F2_ACIDE_SULFRIQUE_(L)'];
   assert.strictEqual(l.balance, -14);
   assert.strictEqual(l.unite, 'kg');
@@ -183,7 +213,7 @@ test('exécution — le fragment litres devient -14 kg, le solde kg est INTACT',
 
 test('exécution — somme des deux soldes du lieu = 3 406 kg', async () => {
   const fb = fauxFirestore(donnees());
-  await lancer(['--execute'], fb);
+  await lancer(CIBLE_ACIDE.concat(['--execute']), fb);
   const b = fb.collections.stock_balances;
   const total = b.magasin_F2_ACIDE_SULFRIQUE.balance + b['magasin_F2_ACIDE_SULFRIQUE_(L)'].balance;
   assert.strictEqual(total, 3406);
@@ -191,7 +221,7 @@ test('exécution — somme des deux soldes du lieu = 3 406 kg', async () => {
 
 test('exécution — les autres lieux et les autres articles ne bougent pas', async () => {
   const fb = fauxFirestore(donnees());
-  await lancer(['--execute'], fb);
+  await lancer(CIBLE_ACIDE.concat(['--execute']), fb);
   assert.strictEqual(fb.collections.stock_balances['magasin_F5_ACIDE_SULFRIQUE_(L)'].balance, -4);
   assert.strictEqual(fb.collections.stock_balances['magasin_F5_ACIDE_SULFRIQUE_(L)'].unite, 'l');
   assert.strictEqual(fb.collections.stock_balances.magasin_F2_AZO_PRO_31.balance, 100);
@@ -199,7 +229,7 @@ test('exécution — les autres lieux et les autres articles ne bougent pas', as
 
 test('exécution — UNE seule transaction : fiche et soldes, tout ou rien', async () => {
   const fb = fauxFirestore(donnees());
-  await lancer(['--execute'], fb);
+  await lancer(CIBLE_ACIDE.concat(['--execute']), fb);
   assert.strictEqual(fb.journal.transactions, 1);
   const cibles = fb.journal.ordre;
   assert.ok(cibles.includes('set:articles_catalog:IMP-001'));
@@ -208,7 +238,7 @@ test('exécution — UNE seule transaction : fiche et soldes, tout ou rien', asy
 
 test('exécution — journal écrit AVANT les mutations, avec l\'état AVANT et la décision', async () => {
   const fb = fauxFirestore(donnees());
-  await lancer(['--execute'], fb);
+  await lancer(CIBLE_ACIDE.concat(['--execute']), fb);
   const audits = Object.values(fb.collections.stock_unite_corrections);
   assert.strictEqual(audits.length, 1);
   const a = audits[0];
@@ -263,7 +293,7 @@ test('renommage ambigu — REFUS, aucune écriture, sortie 1', async () => {
   const d = donnees();
   d.articles_catalog['IMP-998'] = { nom: 'Acide  Sulfrique', unite: 'kg', active: true };
   const fb = fauxFirestore(d);
-  const r = await lancer(['--execute'], fb);
+  const r = await lancer(CIBLE_ACIDE.concat(['--execute']), fb);
   assert.strictEqual(r.plan.ok, false);
   assert.strictEqual(fb.journal.transactions, 0);
   assert.strictEqual(fb.collections.articles_catalog['IMP-001'].unite, 'L');
@@ -277,7 +307,7 @@ test('exécution — SANS --backup, la sauvegarde par défaut est écrite AVANT 
   const vraiWrite = fs.writeFileSync;
   fs.writeFileSync = function (f, ...rest) {
     const p = String(f);
-    if (/BACKUP-unite-acide-.*\.json$/.test(p)) {
+    if (/BACKUP-unite-.*\.json$/.test(p)) {
       vues.push({ chemin: p, transactions: fb.journal.transactions });
       return undefined; // intercepté : rien n'est écrit dans le dépôt
     }
@@ -289,7 +319,7 @@ test('exécution — SANS --backup, la sauvegarde par défaut est écrite AVANT 
   console.log = SILENCE;
   process.env.ACIDE_EXECUTE_CONFIRM = 'OUI';
   try {
-    await SCRIPT.main(['node', 'script', '--execute'], fb);
+    await SCRIPT.main(['node', 'script'].concat(CIBLE_ACIDE, ['--execute']), fb);
   } finally {
     process.exitCode = codeAvant;
     fs.writeFileSync = vraiWrite;
@@ -304,7 +334,7 @@ test('exécution — SANS --backup, la sauvegarde par défaut est écrite AVANT 
 test('rapport — sans --backup, aucun fichier laissé derrière', async () => {
   const fb = fauxFirestore(donnees());
   const avant = fs.readdirSync(path.resolve(__dirname, '../../docs'));
-  await lancer([], fb);
+  await lancer(CIBLE_ACIDE, fb);
   assert.deepStrictEqual(fs.readdirSync(path.resolve(__dirname, '../../docs')), avant);
 });
 
@@ -312,8 +342,8 @@ test('rapport — sans --backup, aucun fichier laissé derrière', async () => {
 
 test('un second passage ne reconvertit rien', async () => {
   const fb = fauxFirestore(donnees());
-  await lancer(['--execute'], fb);
-  await lancer(['--execute'], fb);
+  await lancer(CIBLE_ACIDE.concat(['--execute']), fb);
+  await lancer(CIBLE_ACIDE.concat(['--execute']), fb);
   const b = fb.collections.stock_balances;
   assert.strictEqual(b['magasin_F2_ACIDE_SULFRIQUE_(L)'].balance, -14, 'jamais -24,5');
   assert.strictEqual(b.magasin_F2_ACIDE_SULFRIQUE.balance, 3420);

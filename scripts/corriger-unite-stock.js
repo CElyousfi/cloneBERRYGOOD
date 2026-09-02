@@ -2,7 +2,11 @@
 // @ts-check
 
 /**
- * CORRECTION D'UNITÉ D'UN ACIDE — la fiche et ses soldes passent au kg.
+ * CORRECTION D'UNITÉ D'UN ARTICLE — la fiche et ses soldes passent au kg.
+ *
+ * (Nommé `corriger-unite-acide.js` jusqu'au 2026-09-02 : le premier cas traité
+ * était l'acide sulfurique. Les journaux du 2026-09-01 portent l'ancien chemin
+ * en `source` — c'est bien ce script.)
  *
  * ── POURQUOI CETTE OPÉRATION EST SÉPARÉE DE LA RE-CLÉ ─────────────────────
  * `scripts/recle-soldes-sous-fiche.js` RANGE les soldes ; il n'arbitre aucun
@@ -11,11 +15,18 @@
  * « fail-closed neutralisé » cesserait d'être une régression détectable.
  * La conversion est un geste d'arbitrage humain : il vit ici, tracé, à part.
  *
- * ⚠️ ARBITRAGE D'OMAR, pas une déduction du code :
- *   « pour les acides, on doit corriger l'unité de réception au Kg et corriger
- *     ces fiches », table de conversion 35 kg = 20 L → facteur 1,75 kg/L.
- * Le facteur est nommé dans `functions/lib/stock/correctionUniteAcide.js` et
- * recopié dans le journal d'audit.
+ * ⚠️ CHAQUE FACTEUR EST UN ARBITRAGE D'OMAR, propre à UN article, jamais une
+ * déduction du code ni une densité physique :
+ *   acide sulfurique (`IMP-001`)  : 35 kg = 20 L  → 1,75   kg/L
+ *   Rhizo amine      (`Ref-Eng0056`) : 20 kg = 18 L  → 1,1111 kg/L
+ * Ils vivent dans la table `CONVERSIONS_ARBITREES` de
+ * `functions/lib/stock/correctionUniteStock.js`, sous leur forme d'origine —
+ * pour que le SENS ne s'inverse pas en silence : « 20 kg = 18 L » veut dire
+ * qu'un litre pèse PLUS d'un kilo. Prendre 18/20 au lieu de 20/18 ferait 23,5 %
+ * d'écart, sans la moindre alerte.
+ * ⛔ Une fiche absente de la table est REFUSÉE, et il n'existe AUCUN facteur en
+ * ligne de commande : un outil qui accepte un facteur au clavier est un outil
+ * qui décide.
  *
  * ── TROIS GESTES, UNE SEULE TRANSACTION ───────────────────────────────────
  *   1. la fiche : `unite` → `kg`, `nom` → sans le suffixe d'unité ;
@@ -25,11 +36,12 @@
  * dans un état pire que celui d'avant.
  *
  * ── DEUX TEMPS, LECTURE SEULE PAR DÉFAUT ──────────────────────────────────
- *   node scripts/corriger-unite-acide.js                          # --report
- *   ACIDE_EXECUTE_CONFIRM=OUI node scripts/…js --execute          # ÉCRIT
+ *   node scripts/corriger-unite-stock.js --fiche <id> --lieu <type/id>       # --report
+ *   ACIDE_EXECUTE_CONFIRM=OUI node scripts/…js --fiche … --lieu … --execute # ÉCRIT
  * DOUBLE VERROU : `--execute` sans `ACIDE_EXECUTE_CONFIRM=OUI` est REFUSÉ
- * (sortie 2). Options : `--fiche <id>` (défaut IMP-001), `--lieu <type/id>`
- * (défaut magasin/F2), `--nom <libellé>`, `--backup <fichier>`.
+ * (sortie 2). `--fiche <id>` et `--lieu <type/id>` sont OBLIGATOIRES : un
+ * défaut pointant silencieusement sur un article est un piège. Options :
+ * `--nom <libellé>`, `--backup <fichier>`.
  * SAUVEGARDE PRÉALABLE OBLIGATOIRE en exécution, écrite avant la transaction.
  *
  * ── FAIL-CLOSED ───────────────────────────────────────────────────────────
@@ -47,7 +59,7 @@
 const fs = require('fs')
 const path = require('path')
 
-const correction = require(path.resolve(__dirname, '../functions/lib/stock/correctionUniteAcide'))
+const correction = require(path.resolve(__dirname, '../functions/lib/stock/correctionUniteStock'))
 
 /** Accès Firestore résolu à la demande (un `--help` ne doit pas exiger l'ADC). @type {*} */
 let _fb = null
@@ -67,14 +79,14 @@ function parseArgs(argv, env) {
     const i = args.indexOf(f)
     return i > -1 && args[i + 1] ? args[i + 1] : null
   }
-  const lieu = get('--lieu') || 'magasin/F2'
+  const lieu = get('--lieu') || ''
   const sep = lieu.indexOf('/')
   const demandeExecute = args.includes('--execute')
   const confirme = (env || {}).ACIDE_EXECUTE_CONFIRM === 'OUI'
   return {
     mode: demandeExecute && confirme ? 'execute' : 'report',
     refus: demandeExecute && !confirme,
-    ficheId: get('--fiche') || 'IMP-001',
+    ficheId: get('--fiche') || '',
     lieuType: sep > -1 ? lieu.slice(0, sep) : lieu,
     lieuId: sep > -1 ? lieu.slice(sep + 1) : '',
     nouveauNom: get('--nom'),
@@ -136,9 +148,8 @@ async function appliquerCorrection(plan, lieu, fb) {
     // Journal AVANT mutation : aucune correction sans sa trace de retour arrière.
     t.set(auditRef, {
       at: admin.firestore.FieldValue.serverTimestamp(),
-      source: 'scripts/corriger-unite-acide.js',
-      decision:
-        'Arbitrage Omar : pour les acides, le kg fait foi ; table de conversion 35 kg = 20 L.',
+      source: 'scripts/corriger-unite-stock.js',
+      decision: plan.decision,
       facteur_kg_par_litre: plan.facteur,
       lieu_type: lieu.lieu_type,
       lieu_id: lieu.lieu_id,
@@ -187,8 +198,16 @@ async function main(argv, fb) {
     process.exitCode = 2
     return { plan: null, audit_id: null }
   }
+  if (!opts.ficheId || !opts.lieuType || !opts.lieuId) {
+    console.error(
+      '[REFUS] --fiche <id> et --lieu <type/id> sont obligatoires.\n' +
+        '        Aucun défaut : un article visé par accident est un stock corrompu.'
+    )
+    process.exitCode = 2
+    return { plan: null, audit_id: null }
+  }
   console.log(
-    'CORRECTION D\'UNITÉ (acides) — ' +
+    'CORRECTION D\'UNITÉ — ' +
       (opts.mode === 'execute' ? 'EXÉCUTION' : 'RAPPORT (lecture seule)')
   )
 
@@ -219,8 +238,8 @@ async function main(argv, fb) {
   })
 
   console.log('')
-  console.log('Décision (Omar) : pour les acides, le kg fait foi — 35 kg = 20 L')
-  console.log('Facteur retenu  : ' + plan.facteur + ' kg/L')
+  console.log('Décision : ' + (plan.decision || '(aucune conversion arbitrée)'))
+  console.log('Facteur retenu  : ' + (plan.facteur || 0) + ' kg/L')
   console.log('Lieu            : ' + opts.lieuType + '/' + opts.lieuId)
   if (plan.fiche) {
     console.log('')
@@ -260,7 +279,7 @@ async function main(argv, fb) {
       ? opts.backup ||
         path.resolve(
           __dirname,
-          '../docs/BACKUP-unite-acide-' + opts.ficheId + '-' + new Date().toISOString().slice(0, 10) + '.json'
+          '../docs/BACKUP-unite-' + opts.ficheId + '-' + new Date().toISOString().slice(0, 10) + '.json'
         )
       : opts.backup
   if (cheminBackup) {
@@ -270,7 +289,7 @@ async function main(argv, fb) {
         {
           genere_le: new Date().toISOString(),
           avertissement: 'État AVANT correction d\'unité. Sert à reconstruire l\'état d\'origine.',
-          decision: 'Arbitrage Omar : le kg fait foi pour les acides — 35 kg = 20 L',
+          decision: plan.decision,
           facteur_kg_par_litre: plan.facteur,
           fiche: fiche || null,
           soldes: soldes,

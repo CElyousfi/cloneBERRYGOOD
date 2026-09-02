@@ -27,11 +27,11 @@
         "file": "public/app.jsx"
       },
       {
-        "commits": 44,
+        "commits": 43,
         "file": "public/components/CampagneAnalytiqueTab.js"
       },
       {
-        "commits": 43,
+        "commits": 42,
         "file": "public/components/CampagneAnalytiqueTab.jsx"
       },
       {
@@ -883,7 +883,7 @@
       },
       "gitCoupling": [
         {
-          "coCommits": 42,
+          "coCommits": 41,
           "domain": null,
           "file": "public/components/CampagneAnalytiqueTab.js",
           "note": "probabilistic",
@@ -997,13 +997,6 @@
         {
           "coCommits": 5,
           "domain": null,
-          "file": "tests/unit/campagneExportUtils.test.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 5,
-          "domain": null,
           "file": "tests/unit/campagneRapprochement.test.js",
           "note": "probabilistic",
           "windowDays": 90
@@ -1025,13 +1018,6 @@
         {
           "coCommits": 4,
           "domain": null,
-          "file": "public/components/CampagneAnalytiqueTab.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 4,
-          "domain": null,
           "file": "tests/unit/campagneAnalytiquePivot.test.js",
           "note": "probabilistic",
           "windowDays": 90
@@ -1040,6 +1026,13 @@
           "coCommits": 4,
           "domain": null,
           "file": "tests/unit/campagneExportUtils.test.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 3,
+          "domain": null,
+          "file": "public/components/CampagneAnalytiqueTab.js",
           "note": "probabilistic",
           "windowDays": 90
         },
@@ -1061,6 +1054,13 @@
           "coCommits": 3,
           "domain": null,
           "file": "tests/unit/campagneBudgetQuinzaine.test.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 3,
+          "domain": null,
+          "file": "tests/unit/campagneExportUtils.test.js",
           "note": "probabilistic",
           "windowDays": 90
         },
@@ -1187,7 +1187,7 @@
       "label": "Stock & Magasin",
       "tests": {
         "backend": [
-          "functions/lib/stock/__tests__/correctionUniteAcide.test.js",
+          "functions/lib/stock/__tests__/correctionUniteStock.test.js",
           "functions/lib/stock/__tests__/demandeCreationArticle.test.js",
           "functions/lib/stock/__tests__/demandesCreationIO.test.js",
           "functions/lib/stock/__tests__/identiteArticle.test.js",
