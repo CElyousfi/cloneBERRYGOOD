@@ -10,6 +10,7 @@ const {
   matchesExcludedFonction,
   shouldExcludeWorkerDay,
   isGardiennage,
+  isSansEquipe,
   GARDIENNAGE_PATTERN,
 } = require('../heuresSup');
 
@@ -221,4 +222,44 @@ test('matchesExcludedFonction: inclusion sur l’opération, pas sur la famille'
   assert.equal(matchesExcludedFonction('08. Service générale', 'Magasinier', ['service']), false);
   // Entrée trop courte : pas d'inclusion accidentelle.
   assert.equal(matchesExcludedFonction('08. Service générale', 'Magasinier', ['ma']), false);
+});
+
+// ---- isSansEquipe ----
+// Matricules RÉELS relevés dans prod_presence (2026-08-19, 2026-08-22, 2026-09-01).
+
+test('isSansEquipe: matricule purement numérique = sans équipe', () => {
+  for (const mat of ['5', '6', '102', '190', '11523', '3397']) {
+    assert.equal(isSansEquipe(mat), true, `attendu sans équipe : ${mat}`);
+  }
+});
+
+// ZU / ZZ / DD ne figurent PAS dans les 13 préfixes de functions/equipesConfig.js,
+// et sont pourtant bien présents en production : la règle conserve tout matricule
+// portant une lettre, qu'il corresponde ou non à un préfixe connu.
+test('isSansEquipe: matricule contenant au moins une lettre = conservé', () => {
+  for (const mat of ['ZU11501', 'HAFI234', 'ZZ44594', 'MM01', 'AY02', 'DD10502']) {
+    assert.equal(isSansEquipe(mat), false, `attendu conservé : ${mat}`);
+  }
+});
+
+test('isSansEquipe: le prédicat est « aucune lettre », pas « commence par un chiffre »', () => {
+  // Chiffre en tête mais lettre présente → conservé (ce cas distingue la
+  // sémantique demandée d'un test /^\d/).
+  assert.equal(isSansEquipe('1A234'), false);
+});
+
+test('isSansEquipe: espaces autour ignorés', () => {
+  assert.equal(isSansEquipe('  102  '), true);
+  assert.equal(isSansEquipe('  MM01 '), false);
+});
+
+test('isSansEquipe: casse indifférente', () => {
+  assert.equal(isSansEquipe('zu11501'), false);
+});
+
+test('isSansEquipe: matricule vide/absent = sans équipe (ne peut porter aucun préfixe)', () => {
+  assert.equal(isSansEquipe(''), true);
+  assert.equal(isSansEquipe('   '), true);
+  assert.equal(isSansEquipe(null), true);
+  assert.equal(isSansEquipe(undefined), true);
 });

@@ -177,6 +177,30 @@ function shouldExcludeWorkerDay(fonction, excludedFonctions) {
   return matchesExcludedFonction(fonction.operationFamille, fonction.operation, excludedFonctions);
 }
 
+/**
+ * Un ouvrier « sans équipe » : son matricule ne porte aucune lettre, donc aucun
+ * préfixe d'équipe (cf. functions/equipesConfig.js — MM, AY, HT, HA, KR, NA, JA,
+ * AZ, CC, CA, RE, NV, LG). Ces ouvriers sont exclus des heures supplémentaires.
+ *
+ * Le prédicat est bien « aucune lettre », PAS « commence par un chiffre » :
+ * un matricule '1A234' porte une lettre et reste donc rattachable à une équipe.
+ *
+ * ⚠️ La réciproque est fausse et c'est volontaire : porter une lettre ne garantit
+ * pas un préfixe CONNU. 'ZU11501', 'ZZ44594' et 'DD10502' existent en production
+ * sans figurer dans les 13 préfixes ci-dessus, et restent conservés — la règle
+ * demandée exclut l'absence de lettre, pas l'absence de correspondance.
+ *
+ * Matricule vide/null → true : une chaîne vide ne peut porter aucun préfixe.
+ * En pratique ce cas n'atteint pas la décision côté buildHeuresSup, qui écarte
+ * déjà les matricules vides à la lecture de prod_presence (`if (!mat) continue`).
+ *
+ * @param {string|null|undefined} matricule
+ * @returns {boolean} true si le matricule ne contient aucune lettre A-Z/a-z.
+ */
+function isSansEquipe(matricule) {
+  return !/[A-Za-z]/.test(String(matricule == null ? '' : matricule).trim());
+}
+
 module.exports = {
   SEUIL_MINUTES,
   RECOLTE_FAMILLE,
@@ -188,4 +212,5 @@ module.exports = {
   isGardiennage,
   matchesExcludedFonction,
   shouldExcludeWorkerDay,
+  isSansEquipe,
 };

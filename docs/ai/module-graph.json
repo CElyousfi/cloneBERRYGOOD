@@ -23,15 +23,15 @@
     },
     "heatmap": [
       {
-        "commits": 46,
+        "commits": 45,
         "file": "public/app.jsx"
       },
       {
-        "commits": 43,
+        "commits": 42,
         "file": "public/components/CampagneAnalytiqueTab.js"
       },
       {
-        "commits": 42,
+        "commits": 41,
         "file": "public/components/CampagneAnalytiqueTab.jsx"
       },
       {
@@ -47,20 +47,20 @@
         "file": "functions/pointageService.js"
       },
       {
-        "commits": 15,
-        "file": "public/components/CampagneBudgetTab.jsx"
-      },
-      {
-        "commits": 15,
-        "file": "tests/unit/campagneBudgetTab.test.js"
-      },
-      {
         "commits": 14,
         "file": "functions/lib/paie/coutOuvrierCampagne.js"
       },
       {
-        "commits": 14,
-        "file": "public/components/MagBCTab.jsx"
+        "commits": 13,
+        "file": "functions/lib/paie/__tests__/coutOuvrierCampagne.test.js"
+      },
+      {
+        "commits": 13,
+        "file": "public/components/CampagneBudgetTab.jsx"
+      },
+      {
+        "commits": 13,
+        "file": "public/components/MagBCTab.js"
       }
     ],
     "schemaVersion": 1,
@@ -883,7 +883,7 @@
       },
       "gitCoupling": [
         {
-          "coCommits": 41,
+          "coCommits": 40,
           "domain": null,
           "file": "public/components/CampagneAnalytiqueTab.js",
           "note": "probabilistic",
@@ -897,7 +897,7 @@
           "windowDays": 90
         },
         {
-          "coCommits": 15,
+          "coCommits": 13,
           "domain": null,
           "file": "tests/unit/campagneBudgetTab.test.js",
           "note": "probabilistic",
@@ -907,13 +907,6 @@
           "coCommits": 11,
           "domain": null,
           "file": "public/components/CampagneAnalytiqueTab.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 11,
-          "domain": null,
-          "file": "public/components/CampagneBudgetTab.js",
           "note": "probabilistic",
           "windowDays": 90
         },
@@ -942,6 +935,13 @@
           "coCommits": 9,
           "domain": null,
           "file": "functions/lib/paie/coutOuvrierCampagne.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 9,
+          "domain": null,
+          "file": "public/components/CampagneBudgetTab.js",
           "note": "probabilistic",
           "windowDays": 90
         },
@@ -982,13 +982,6 @@
         },
         {
           "coCommits": 5,
-          "domain": null,
-          "file": "functions/lib/campagneBudget/validate.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 5,
           "domain": "caisse",
           "file": "public/lib/campagneRapprochement.js",
           "note": "probabilistic",
@@ -1004,14 +997,7 @@
         {
           "coCommits": 4,
           "domain": null,
-          "file": "functions/pointageService.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 4,
-          "domain": null,
-          "file": "public/app.jsx",
+          "file": "functions/lib/campagneBudget/validate.js",
           "note": "probabilistic",
           "windowDays": 90
         },
@@ -1019,6 +1005,20 @@
           "coCommits": 4,
           "domain": null,
           "file": "tests/unit/campagneAnalytiquePivot.test.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 3,
+          "domain": null,
+          "file": "functions/pointageService.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 3,
+          "domain": null,
+          "file": "public/app.jsx",
           "note": "probabilistic",
           "windowDays": 90
         },

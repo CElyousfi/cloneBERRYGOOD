@@ -1,5 +1,5 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:ecbc0a42e4cdb45c -->
+<!-- sourceFingerprint: sha256:28da6808598c9cdb -->
 # Code Map — Modules lib (227)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
@@ -51,7 +51,7 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/fonctions/fonctionsHistory.js | — | buildFonctionUpdate |
 | functions/lib/fonctions/fonctionsValidate.js | — | normalizeFonctionSlug, normalizeLibelle, normalizeOrdre |
 | functions/lib/forecastConfirmation.js | — | parseForecastConfirmation |
-| functions/lib/heuresSup/heuresSup.js | — | SEUIL_MINUTES, RECOLTE_FAMILLE, GARDIENNAGE_PATTERN, parseHHMM, computeDurationOvertime, formatDuration, normalizeFonctionLabel, isGardiennage, matchesExcludedFonction, shouldExcludeWorkerDay |
+| functions/lib/heuresSup/heuresSup.js | — | SEUIL_MINUTES, RECOLTE_FAMILLE, GARDIENNAGE_PATTERN, parseHHMM, computeDurationOvertime, formatDuration, normalizeFonctionLabel, isGardiennage, matchesExcludedFonction, shouldExcludeWorkerDay, isSansEquipe |
 | functions/lib/irrigation/crossDayTrends.js | — | detectCrossDayTrends, buildPeriodRecommendations, dayDiff, longestConsecutiveStreak, stddev, regressByDay |
 | functions/lib/irrigation/dailySummary.js | — | buildDailySummaries, computeDrainTrend, buildHourlyRadCumulative |
 | functions/lib/irrigation/dataAccess.js | — | READINGS_COLLECTION, SNAPSHOTS_COLLECTION, fetchIrrigationReadings, saveSnapshot, fetchSnapshots |

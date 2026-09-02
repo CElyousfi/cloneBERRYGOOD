@@ -48,6 +48,7 @@ const {
   SEUIL_MINUTES: HS_SEUIL_MINUTES,
   computeDurationOvertime,
   shouldExcludeWorkerDay,
+  isSansEquipe,
 } = require("./lib/heuresSup/heuresSup");
 
 // Pointage — effectifs ouvriers DISTINCTS par (ferme, type).
@@ -1056,14 +1057,23 @@ async function getExcludedFonctionsHS() {
  * Construit les lignes heures supplémentaires pour les quinzaines récentes
  * (courante + précédente). Jointure prod_presence (entrée/sortie) ⨯
  * sql_mirror_pointage (fonction pointée) par matricule + jour.
- * Exclut récolte (payée au rendement) et fonctions configurées (gardiens).
+ * Exclusions appliquées :
+ * - récolte (payée au rendement) et fonctions configurées (gardiens), via
+ *   shouldExcludeWorkerDay — critère sur la FONCTION pointée ;
+ * - ouvriers « sans équipe » : matricule ne contenant aucune lettre, donc aucun
+ *   préfixe d'équipe (cf. equipesConfig.js) — critère sur le MATRICULE.
  * Un ouvrier présent mais absent du mirror est conservé avec `fonctionMissing`.
  *
  * @param {Object|null} meta - sql_mirror_pointage_meta/config
  * @param {Array<string>} excludedFonctions
  * @param {string|null} [fermeFilter] - GATING PAIE : ferme du chef, ou null
  *        (RH/DG/Finance = toutes fermes, inchangé). Fourni → cloisonnement chef.
- * @returns {Promise<Object>} { success, periodes, excludedFonctions, seuilMinutes, periodeDates, rows }
+ * @returns {Promise<Object>} { success, periodes, excludedFonctions, seuilMinutes,
+ *   periodeDates, rows, excludedSansEquipe } — `excludedSansEquipe` = nombre
+ *   d'ouvriers DISTINCTS écartés faute d'équipe sur la fenêtre analysée.
+ *   Aucun consommateur front à ce jour (le périmètre du ticket excluait public/) :
+ *   c'est de la transparence pour le debug, en attente du ticket UI qui l'affichera
+ *   à côté du compteur « ouvrier(s) sans heure de sortie exclu(s) » déjà en place.
  */
 async function buildHeuresSup(meta, excludedFonctions, fermeFilter = null) {
   const periodes = (meta && meta.periodes) || [];
@@ -1154,6 +1164,9 @@ async function buildHeuresSup(meta, excludedFonctions, fermeFilter = null) {
 
   // 3. Jointure + calcul durée/dépassement + exclusions
   const rows = [];
+  // Ouvriers DISTINCTS écartés faute d'équipe (matricule sans lettre), sur toute
+  // la fenêtre analysée — dédoublonnés par matricule, pas par couple ouvrier-jour.
+  const sansEquipeMatricules = new Set();
   for (const d of allDays) {
     const presence = presenceByDay[d] || new Map();
     const fonctions = fonctionByDay[d] || new Map();
@@ -1162,6 +1175,9 @@ async function buildHeuresSup(meta, excludedFonctions, fermeFilter = null) {
       // matricules ayant pointé la ferme du chef (set dérivé du mirror ci-dessus).
       // Fail-closed : un ouvrier présent mais jamais pointé sur cette ferme est exclu.
       if (allowedMatricules && !allowedMatricules.has(matUpper)) continue;
+      // Ouvrier « sans équipe » : matricule sans aucune lettre → aucun préfixe
+      // d'équipe (cf. equipesConfig.js) → hors heures supplémentaires.
+      if (isSansEquipe(p.matricule)) { sansEquipeMatricules.add(matUpper); continue; }
       const f = fonctions.get(matUpper) || null;
       const fonctionMissing = !f;
       // Récolte + fonctions configurées exclues. Fonction inconnue → conservée + flag.
@@ -1187,7 +1203,16 @@ async function buildHeuresSup(meta, excludedFonctions, fermeFilter = null) {
   }
 
   const periodeCampagne = (meta && meta.periodeCampagne) || {};
-  return { success: true, periodes, periodeCampagne, excludedFonctions, seuilMinutes: HS_SEUIL_MINUTES, periodeDates, rows };
+  return {
+    success: true,
+    periodes,
+    periodeCampagne,
+    excludedFonctions,
+    seuilMinutes: HS_SEUIL_MINUTES,
+    periodeDates,
+    rows,
+    excludedSansEquipe: sansEquipeMatricules.size,
+  };
 }
 
 // =============================================
