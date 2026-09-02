@@ -179,6 +179,28 @@
     var fname = 'Mouvements_' + IMP_sanitizeName(articleNom) + '_' + IMP_sanitizeName(lieuId) + '_' + IMP_fmtDateFr(dateInventaire).replace(/\//g, '-') + '.xlsx';
     XLSX.writeFile(wb, fname);
   }
+
+  /**
+   * Phrase de provenance affichée quand le grand livre ne rend AUCUN mouvement
+   * alors que la ligne d'inventaire porte un solde.
+   *
+   * Le solde est JUSTE — c'est son détail qui manque : le stock d'ouverture
+   * (import CANEVA) a été écrit directement dans stock_balances, sans écriture
+   * en face dans stock_movements. On dit donc D'OÙ VIENT le stock ; jamais
+   * « erreur » ni « incohérence », qui ferait douter d'un chiffre exact.
+   *
+   * Retourne null quand il n'y a rien à expliquer (solde nul ou inconnu) et
+   * quand le solde est NÉGATIF : un inventaire d'ouverture ne produit jamais un
+   * solde négatif. L'affirmer serait pire qu'un écran vide — une ligne en
+   * rupture (balance <= 0) ou un solde négatif de lieu `fournisseur` (mode
+   * « inventaire à date ») recevrait une provenance fausse. Dans ce cas on se
+   * tait : l'écran reste au simple « Aucun mouvement… ».
+   */
+  function IMP_phraseSoldeSansMouvement(soldeAttendu, unite) {
+    var s = parseFloat(soldeAttendu);
+    if (!isFinite(s) || s <= 0.01) return null;
+    return IMP_fmtNum(s, 2) + (unite ? ' ' + unite : '') + ' en stock, aucun mouvement enregistré — ce solde provient de l’inventaire' + ' d’ouverture, non détaillé dans le grand livre.';
+  }
   function IMP_Th(props) {
     return React.createElement('th', {
       style: {
@@ -324,13 +346,25 @@
         }
       }, 'Erreur : ' + state.error);
     } else if (rows.length === 0) {
+      // Liste vide : on ne s'arrête PAS à « aucun mouvement ». Si la ligne
+      // d'inventaire porte un solde, on le rappelle et on dit d'où il vient —
+      // sinon le magasinier conclut que son stock (juste) est faux.
+      var phrase = IMP_phraseSoldeSansMouvement(soldeAttendu, resolvedUnite);
       body = React.createElement('div', {
         style: {
           padding: 40,
           textAlign: 'center',
           color: IMP_C.textSecondary
         }
-      }, 'Aucun mouvement pour cet article' + (lieuId ? ' au lieu ' + lieuId : '') + (dateInventaire ? ' jusqu’au ' + IMP_fmtDateFr(dateInventaire) : '') + '.');
+      }, React.createElement('div', null, 'Aucun mouvement pour cet article' + (lieuId ? ' au lieu ' + lieuId : '') + (dateInventaire ? ' jusqu’au ' + IMP_fmtDateFr(dateInventaire) : '') + '.'), phrase ? React.createElement('div', {
+        style: {
+          marginTop: 10,
+          fontSize: 12,
+          color: IMP_C.amber,
+          fontWeight: 600,
+          lineHeight: 1.5
+        }
+      }, phrase) : null);
     } else {
       body = React.createElement('div', {
         style: {

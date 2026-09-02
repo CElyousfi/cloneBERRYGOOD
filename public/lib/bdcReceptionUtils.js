@@ -258,6 +258,55 @@ function computeReceptionRowsWithReliquat(bdcItems, receptions) {
   return rowsChronological.slice().reverse();
 }
 
+/**
+ * Message de confirmation après création d'une réception.
+ *
+ * Les deux onglets annonçaient « En attente de valorisation Achats ». Cette
+ * étape n'existe plus : la marchandise entre en stock immédiatement. Laisser ce
+ * message reviendrait à faire attendre le magasinier pour une validation qui ne
+ * viendra jamais — c'est précisément ce qui a laissé 59 réceptions hors stock.
+ *
+ * Le message DIT ce qui n'a pas été valorisé. Un article entré sans prix est
+ * invisible dans les coûts s'il n'est pas signalé ici : c'est le seul moment où
+ * quelqu'un qui connaît la livraison a la scène sous les yeux.
+ *
+ * Signale DEUX choses distinctes, qu'il ne faut pas confondre :
+ *  - les lignes sans prix (elles ne compteront pas dans les coûts) ;
+ *  - les lignes valorisées dont l'unité n'a pas pu être comparée à celle du bon
+ *    de commande. Le prix est utilisé, mais rien n'a pu confirmer qu'il porte
+ *    sur la même unité. C'est le cas de 86 % du flux : l'écrire dans la base
+ *    sans jamais le dire à personne reviendrait à ne pas l'écrire.
+ *
+ * @param {string} numero - numéro du bon créé (ex. 'BR-2026-0084')
+ * @param {{total?:number, valorisees?:number, non_valorisees?:number, non_verifiees?:number}|null|undefined} valorisation
+ * @returns {string}
+ */
+function buildReceptionCreatedMessage(numero, valorisation) {
+  const base = 'Réception ' + (numero || '') + ' créée. Entrée en stock immédiate.';
+  const v = valorisation || {};
+  const total = parseFloat(String(v.total));
+  const suffixe = isFinite(total) && total > 0 ? ' sur ' + total : '';
+  let msg = base;
+
+  const sansPrix = parseFloat(String(v.non_valorisees));
+  if (isFinite(sansPrix) && sansPrix > 0) {
+    const p = sansPrix > 1 ? 's' : '';
+    msg += '\n\n⚠️ ' + sansPrix + ' ligne' + p + suffixe
+      + ' sans prix : entrée' + p + ' en stock NON valorisée' + p + '.'
+      + '\nCes quantités ne compteront pas dans les coûts tant qu\'un prix n\'est pas connu.';
+  }
+
+  const nonVerif = parseFloat(String(v.non_verifiees));
+  if (isFinite(nonVerif) && nonVerif > 0) {
+    const p = nonVerif > 1 ? 's' : '';
+    msg += '\n\nℹ️ ' + nonVerif + ' ligne' + p + suffixe
+      + ' valorisée' + p + ' sans unité au bon de commande : le prix a été repris tel quel,'
+      + '\nsans qu\'on puisse vérifier qu\'il porte sur la même unité. À contrôler si le montant surprend.';
+  }
+
+  return msg;
+}
+
 // ============================================================================
 // UMD-style export (browser global + CommonJS for node:test)
 // ============================================================================
@@ -269,6 +318,7 @@ const __api = {
   computeReceptionRowsWithReliquat,
   computeReceptionEcart,
   clampReceivedQty,
+  buildReceptionCreatedMessage,
 };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = __api;

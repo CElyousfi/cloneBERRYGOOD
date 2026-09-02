@@ -25,7 +25,6 @@ const {
   getWorkerHistory,
   getCueilletteRows,
   getSyncStatus,
-  getConsommationRows,
 } = require("./firestoreDataService");
 
 // Coût CHARGÉ d'une journée d'ouvrier (CNSS patronale + transport compris) —
@@ -49,6 +48,7 @@ const {
   SEUIL_MINUTES: HS_SEUIL_MINUTES,
   computeDurationOvertime,
   shouldExcludeWorkerDay,
+  isSansEquipe,
 } = require("./lib/heuresSup/heuresSup");
 
 // Pointage — effectifs ouvriers DISTINCTS par (ferme, type).
@@ -99,6 +99,9 @@ const parcelleGroupValidate = require("./lib/parcelleGroupes/validate");
 const parcelleGroupSeedHa = require("./lib/parcelleGroupes/seedHa");
 // Budget JH/Ha par parcelle × famille d'opération (validation + merge purs).
 const campagneBudget = require("./lib/campagneBudget/validate");
+// Consommation depuis les BONS Smart Berry (`consumption_vouchers`) — la source
+// BEE ONE `sql_mirror_consommation` est tarie depuis avril 2026.
+const consoBons = require("./lib/consoBons");
 // Export Excel « Campagne » côté serveur (structure + rendu ExcelJS) — module
 // pur : aucune lecture Firestore, tout lui est injecté.
 const campagneExport = require("./lib/campagneExport");
@@ -1054,14 +1057,23 @@ async function getExcludedFonctionsHS() {
  * Construit les lignes heures supplémentaires pour les quinzaines récentes
  * (courante + précédente). Jointure prod_presence (entrée/sortie) ⨯
  * sql_mirror_pointage (fonction pointée) par matricule + jour.
- * Exclut récolte (payée au rendement) et fonctions configurées (gardiens).
+ * Exclusions appliquées :
+ * - récolte (payée au rendement) et fonctions configurées (gardiens), via
+ *   shouldExcludeWorkerDay — critère sur la FONCTION pointée ;
+ * - ouvriers « sans équipe » : matricule ne contenant aucune lettre, donc aucun
+ *   préfixe d'équipe (cf. equipesConfig.js) — critère sur le MATRICULE.
  * Un ouvrier présent mais absent du mirror est conservé avec `fonctionMissing`.
  *
  * @param {Object|null} meta - sql_mirror_pointage_meta/config
  * @param {Array<string>} excludedFonctions
  * @param {string|null} [fermeFilter] - GATING PAIE : ferme du chef, ou null
  *        (RH/DG/Finance = toutes fermes, inchangé). Fourni → cloisonnement chef.
- * @returns {Promise<Object>} { success, periodes, excludedFonctions, seuilMinutes, periodeDates, rows }
+ * @returns {Promise<Object>} { success, periodes, excludedFonctions, seuilMinutes,
+ *   periodeDates, rows, excludedSansEquipe } — `excludedSansEquipe` = nombre
+ *   d'ouvriers DISTINCTS écartés faute d'équipe sur la fenêtre analysée.
+ *   Aucun consommateur front à ce jour (le périmètre du ticket excluait public/) :
+ *   c'est de la transparence pour le debug, en attente du ticket UI qui l'affichera
+ *   à côté du compteur « ouvrier(s) sans heure de sortie exclu(s) » déjà en place.
  */
 async function buildHeuresSup(meta, excludedFonctions, fermeFilter = null) {
   const periodes = (meta && meta.periodes) || [];
@@ -1152,6 +1164,9 @@ async function buildHeuresSup(meta, excludedFonctions, fermeFilter = null) {
 
   // 3. Jointure + calcul durée/dépassement + exclusions
   const rows = [];
+  // Ouvriers DISTINCTS écartés faute d'équipe (matricule sans lettre), sur toute
+  // la fenêtre analysée — dédoublonnés par matricule, pas par couple ouvrier-jour.
+  const sansEquipeMatricules = new Set();
   for (const d of allDays) {
     const presence = presenceByDay[d] || new Map();
     const fonctions = fonctionByDay[d] || new Map();
@@ -1160,6 +1175,9 @@ async function buildHeuresSup(meta, excludedFonctions, fermeFilter = null) {
       // matricules ayant pointé la ferme du chef (set dérivé du mirror ci-dessus).
       // Fail-closed : un ouvrier présent mais jamais pointé sur cette ferme est exclu.
       if (allowedMatricules && !allowedMatricules.has(matUpper)) continue;
+      // Ouvrier « sans équipe » : matricule sans aucune lettre → aucun préfixe
+      // d'équipe (cf. equipesConfig.js) → hors heures supplémentaires.
+      if (isSansEquipe(p.matricule)) { sansEquipeMatricules.add(matUpper); continue; }
       const f = fonctions.get(matUpper) || null;
       const fonctionMissing = !f;
       // Récolte + fonctions configurées exclues. Fonction inconnue → conservée + flag.
@@ -1185,7 +1203,16 @@ async function buildHeuresSup(meta, excludedFonctions, fermeFilter = null) {
   }
 
   const periodeCampagne = (meta && meta.periodeCampagne) || {};
-  return { success: true, periodes, periodeCampagne, excludedFonctions, seuilMinutes: HS_SEUIL_MINUTES, periodeDates, rows };
+  return {
+    success: true,
+    periodes,
+    periodeCampagne,
+    excludedFonctions,
+    seuilMinutes: HS_SEUIL_MINUTES,
+    periodeDates,
+    rows,
+    excludedSansEquipe: sansEquipeMatricules.size,
+  };
 }
 
 // =============================================
@@ -2508,6 +2535,197 @@ exports.warmPointageCache = functions
   });
 
 // =============================================
+// GATING PAIE (Étape 0) — actions EXEMPTÉES de la barrière nominative
+// =============================================
+// Déclarée au niveau MODULE (et exportée) pour être vérifiable par un test
+// unitaire : le contrat d'accès est une surface de sécurité, il ne doit pas
+// pouvoir dériver silencieusement. Voir tests/unit/pointageGatingExempt.test.js.
+//
+// Une action n'entre ici que si sa RÉPONSE est intégralement NON NOMINATIVE :
+// aucun matricule, aucun nom d'ouvrier, aucun montant/coût, aucune donnée paie.
+// L'authentification reste exigée en amont dans tous les cas (/api/pointage-rh
+// passe requireAuth via pointageV3, idem la délégation /api/validation).
+// L'exemption ne porte QUE sur la LECTURE : toute action d'ÉCRITURE reste gatée
+// par son propre contrôle de rôle DG/RH/admin (cf. sb-referentiel-save,
+// sb-groupe-save/-delete), et n'a rien à faire dans cette table.
+//
+//  - 'suivi-tunnels'  : agrégats de PROGRESSION par parcelle/tâche (effectifs,
+//    quantités) pour l'écran « Tunnels » du caporal — pas un listing paie ;
+//    déjà cloisonné côté client par ?ferme=.
+//  - 'confection-types' / 'referentiel-taches-list' : simples référentiels
+//    d'opérations/tâches, non nominatifs.
+//  - 'sb-groupes-list' : référentiel des GROUPES de parcelles (labels + Ha),
+//    non nominatif, nécessaire au MAGASINIER pour le popup Bon de Consommation
+//    (le gating paie refuserait ce profil).
+//  - 'parcelles-campagne-list' : référentiel des PARCELLES classées par campagne
+//    (courante / précédente), nécessaire au MAGASINIER pour le même popup Bon de
+//    Consommation — sans lui, la modale retombe silencieusement sur /api/parcelles
+//    qui agrège l'historique BR_Consommation de la campagne PRÉCÉDENTE, et le
+//    magasinier ne trouve plus les parcelles de la campagne en cours.
+//    Réponse strictement descriptive : par parcelle, uniquement
+//    { ref, label, culture, variete, ferme, sup, debut, fin } — soit la référence
+//    et le libellé BEE ONE de la parcelle, sa culture/variété, sa ferme dérivée,
+//    sa surface en Ha (BR_Parcelle.Sup_Parcelle_Culturale) et les bornes de dates
+//    de pointage. Aucun matricule, aucun nom de personne, aucun coût, aucune
+//    journée-homme. Les deux branches (SQL BR_Pointage et mirror Firestore)
+//    construisent le MÊME objet à 8 champs — vérifié champ par champ.
+//    ⚠ Exemptée du 403 SEULEMENT : elle reste CLOISONNÉE (cf. EXEMPT_BUT_SCOPED).
+//  - 'sb-referentiel-list' : référentiel des NOMS Smart Berry (nom_sb), des
+//    surfaces (ha) et de la culture SB (culture_sb), clé par le label BEE ONE.
+//    C'est la source des noms affichés PARTOUT dans l'app ; sans elle, une
+//    parcelle s'affiche sous son libellé BEE ONE brut, et une parcelle dont
+//    `culture_sb` diverge de sa culture BEE ONE devient invisible dès qu'un
+//    filtre « Culture » est posé (cas du bon de consommation du magasinier).
+//    ⚠ DIFFÉRENCE DE TRAITEMENT ASSUMÉE avec 'parcelles-campagne-list' : cette
+//    action n'est volontairement PAS dans EXEMPT_BUT_SCOPED. Décision produit
+//    (Omar) : TOUS les profils doivent voir les noms Smart Berry. Cloisonner un
+//    référentiel de NOMS casserait précisément cet objectif — et lire le nom
+//    d'une parcelle d'une autre ferme est sans conséquence (aucun matricule,
+//    aucun montant, aucune journée-homme).
+//    Ce qui est cloisonné ici, ce n'est pas la LISTE mais la PROJECTION : les
+//    champs de traçabilité `updated_by` (uid + profileId d'un utilisateur) et
+//    `updated_at` ne sont servis QU'AUX profils déjà autorisés par
+//    resolvePointageRHAccess. Cf. projectSbReferentielDoc ci-dessous.
+const GATING_EXEMPT_ACTIONS = {
+  "suivi-tunnels": true,
+  "confection-types": true,
+  "referentiel-taches-list": true,
+  "sb-groupes-list": true,
+  "parcelles-campagne-list": true,
+  "sb-referentiel-list": true,
+};
+exports.GATING_EXEMPT_ACTIONS = GATING_EXEMPT_ACTIONS;
+
+// Sous-ensemble de GATING_EXEMPT_ACTIONS : actions exemptées du 403 mais dont le
+// CLOISONNEMENT ferme/culture d'un chef DOIT rester appliqué.
+//
+// Une exemption « nue » ne saute pas que le 403 : elle saute TOUTE la résolution
+// de périmètre, donc `_fermeFilter`/`_cultureFilter` restent null et les fetchers
+// ne sont plus shadowés. Pour une action listant des parcelles, ça élargit le
+// périmètre d'un chef (un chef_f5 verrait toutes les fermes / toutes les
+// cultures) — pas une fuite nominative, mais un changement de cloisonnement.
+//
+// Pour ces actions on résout donc le périmètre comme d'habitude, et on n'utilise
+// l'exemption que pour NE PAS renvoyer 403 quand le profil n'est pas autorisé
+// (magasinier) : il obtient alors la liste non filtrée, ce qui est le
+// comportement voulu pour le popup Bon de Consommation.
+//
+// Les 4 exemptions historiques (suivi-tunnels, confection-types,
+// referentiel-taches-list, sb-groupes-list) ne sont volontairement PAS ici : les
+// y mettre changerait le comportement de l'écran caporal (hors périmètre).
+//
+// 'sb-referentiel-list' n'est PAS ici non plus, et c'est délibéré : c'est un
+// référentiel de NOMS que tous les profils doivent voir en entier (décision
+// produit). Voir le commentaire de GATING_EXEMPT_ACTIONS ci-dessus.
+const EXEMPT_BUT_SCOPED = { "parcelles-campagne-list": true };
+exports.EXEMPT_BUT_SCOPED = EXEMPT_BUT_SCOPED;
+
+// ---- Projection de sb_parcelle_referentiel ---------------------------------
+// Champs RÉELLEMENT présents dans un document `sb_parcelle_referentiel`
+// (écrit par `sb-referentiel-save` et `sb-referentiel-seed-ha`, seuls writers) :
+//   label_bee_one : string  — libellé BEE ONE de la parcelle           → PUBLIC
+//   nom_sb        : string  — nom Smart Berry                          → PUBLIC
+//   ha            : number  — surface Smart Berry                      → PUBLIC
+//   culture_sb    : string  — culture Smart Berry (Myrtille/…)         → PUBLIC
+//   seeded_from   : string  — provenance de l'initialisation des Ha    → RÉSERVÉ
+//   updated_by    : {uid, profileId} d'un utilisateur Smart Berry      → RÉSERVÉ
+//   updated_at    : Timestamp de dernière modification                 → RÉSERVÉ
+// (+ `id` = docId, ajouté par le handler, utilisé côté client comme clé de repli
+//  quand `label_bee_one` est absent — cf. app.jsx / ParcellesReferentielTab).
+//
+// Aucune de ces données n'est de la paie, mais élargir l'accès à TOUS les profils
+// ne doit pas diffuser des identifiants d'utilisateur : on projette donc une
+// liste blanche pour les profils qui n'avaient PAS accès avant ce correctif.
+const SB_REFERENTIEL_PUBLIC_FIELDS = ['id', 'label_bee_one', 'nom_sb', 'ha', 'culture_sb'];
+exports.SB_REFERENTIEL_PUBLIC_FIELDS = SB_REFERENTIEL_PUBLIC_FIELDS;
+
+/**
+ * Projette un document du référentiel selon le profil appelant. PURE.
+ *
+ * @param {Object} doc document complet `{ id, ...doc.data() }`.
+ * @param {boolean} fullAccess true = profil DÉJÀ autorisé avant ce correctif
+ *   (resolvePointageRHAccess(...).allowed : dg/finance/rh/admin/chef résolu) →
+ *   document intégral, aucune régression pour l'écran « Parcelles & Référentiel ».
+ *   false = profil nouvellement admis (magasinier, chef non résolu, …) →
+ *   sous-ensemble SB_REFERENTIEL_PUBLIC_FIELDS uniquement.
+ * @returns {Object}
+ */
+function projectSbReferentielDoc(doc, fullAccess) {
+  const d = doc || {};
+  if (fullAccess === true) return d;
+  const out = {};
+  for (const f of SB_REFERENTIEL_PUBLIC_FIELDS) {
+    if (d[f] !== undefined) out[f] = d[f];
+  }
+  return out;
+}
+exports.projectSbReferentielDoc = projectSbReferentielDoc;
+
+/**
+ * Projection de `sb-referentiel-list` pour un appelant dont le périmètre a été
+ * résolu. PURE — c'est LA décision du handler, extraite pour être testée telle
+ * quelle (même motif que gatingRequiresPerimetre / resolveGatingFilters : un test
+ * qui recopierait la décision ne protégerait rien).
+ *
+ * Aucun 403 ici : l'action est exemptée, tout le monde reçoit la LISTE ENTIÈRE.
+ * Seule la richesse de chaque document dépend du profil.
+ *
+ * @param {Object} doc document complet `{ id, ...doc.data() }`.
+ * @param {{autorise?:boolean, perimetre_ferme?:string}|null} perim sortie de resolvePerimetre.
+ * @returns {Object}
+ */
+function projectSbReferentielForCaller(doc, perim) {
+  return projectSbReferentielDoc(doc, resolvePointageRHAccess(perim).allowed);
+}
+exports.projectSbReferentielForCaller = projectSbReferentielForCaller;
+
+/**
+ * Faut-il résoudre le périmètre de l'appelant (verifyAuth + resolvePerimetre)
+ * pour cette action ? PURE — c'est la décision du handler, extraite pour être
+ * testable telle quelle (un test qui la recopierait ne protégerait rien).
+ *
+ * false ⇒ action exemptée « nue » : le bloc de gating est entièrement sauté,
+ * aucun verifyAuth n'est effectué (comportement historique de l'écran caporal).
+ *
+ * @param {string} action
+ * @returns {boolean}
+ */
+function gatingRequiresPerimetre(action) {
+  return !GATING_EXEMPT_ACTIONS[action] || EXEMPT_BUT_SCOPED[action] === true;
+}
+exports.gatingRequiresPerimetre = gatingRequiresPerimetre;
+
+/**
+ * Décision de gating pour une action dont le périmètre A ÉTÉ résolu. PURE.
+ *
+ * - non autorisé + action NON exemptée      → denied (403).
+ * - non autorisé + action exemptée (scoped) → autorisé SANS filtre : la donnée
+ *   est non nominative, il n'y a aucun périmètre légitime à appliquer
+ *   (cas du magasinier sur le popup Bon de Consommation).
+ * - autorisé                                → filtres du périmètre (chef : SA
+ *   ferme / SA culture ; dg-finance-rh-admin : null = toutes fermes).
+ *
+ * @param {string} action
+ * @param {{autorise?:boolean, perimetre_ferme?:string, culture_filtre?:(null|string)}|null} perim
+ * @returns {{denied: boolean, fermeFilter: (null|string), cultureFilter: (null|string)}}
+ */
+function resolveGatingFilters(action, perim) {
+  const access = resolvePointageRHAccess(perim);
+  if (!access.allowed) {
+    if (!GATING_EXEMPT_ACTIONS[action]) {
+      return { denied: true, fermeFilter: null, cultureFilter: null };
+    }
+    return { denied: false, fermeFilter: null, cultureFilter: null };
+  }
+  return {
+    denied: false,
+    fermeFilter: access.fermeFilter,
+    cultureFilter: (perim && perim.culture_filtre) || null,
+  };
+}
+exports.resolveGatingFilters = resolveGatingFilters;
+
+// =============================================
 // API: pointageRH
 // =============================================
 exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 180, memory: "512MB" }).https.onRequest((req, res) => {
@@ -2531,30 +2749,36 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
       // délégation de /api/validation ; les deux passent déjà requireAuth. Le
       // gating est ici pour couvrir les deux points d'entrée en un seul endroit.
       //
-      // EXCEPTION — actions OPÉRATIONNELLES légitimement utilisées par le caporal
-      // (écran « Tunnels » : HorsRecolteSuiviTab → action=suivi-tunnels). Ce sont
-      // des agrégats de PROGRESSION par parcelle/tâche (effectifs, quantités),
-      // PAS un listing paie nominatif ; déjà cloisonnés côté client par ?ferme=.
-      // On les exclut du gating paie pour ne pas casser l'écran caporal.
-      // 'confection-types' = simple référentiel d'ops (non nominatif), laissé libre.
-      // 'sb-groupes-list' = référentiel des GROUPES de parcelles (labels + Ha),
-      // non nominatif, nécessaire au MAGASINIER pour le popup Bon de
-      // Consommation (le gating paie refuserait ce profil). L'authentification
-      // reste exigée : /api/pointage-rh (pointageV3) passe requireAuth en amont,
-      // et l'action revérifie le token. L'ÉCRITURE reste gatée DG/RH/admin.
-      const GATING_EXEMPT_ACTIONS = { "suivi-tunnels": true, "confection-types": true, "referentiel-taches-list": true, "sb-groupes-list": true };
-      let _fermeFilter = null; // null = accès global (all) ou action exemptée
+      // EXCEPTION — actions OPÉRATIONNELLES non nominatives (caporal, magasinier).
+      // Les tables GATING_EXEMPT_ACTIONS et EXEMPT_BUT_SCOPED sont déclarées et
+      // justifiées action par action au niveau module (juste au-dessus de cet
+      // export), et exportées pour être verrouillées par un test unitaire.
+      //
+      // Trois régimes :
+      //  - action NON exemptée            → périmètre résolu + 403 si non autorisé
+      //                                     (comportement d'origine).
+      //  - action exemptée ET « scoped »  → périmètre résolu, PAS de 403 : l'exemption
+      //                                     lève la barrière SANS lever le cloisonnement.
+      //                                     Un chef reste filtré sur SA ferme/culture ;
+      //                                     un profil non autorisé (magasinier) passe
+      //                                     sans filtre.
+      //  - action exemptée « nue »        → bloc entièrement sauté (aucun verifyAuth
+      //                                     réintroduit) : comportement historique
+      //                                     de l'écran caporal, inchangé.
+      // La décision elle-même vit dans gatingRequiresPerimetre / resolveGatingFilters
+      // (pures, exportées, verrouillées par tests/unit/pointageGatingExempt.test.js).
+      let _fermeFilter = null; // null = accès global (all), non autorisé exempté, ou action exemptée nue
       let _cultureFilter = null; // null = pas de filtre culture additionnel
-      if (!GATING_EXEMPT_ACTIONS[action]) {
+      if (gatingRequiresPerimetre(action)) {
         const _authUser = await verifyAuth(req);
         const _callerProfile = await resolveCallerProfile(_authUser);
         const _perim = consoAccessControl.resolvePerimetre(_callerProfile, req.query.ferme);
-        const _access = resolvePointageRHAccess(_perim);
-        if (!_access.allowed) {
+        const _gate = resolveGatingFilters(action, _perim);
+        if (_gate.denied) {
           return res.status(403).json({ success: false, error: "Accès non autorisé" });
         }
-        _fermeFilter = _access.fermeFilter; // null (all) ou 'F1'|'F5'|'Avocatier'|'BAHIA'
-        _cultureFilter = _perim.culture_filtre || null; // null ou 'Myrtille' (chef_f5)
+        _fermeFilter = _gate.fermeFilter; // null (all / exempté non autorisé) ou 'F1'|'F5'|'Avocatier'|'BAHIA'
+        _cultureFilter = _gate.cultureFilter; // null ou 'Myrtille' (chef_f5) / 'Framboise' (chef_f1)
       }
       // Chef : filtre ferme appliqué AU NIVEAU DES LIGNES BRUTES, avant toute
       // agrégation, en shadowant les fetchers. deriveFerme retourne 'Autre' si
@@ -4212,91 +4436,112 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
       }
 
       // ------ CAMPAGNE-CONSO-PARCELLE : consommation Engrais+Pesticides par parcelle ------
-      // Lit sql_mirror_consommation, agrège par parcelle × article, enrichit avec Ha.
-      // Note: les lignes miroir n'ont pas de champ Cout — seules les quantités sont disponibles.
+      // SOURCE : les BONS DE CONSOMMATION Smart Berry (`consumption_vouchers`),
+      // et NON PLUS la collection miroir BEE ONE `sql_mirror_consommation`.
+      //
+      // Pourquoi (décision Omar, ticket sb/conso-campagne-bons) : la source BEE
+      // ONE est TARIE depuis avril 2026 — le miroir couvre 2025-07 → 2026-04 et
+      // ZÉRO ligne sur la campagne courante, d'où le « Aucune donnée pour cette
+      // sélection » de l'écran, alors que le magasinier saisit sa consommation
+      // dans les bons depuis. On tourne la page : bons UNIQUEMENT, pas d'union,
+      // pas de bascule à une date. Conséquence ASSUMÉE : les campagnes
+      // antérieures s'affichent vides ici. Rien n'est supprimé côté BEE ONE, et
+      // `getConsommationRows` reste utilisé par d'autres actions (fertigation,
+      // phytosanitaire, produits, parcelles, dashboard, agroSummary, exports).
+      //
+      // Le rattachement à la campagne se fait par la DATE DU BON (`campagneOf`) :
+      // aucun champ campagne n'est persisté sur les bons, et la date est
+      // modifiable a posteriori (`update-bc-date`) — un bon PEUT donc changer de
+      // campagne, c'est voulu.
+      //
+      // Note : les bons ne portent pas de coût — seules les quantités sont
+      // disponibles, `totalEngraisCout`/`totalPesticidesCout` restent à 0 comme
+      // avant (valoriser cet écran au PMP est une décision produit séparée).
       if (action === "campagne-conso-parcelle") {
-        const today = new Date();
-        const y = today.getFullYear();
-        const startYear = today.getMonth() >= 6 ? y : y - 1;
-        const campagne = {
-          start: `${startYear}-07-01`,
-          end: `${startYear + 1}-06-30`,
-          label: `${startYear}/${startYear + 1}`,
-        };
+        const campagneLabel = campagneCourante(); // '2026-2027'
+        // Fail-CLOSED sur l'horloge : sans campagne résoluble, l'adaptation ne
+        // filtrerait plus rien et renverrait TOUS les bons, toutes campagnes
+        // confondues. Impossible en pratique (`campagneCourante()` dérive de la
+        // date système), mais c'est le seul fail-open du chemin — on le ferme.
+        if (!campagneLabel) {
+          return res.status(500).json({ success: false, error: "Campagne courante indéterminable" });
+        }
+        const campagne = { label: campagneLabel.replace('-', '/') };
 
         const cached = await withCache(
-          pointageCacheKey(`campagne_conso_parcelle_v1_${campagne.start}`, _fermeFilter),
+          // Clé versionnée v3 : la FORME de la réponse change (seau à classer +
+          // `articles_a_classer`). Sans ce bump, un cache chaud resservirait
+          // l'ancienne forme pendant 30 min et le bandeau paraîtrait cassé.
+          // (v1 = miroir BEE ONE, v2 = bascule vers les bons Smart Berry.)
+          //
+          // ⚠️ Ces 30 min sont PURGÉES par l'action `classer-article`
+          // (functions/index.js) : la catégorie est résolue à la LECTURE, donc
+          // classer un article change cette réponse. Le préfixe littéral
+          // ci-dessous est dupliqué dans
+          // functions/lib/consoBons/cacheKeys.js (CONSO_PARCELLE_CACHE_PREFIX)
+          // — la divergence est attrapée par
+          // tests/unit/classer-article-cablage.test.js. Bumper la version ici
+          // sans bumper là-bas laisserait la purge taper à côté, en silence.
+          pointageCacheKey(`campagne_conso_parcelle_v3_${campagneLabel}`, _fermeFilter, _cultureFilter),
           30 * 60 * 1000,
           async () => {
-            // Lire toutes les lignes conso de la collection miroir (toutes catégories)
-            const allRows = await getConsommationRows({});
+            const [bons, referentiel, catByArticle] = await Promise.all([
+              consoBons.fetchBonsConsommation(db_firestore),
+              consoBons.fetchReferentielParcelles(db_firestore),
+              // La catégorie engrais/pesticide vient de l'ARTICLE, jamais du
+              // type declaré sur le bon (48 bons /48 en `engrais` en prod).
+              // Lecture de plus, mise en cache 30 min avec le reste : coût
+              // négligeable à 1125 fiches.
+              consoBons.fetchArticleCategories(db_firestore),
+            ]);
 
-            // Filtrer sur la campagne (champ Date : YYYY-MM-DD)
-            const campagneRows = allRows.filter(r => r.Date >= campagne.start && r.Date <= campagne.end);
-
-            // Enrichir avec Ha depuis sb_parcelle_referentiel
-            const refSnap = await db_firestore.collection('sb_parcelle_referentiel').get();
-            const haByRef = {};
-            refSnap.forEach(doc => {
-              const d = doc.data();
-              if (d.label_bee_one && d.ha) haByRef[d.label_bee_one.trim().toUpperCase()] = d.ha;
+            const rows = consoBons.adaptBonsToConsoRows(bons, {
+              campagne: campagneLabel,
+              haByLabel: referentiel.haByLabel,
+              sbMap: referentiel.sbMap,
+              catByArticle,
             });
 
-            // Grouper par parcelle
-            const byParcelle = {};
-            for (const r of campagneRows) {
-              const parcelle = (r.Parcelle_Culturale || '').trim();
-              if (!parcelle) continue;
-              // Dériver la ferme : les lignes conso ont un champ Ferme (ex. 'F1', 'F5', 'BAHIA')
-              // On s'appuie sur deriveFerme via Parcelle_Culturale comme fallback
-              const ferme = deriveFerme(null, parcelle);
-              if (!byParcelle[parcelle]) {
-                const haKey = parcelle.toUpperCase();
-                byParcelle[parcelle] = {
-                  parcelle,
-                  ferme,
-                  ha: haByRef[haKey] || 0,
-                  engraisMap: {},
-                  pesticidesMap: {},
-                };
-              }
-              const art = (r.Article || '').trim();
-              const cat = (r.Article_Categorie || '').trim();
-              const qty = r.Quantite || 0;
-              const unite = (r.Article_unite || '').trim();
-              if (cat === 'Engrais') {
-                if (!byParcelle[parcelle].engraisMap[art]) {
-                  byParcelle[parcelle].engraisMap[art] = { article: art, qty: 0, unite, coutTotal: 0 };
-                }
-                byParcelle[parcelle].engraisMap[art].qty += qty;
-              } else if (cat === 'Pesticides') {
-                if (!byParcelle[parcelle].pesticidesMap[art]) {
-                  byParcelle[parcelle].pesticidesMap[art] = { article: art, qty: 0, unite, coutTotal: 0 };
-                }
-                byParcelle[parcelle].pesticidesMap[art].qty += qty;
-              }
-            }
-
-            const parcelles = Object.values(byParcelle)
-              .map(p => {
-                const engrais = Object.values(p.engraisMap).sort((a, b) => a.article.localeCompare(b.article));
-                const pesticides = Object.values(p.pesticidesMap).sort((a, b) => a.article.localeCompare(b.article));
-                return {
-                  parcelle: p.parcelle,
-                  ferme: p.ferme,
-                  ha: p.ha,
-                  engrais,
-                  pesticides,
-                  totalEngraisCout: 0,
-                  totalPesticidesCout: 0,
-                };
-              })
-              .filter(p => p.engrais.length > 0 || p.pesticides.length > 0)
-              .sort((a, b) => a.parcelle.localeCompare(b.parcelle));
+            // Cloisonnement chef appliqué DANS l'agrégation, fail-closed :
+            // l'action est ferme-aware côté cache mais ne filtrait aucune ligne
+            // — invisible tant que l'écran renvoyait 0 parcelle, ça exposerait
+            // les autres fermes maintenant qu'il en renvoie. Le filtre culture
+            // couvre chef_f1, dont le périmètre ferme vaut 'all'.
+            //
+            // Dérivation = `consoBons.fermeDeParcelle`, RÈGLE UNIQUE partagée
+            // avec `conso-valorisee`. Elle remplace `deriveFerme` ici : celui-ci
+            // renvoyait 'Autre' sur `F2 - HAAS` / `F3 -HAAS` / `F4 -HAAS`, si
+            // bien que `chef_avo` recevait un écran VIDE alors que ses 20,5 ha
+            // avaient consommé 60 lignes. Les libellés non résolus restent
+            // exclus (fail-closed) mais sont remontés dans le payload.
+            const parcelles = consoBons.aggregateConsoParcelle(rows, {
+              haByLabel: referentiel.haByLabel,
+              sbMap: referentiel.sbMap,
+              deriveFerme: (parcelle) => consoBons.fermeDeParcelle(parcelle) || 'Autre',
+              fermeFilter: _fermeFilter,
+              cultureFilter: _cultureFilter,
+            });
 
             return {
               success: true,
               campagne: campagne.label,
+              source: 'bons_smart_berry',
+              // Périmètres IMPOSÉS, rendus explicites pour que l'écran puisse
+              // expliquer un tableau court au lieu de le laisser deviner.
+              perimetre_ferme: _fermeFilter || 'all',
+              perimetre_culture: _cultureFilter || null,
+              // Libellés dont la ferme est indéterminable : exclus du périmètre
+              // d'un chef. Calculés sur les lignes AVANT filtrage (après, ils
+              // ont disparu). Vide sur les 19 libellés réels d'aujourd'hui.
+              parcelles_ferme_indeterminee: consoBons.resolveFermeInconnue(
+                rows.map((r) => r.Parcelle_Culturale)
+              ),
+              // Articles dont la catégorie catalogue n'est ni engrais ni
+              // pesticide (ou qui n'ont pas de fiche) : ils ne sont plus
+              // ignorés en silence, l'écran les nomme. Même précaution que
+              // ci-dessus : calculé sur les lignes AVANT filtrage de périmètre,
+              // sinon un chef ne verrait jamais ce qui manque au catalogue.
+              articles_a_classer: consoBons.articlesAClasser(rows),
               parcelles,
             };
           }
@@ -4464,10 +4709,25 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
 
       // ===== RÉFÉRENTIEL PARCELLES SMART BERRY =====
       // Lecture du référentiel (noms SB + surfaces éditables)
+      //
+      // Exemptée du gating paie (GATING_EXEMPT_ACTIONS) : TOUS les profils
+      // authentifiés voient les noms Smart Berry — décision produit. Le 403 est
+      // levé, mais pas la protection des champs de traçabilité : on résout ici le
+      // périmètre de l'appelant à la SEULE fin de choisir la PROJECTION.
+      //  - profil déjà autorisé avant ce correctif (dg/finance/rh/admin/chef
+      //    résolu) → document intégral, strictement comme avant ;
+      //  - tout autre profil (magasinier…) → sous-ensemble non nominatif
+      //    { id, label_bee_one, nom_sb, ha, culture_sb }.
+      // verifyAuth renvoie null (ne throw pas) si le header est absent/invalide ;
+      // l'authentification reste par ailleurs exigée en amont par requireAuth sur
+      // /api/pointage-rh. Aucun 403 n'est émis ici.
       if (action === "sb-referentiel-list") {
+        const _authUserR = await verifyAuth(req);
+        const _callerProfileR = await resolveCallerProfile(_authUserR);
+        const _perimR = consoAccessControl.resolvePerimetre(_callerProfileR, req.query.ferme);
         const snap = await db_firestore.collection("sb_parcelle_referentiel").get();
         const parcelles = [];
-        snap.forEach(doc => parcelles.push({ id: doc.id, ...doc.data() }));
+        snap.forEach(doc => parcelles.push(projectSbReferentielForCaller({ id: doc.id, ...doc.data() }, _perimR)));
         return res.json({ success: true, parcelles });
       }
 

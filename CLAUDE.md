@@ -386,8 +386,15 @@ Chaque deploy suit cette séquence en 2 temps :
    et docs/deploy-wif-prod.md.
 
 2. DEPLOY HOSTING sur un PREVIEW (pas en prod) :
-   firebase hosting:channel:deploy qa-test --expires 1d
+   scripts/preview.sh --post-merge
    → Le preview a le nouveau frontend + le nouveau backend = app complète.
+   ⚠️ JAMAIS `firebase hosting:channel:deploy` en brut : la commande nue ne
+     vérifie ni le tree propre, ni `npm run qa`, ni le `--config` (elle déploie
+     alors le dossier du cwd), ni surtout que les functions de PROD sont bien à
+     HEAD — c'est-à-dire exactement l'étape 1 ci-dessus. `--post-merge` exige
+     les quatre, et refuse tant que le run de l'étape 1 n'est pas réellement
+     terminé. Canal `qa-test` par défaut, surchargeable :
+     `scripts/preview.sh --post-merge <nom-canal>`.
 
 3. QA VISUELLE (Playwright) contre le preview :
    → Le qa-reviewer lance la suite Playwright contre l'URL qa-test.

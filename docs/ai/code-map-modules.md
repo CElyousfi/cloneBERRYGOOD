@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:98dbeb4d2f1f766a -->
-# Code Map — Modules lib (185)
+<!-- sourceFingerprint: sha256:28da6808598c9cdb -->
+# Code Map — Modules lib (227)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
 
@@ -18,6 +18,14 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/budgetBgf.js | — | BUDGET_BGF |
 | functions/lib/bugReports/bugStatus.js | — | BUG_STATUSES, FILTERABLE_STATUSES, ADMIN_PROFILES, isValidStatus, isFilterableStatus, isAdminProfile, validateStatusUpdate, sortReportsByCreatedDesc |
 | functions/lib/bugReports/validateBugReport.js | — | validateBugReport, MAX_DESCRIPTION, MAX_PHOTO_BASE64_CHARS |
+| functions/lib/caisse/batchValidation.js | — | planBatchValidation, applyDelta |
+| functions/lib/caisse/champsAnalytiques.js | — | FERMES, CULTURES, PARCELLE_GENERAL, campagneOf, validateAxes |
+| functions/lib/caisse/entites.js | — | ENTITES, ENTITE_DEFAUT, COMPTE_CLIENT_PREFIX, estEntiteValide, estCompteClient, clientIdDepuisCaisse, nomClientDepuisId, slugifyClient, entiteParDefaut, entiteDe, normalizeEntites, repartirParEntite |
+| functions/lib/caisse/parametres.js | — | DEFAULT_FERMES, DEFAULT_CODES_ANALYTIQUES, DEFAULT_PARCELLES, MAX_LEN, MAX_ITEMS, MAX_PARCELLES, normalizeListe, normalizeParcelles, validateListe, withDefaults, estAutorisee |
+| functions/lib/caisse/rapprochementLock.js | — | periodeFromDate, rapprochementDocId, periodesAVerifier, MOIS_FR |
+| functions/lib/caisse/soldeDelta.js | — | computeSoldeDelta, isTypeEditable, TYPES_ENTREE, TYPES_SORTIE, TYPES_EDITABLES |
+| functions/lib/caisse/soldeProvisoire.js | — | STATUTS_EN_ATTENTE, cumulEnAttente, computeSoldesProvisoires |
+| functions/lib/caisse/txDiff.js | — | computeChanges, CHAMPS_SUIVIS |
 | functions/lib/caisseImport/detectCols.js | — | detectCols |
 | functions/lib/caisseImport/excelToISO.js | — | excelToISO |
 | functions/lib/caisseImport/index.js | — | parseWorkbook, buildDrySummary, excelToISO, detectCols, CAISSE_FORMATS, SAMPLE_LIMIT |
@@ -34,10 +42,16 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/campagneRapportHebdo/envois.js | — | buildEnvois, resumeEnvois, nbParcellesFromFeuilles, formatDateLabel, buildBodyParams |
 | functions/lib/campagneRapportHebdo/index.js | — | CRON_CONFIG, HTTP_CONFIG, AUDIENCE, TEMPLATE_NAME, ALERT_TEMPLATE_NAME, ALERT_PROFILE_ID, XLSX_MIME, TRIGGER_PROFILES, CONFIRM_SEND, buildEnvois, resumeEnvois, nbParcellesFromFeuilles, formatDateLabel, buildBodyParams, resolveRecipientsByProfile, checkRecipients, dryRun, runRapportHebdo, buildHttpHandler |
 | functions/lib/campagneRapportHebdo/runJob.js | — | resolveRecipientsByProfile, checkRecipients, dryRun, runRapportHebdo, buildHttpHandler, maskPhone |
+| functions/lib/consoBons/aggregateParcelle.js | — | aggregateConsoParcelle, articlesAClasser |
+| functions/lib/consoBons/bonsToConsoRows.js | — | adaptBonsToConsoRows, categorieOf, quantiteOf, alnumArticleKey, buildArticleCategoryIndex, lookupArticleCategorie |
+| functions/lib/consoBons/cacheKeys.js | — | CONSO_PARCELLE_CACHE_PREFIX |
+| functions/lib/consoBons/fermeConso.js | — | fermeDeParcelle, resolveFermeInconnue |
+| functions/lib/consoBons/fetchBons.js | — | fetchBonsConsommation, fetchReferentielParcelles, fetchArticleCategories |
+| functions/lib/consoBons/index.js | — | CONSO_PARCELLE_CACHE_PREFIX, adaptBonsToConsoRows, categorieOf, quantiteOf, alnumArticleKey, buildArticleCategoryIndex, lookupArticleCategorie, aggregateConsoParcelle, articlesAClasser, fermeDeParcelle, resolveFermeInconnue, fetchBonsConsommation, fetchReferentielParcelles, fetchArticleCategories |
 | functions/lib/fonctions/fonctionsHistory.js | — | buildFonctionUpdate |
 | functions/lib/fonctions/fonctionsValidate.js | — | normalizeFonctionSlug, normalizeLibelle, normalizeOrdre |
 | functions/lib/forecastConfirmation.js | — | parseForecastConfirmation |
-| functions/lib/heuresSup/heuresSup.js | — | SEUIL_MINUTES, RECOLTE_FAMILLE, parseHHMM, computeDurationOvertime, formatDuration, normalizeFonctionLabel, matchesExcludedFonction, shouldExcludeWorkerDay |
+| functions/lib/heuresSup/heuresSup.js | — | SEUIL_MINUTES, RECOLTE_FAMILLE, GARDIENNAGE_PATTERN, parseHHMM, computeDurationOvertime, formatDuration, normalizeFonctionLabel, isGardiennage, matchesExcludedFonction, shouldExcludeWorkerDay, isSansEquipe |
 | functions/lib/irrigation/crossDayTrends.js | — | detectCrossDayTrends, buildPeriodRecommendations, dayDiff, longestConsecutiveStreak, stddev, regressByDay |
 | functions/lib/irrigation/dailySummary.js | — | buildDailySummaries, computeDrainTrend, buildHourlyRadCumulative |
 | functions/lib/irrigation/dataAccess.js | — | READINGS_COLLECTION, SNAPSHOTS_COLLECTION, fetchIrrigationReadings, saveSnapshot, fetchSnapshots |
@@ -126,12 +140,25 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/productivity/pdfParser.js | — | extractPdfText, extractWeekAndCampaign, parseProductivityPdf, parseWithClaude, buildPrompt |
 | functions/lib/productivity/ranker.js | — | percentileThreshold, enrichTreatment, enrichTreatments, buildFarmSummary |
 | functions/lib/productivity/refetchPipeline.js | — | refetchProductivityReports |
+| functions/lib/receptionValorisation/prixLigne.js | — | SOURCES_PRIORITE, MOTIF, cleArticle, normaliserSource, prixPondereSource, resolvePrixLigne, valoriserLignes |
+| functions/lib/receptionValorisation/receptionBdc.js | — | STATUT_RECEPTION_A_LA_CREATION, cleArticle, lignesDepuisBl, sourcesPrixDepuisBdc, resoudreMagasinDestination, valoriserItemsReception, construireItemsReception, construireMouvementReception |
 | functions/lib/sentinel/sentinelRecipients.js | — | filterSentinelRecipients |
-| functions/lib/stock/articleHistoryIndex.js | — | buildArticleHistoryIndex, sliceArticleHistory, isStockLieu, STOCK_LIEU_TYPES |
+| functions/lib/stock/articleHistoryIndex.js | — | buildArticleHistoryIndex, sliceArticleHistory, isStockLieu, STOCK_LIEU_TYPES, canon |
+| functions/lib/stock/articleKey.js | — | canon, articleHistoryKey |
+| functions/lib/stock/bcDate.js | — | ISO_DATE_RE, HISTORY_ACTION, isRealIsoDate, validateBcDate, campagneChange, buildDateUpdate |
+| functions/lib/stock/bcDoublons.js | — | MOTIF_SCAN, MOTIF_CONTENU, HISTORY_ACTION_FORCAGE, normaliserTexte, normaliserQuantite, signatureScan, signatureContenu, messageDoublon, detecterDoublon, forcageDemande, construireTraceForcage |
+| functions/lib/stock/bcScan.js | — | SIMILARITY_THRESHOLD, INCLUSION_THRESHOLD, AMBIGUITY_MARGIN, VARIETY_ALIASES, CULTURE_TOKENS, VARIETE_EST_CULTURE, extractCulture, ALLOWED_SCAN_MIME, EXT_TO_MIME, resolveScanMedia, normalizeLabel, toNumber, buildBcScanPrompt, sanitizeVocabList, buildVocabulaireSection, selectVocabArticles, VOCAB_MAX_ENTRIES, parseAiJson, flattenBcScan, diceCoefficient, matchArticle, extractSecteurs, extractVariete, aliasMatchParcelle, parcelleAliasDocId, nextParcelleAliasCount, matchParcelle |
+| functions/lib/stock/bcScanJournal.js | — | STATUTS, MAX_LIGNES, PALMARES_TAILLE, PERIODES_MAX, normalizeJournalLigne, buildJournalDocs, computeScanPrecision, periodeDe, moisDe, periodesEntre, periodesCouvertes |
+| functions/lib/stock/bcSuppression.js | — | HISTORY_ACTION, MOTIF_MIN, validerSuppression, trierMouvements, buildSuppressionUpdate |
+| functions/lib/stock/correctionUniteStock.js | — | CONVERSIONS_ARBITREES, conversionArbitree, UNITE_CIBLE, litresEnKilos, verifierRenommage, planifierCorrection |
+| functions/lib/stock/demandeCreationArticle.js | — | COLLECTION, STATUT_EN_ATTENTE, STATUT_CREE, identifiantDemande, libellesADemander, ecartsASignaler, messageSignalement, motifEcart, construireDemande, messageRefus, partitionnerLignesReception, marquerLignesEcartees, demandesAClore, messageWhatsApp |
+| functions/lib/stock/demandesCreationIO.js | — | enregistrerDemandesCreation |
+| functions/lib/stock/identiteArticle.js | — | ISSUE_RESOLU, ISSUE_INTROUVABLE, ISSUE_AMBIGU, MAX_SAUTS_FUSION, indexerFiches, resoudreIdentite, libelleDeLigne, resoudreLignes, identiteImpact, identifiantSoldeCanonique, identifiantsGardeStock, agregerSoldes, docsAPurger |
 | functions/lib/stock/locationsConfig.js | — | ROLE_CONTROLE, authorizeSetLocations, buildLocationsPatch |
 | functions/lib/stock/movementGuard.js | — | IMPORT_CREATED_BY, VALIDATED_STATUS, isImportedMovement, isValidatedMovement, isDeletedMovement, isCreator, evaluateMutable, canEditMovement, canDeleteMovement, ADMIN_DELETE_ROLES, isAdminDeleter, evaluateAdminDelete, canAdminDeleteMovement, refusalMessage |
 | functions/lib/stock/movementImpact.js | — | isImpactApplied, IMPACT_STATUS |
 | functions/lib/stock/pmpDetail.js | — | canon, canonUnite, isTonne, normalizeFactureLine, dominantUnite, computeFacturePMP |
+| functions/lib/stock/recleSoldes.js | — | ISSUE_DEJA_CANONIQUE, ISSUE_DEPLACEMENT, ISSUE_REUNION, ISSUE_ORPHELIN, uniteComparable, anomaliesUnites, documentCible, planifierRecle, incrementConserve |
 | functions/lib/stock/scanAttachment.js | — | SIGNED_URL_TTL_MS, MAX_ATTACHMENT_BYTES, ALLOWED_ATTACHMENT_MIME, validateAttachmentMetadata, generateSignedUrl, extractPdfText, downloadBuffer, utils |
 | functions/lib/stock/scanAttachmentUtils.js | — | ENTITY_MAP, ALLOWED_EXTENSIONS, isValidEntityType, collectionForEntity, folderForEntity, extOf, mimeFromFilename, sanitizeFilename, buildScanPath, isScanPathForEntity, validateUploadAttachmentParams |
 | functions/lib/stock/stockGuard.js | — | — voir fichier — |
@@ -144,18 +171,30 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/stockFiles/farmDetection.js | — | detectFarmFromCaption |
 | functions/lib/stockFiles/recordSubmission.js | — | COLLECTION, VALID_FARMS, FARM_LABELS, isValidFarm, todayInCasablanca, addDaysStr, emptyFarmState, emptySubmissionDoc, recordSubmission |
 | functions/lib/stockFiles/reminders.js | — | computeMissingFarms, buildReminderText, buildEscalationText, createStockFileReminders |
-| functions/lib/stockMerge/articleMerge.js | — | normalizeArticleName, groupDuplicates, isMovementOpen, isBdcOpen, BDC_CLOSED_STATUSES |
+| functions/lib/stockMerge/articleCategories.js | — | CATEGORIES_ARTICLE, SYNONYMES_CATEGORIE, categorieCanonique, estCategorieCanonique |
+| functions/lib/stockMerge/articleMerge.js | — | normalizeArticleName, groupDuplicates, verifierIntegriteFiche, buildArticleIndex, resolveArticleTarget, rememberArticle, isMovementOpen, isBdcOpen, BDC_CLOSED_STATUSES |
+| functions/lib/stockMerge/masterSuggestion.js | — | choisirMaster, pmpArticle, prixHtArticle, prixArticle, nbAchatsArticle, formatDh, cleDocument, REGLE_PMP, REGLE_PRIX_HT, REGLE_NB_ACHATS |
+| functions/lib/stockMerge/reunionSoldes.js | — | planifierReunion, casExecutables, incrementConserve, indexerCatalogue, ficheDuSolde |
+| functions/lib/stockMerge/soldesMaster.js | — | identifiantSoldeCanonique, clesMaster, estSoldeDuMaster, choisirSoldeCible, indexerSoldesMaster |
+| functions/lib/stockRoles/articleClassement.js | — | fichesAClasserParNom, referencesAClasserParNom |
+| functions/lib/stockRoles/articlePermissions.js | — | peutModifierArticle, peutModifierChampsArticle, champsDemandes, peutFusionnerArticles, peutSupprimerBonConso, ROLE_CATALOGUE, ROLE_SUPERVISEUR, ROLE_MAGASINIER, CHAMPS_CONVERSION_UNITE, REFUS, REFUS_HORS_CONVERSION, REFUS_SUPPRESSION_BC |
+| functions/lib/stockRoles/index.js | — | peutModifierArticle, peutModifierChampsArticle, champsDemandes, peutFusionnerArticles, peutSupprimerBonConso, fichesAClasserParNom, referencesAClasserParNom, ROLE_CATALOGUE, ROLE_SUPERVISEUR, ROLE_MAGASINIER, CHAMPS_CONVERSION_UNITE, REFUS, REFUS_HORS_CONVERSION, REFUS_SUPPRESSION_BC |
 | functions/lib/suppliers/supplierValidation.js | — | validateSupplier, normalizeIf, normalizeIce, normalizePhone, isValidIf, isValidIce, isValidPhone, isNonEmpty |
 | functions/lib/triage/bugTriage.js | — | MODULES, SEVERITIES, TRIAGE_MODEL, SYSTEM_PROMPT, TRIAGE_TOOL, shortId, shouldNotifyResolved, buildResolvedMessage, buildResolvedDGMessage, buildRecentBugsBlock, buildSystemPrompt, buildTextBlock, buildUserContent, isValidTriage, parseTriage, callClaude |
+| functions/lib/uniteConso/conversionUnite.js | — | CHAMP_UNITE_CONSOMMATION, CHAMP_FACTEUR, MOTIFS, normaliserUnite, lireFacteur, uniteStock, uniteConsommation, unitesSaisissables, phraseConversion, convertirQuantite, canonNom, indexerArticles, trouverArticle, estAmbigu, analyserLignes |
+| functions/lib/uniteConso/index.js | — | — voir fichier — |
 | functions/lib/validation/validationAccess.js | — | CAPORAL_FERME_BY_PROFILE, genericRoleFor, fermeForCaporalProfile, authorizeValidationAction |
 | functions/lib/valorisation/accessControl.js | — | FULL_ACCESS_PROFILES, CHEF_PROFILE_FERME, CHEF_PROFILE_CULTURE, isChefProfile, resolveChefFerme, resolvePerimetre |
 | functions/lib/valorisation/consoValorisation.js | — | canon, canonUnite, isTonne, normalizeQte, familleBucket, resolvePmp, aggregateConsoValorisee, SYNONYMES |
 | functions/lib/valorisation/fermeParcelle.js | — | deriveFermeFromParcelle |
 | public/lib/analytiqueUtils.js | AnalytiqueUtils | opLabel, opKey, buildAnalytiquePivot, resolveGroupeFamille, resolveGbCode, buildAnalytiquePivotByFamille, GB_GROUPE_MAP, GROUPE_ORDER, GB_ORDER |
+| public/lib/articleCategories.js | ArticleCategories | CATEGORIES_ARTICLE, LABEL_VIDE, SUFFIXE_HORS_LISTE, optionsCategorie, estCanonique |
+| public/lib/articleSelect.js | ArticleSelect | cleIdentite, cleRecherche, ficheChoisissable, indexerCatalogue, filtrerEntrees, verdictChoix, lignesInvalides, ISSUE_CHOISI, ISSUE_EN_COURS, ISSUE_INCONNU, ISSUE_AMBIGU, ISSUE_VIDE |
 | public/lib/authResilience.js | AuthResilience | action, reason, profile, 5000, 10000, 20000, decideAuthState, isNewAppVersion, retryDelayMs |
-| public/lib/bdcReceptionUtils.js | BdcReceptionUtils | computeDeliveryData, resolveDeliveryDataOrError, filterReceptionsForBdc, computeReceptionRowsWithReliquat, computeReceptionEcart, clampReceivedQty |
+| public/lib/bcScanMatch.js | BcScanMatch | VARIETY_ALIASES, CULTURE_TOKENS, normalizeLabel, extractSecteurs, extractVariete, extractCulture, et, aliasMatch, matchParcelle |
+| public/lib/bdcReceptionUtils.js | BdcReceptionUtils | computeDeliveryData, resolveDeliveryDataOrError, filterReceptionsForBdc, computeReceptionRowsWithReliquat, computeReceptionEcart, clampReceivedQty, buildReceptionCreatedMessage |
 | public/lib/bdcWorkflow.js | BdcWorkflow | DIRECT_DG_FARMS, requiresChefValidation, nextStatusOnSubmit, bypassReason, chefProfileForFerme |
-| public/lib/caisseUtils.js | CaisseUtils | EXPENSE_TYPES, INCOME_TYPES, OP_EXPENSE_TYPES, OP_INCOME_TYPES, TRANSFER_TYPES, QUICK_PERIODS, QUICK_TYPES, ANOMALY_CODES, MONTANT_ANOMALY_THRESHOLD, DESCRIPTION_MIN_LENGTH, ANALYTIQUE_PLACEHOLDER, MONTANT_ATYPIQUE_FACTOR, MONTANT_ATYPIQUE_WINDOW_DAYS, MONTANT_ATYPIQUE_MIN_SAMPLE, DOUBLON_MAX_DATE_DELTA_DAYS, DOUBLON_LEVENSHTEIN_THRESHOLD, DOUBLON_DESC_PREFIX_LEN, DESCRIPTION_GENERIC_REGEX, BAHIA_MARKER, AVANCE_KEYWORD_REGEX, detectCaisseAnomalies, computeTotals, quickPeriodToDateRange, searchTransactions, filterByQuickType, detectAnomaliesBatch, extractBeneficiaire, aggregateAvances, COMPTE_CLIENT_PREFIX, isCompteClientCaisse, computeCompteClientTotals |
+| public/lib/caisseUtils.js | CaisseUtils | EXPENSE_TYPES, INCOME_TYPES, OP_EXPENSE_TYPES, OP_INCOME_TYPES, TRANSFER_TYPES, QUICK_PERIODS, QUICK_TYPES, ANOMALY_CODES, MONTANT_ANOMALY_THRESHOLD, DESCRIPTION_MIN_LENGTH, ANALYTIQUE_PLACEHOLDER, MONTANT_ATYPIQUE_FACTOR, MONTANT_ATYPIQUE_WINDOW_DAYS, MONTANT_ATYPIQUE_MIN_SAMPLE, DOUBLON_MAX_DATE_DELTA_DAYS, DOUBLON_LEVENSHTEIN_THRESHOLD, DOUBLON_DESC_PREFIX_LEN, DESCRIPTION_GENERIC_REGEX, BAHIA_MARKER, AVANCE_KEYWORD_REGEX, detectCaisseAnomalies, computeTotals, quickPeriodToDateRange, searchTransactions, filterByQuickType, AXE_NON_RENSEIGNE, filterByAxes, distinctAxeValues, detectAnomaliesBatch, extractBeneficiaire, aggregateAvances, COMPTE_CLIENT_PREFIX, isCompteClientCaisse, computeCompteClientTotals |
 | public/lib/campagneBudgetPivot.js | CampagneBudgetPivot | indexBudgets, buildBudgetPivot, ecartCell |
 | public/lib/campagneBudgetQuinzaine.js | CampagneBudgetQuinzaine | quinzaineKey, quinzaineNum, optionsFromPeriodes, quinzaineCourante, quinzainePrecedente, quinzainesByLabel, trancheQuinzaine, realiseQuinzaine, decoreQuinzaine, pctPartsCellule, resteQuinzaineCellule, noteQuinzaine |
 | public/lib/campagneExportUtils.js | CampagneExportUtils | SHEET_MAX, ROW_KIND, PERCENT_HEADER, BUDGET_HEADER, scopeNote, perHa, buildParcelleBudgetIndex, haLabel, numFmtFor, percentFmtFor, percentColumns, sumBudget, budgetScope, budgetCells, safeSheetName, buildSyntheseRows, buildSyntheseAoA, syntheseSheetCols, buildParcelleSheetRows, buildParcelleSheetAoA, parcelleSheetCols |
@@ -170,7 +209,9 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | public/lib/emargementPdf.js | EmargementPdf | genSansCnss, genAvecCnss, genTransporteurs, genBulletins, genBulletinsAr |
 | public/lib/encaissementsCanevas.js | EncaissementsCanevas | ENCAISSEMENTS_SCHEMA, round2, slugifyClient, normalizeReference, parseFrNumber, parseDate, parseEncaissements, buildModeleAoA, buildModeleWorkbook |
 | public/lib/factureExportUtils.js | FactureExportUtils | STANDARD_TVA_RATES, TVA_SNAP_EPS, CAMPAIGN_START_MONTH, TAXABLE_TVA_RATE, TAXABLE_PRODUCT_PATTERNS, ANOMALIE_TVA_B, INFO_TVA_NON_SAISIE, fxRound2, parseFactureDate, campaignBounds, isWithinPeriod, campaignYearOf, listAvailableCampaigns, reconciliationEpsilon, normalizeDesignation, matchProduitTaxable, deriveTauxLigne, parseSaisiTaux, resolveTauxLigne, deriveTauxTva, buildFactureLines, RECAP_COL, RECAP_NB_COLS, buildRecapStatutRows |
+| public/lib/fusionMasse.js | FusionMasse | docIdFiche, masterDuGroupe, doublonsDuGroupe, estSelectionnable, raisonNonSelectionnable, clesSelectionnables, construireLot, signatureLot, agregerApercu, resumerExecution |
 | public/lib/growthUtils.js | GrowthUtils | rows, error, FRAMBOISE_CULTURE, ALL_VARIETES, MAX_LENGTH_CM, framboiseParcelles, varietesFramboise, buildGrowthSeries, validateMeasurement, normalizeCheckpoints |
+| public/lib/imageDownscale.js | ImageDownscale | computeTargetSize, downscaleToDataUrl |
 | public/lib/inflightDedup.js | InflightDedup | — voir fichier — |
 | public/lib/inventaireUtils.js | InventaireUtils | computeInventaireTotals, formatQteParUnite, boundedLedger |
 | public/lib/lecturePaieExcel.js | LecturePaieExcel | normaliserLibelle, cleMatricule, estNombre, estLigneTotal, trouverEnTete, colonne, lireFeuilleOuvriers, periodeDeGrille, lireTransport, lireDivers, agregerOuvriers, postesExcel |
@@ -190,4 +231,5 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | public/lib/scanHistoryDisplay.js | ScanHistoryDisplay | scanFournisseurLabel, scanTtc, scanBdcMatche |
 | public/lib/stockDestinations.js | StockDestinations | resolveDestinationOptions, resolveReceptionDestination, resolveBdcDestination, SD_HORS_CONFIG_SUFFIX, SD_NOTE_HORS_CONFIG, SD_FERMES_STOCK_NON_MUTUALISE |
 | public/lib/stockMovementGuard.js | StockMovementGuard | IMPORT_CREATED_BY, VALIDATED_STATUS, isImportedMovement, isValidatedMovement, isDeletedMovement, isCreator, evaluateMutable, canEditMovement, canDeleteMovement, ADMIN_DELETE_ROLES, isAdminDeleter, evaluateAdminDelete, canAdminDeleteMovement, refusalMessage |
+| public/lib/uniteConsoUtils.js | UniteConsoUtils | CHAMP_UNITE_CONSOMMATION, CHAMP_FACTEUR, MOTIFS, normaliserUnite, lireFacteur, uniteStock, uniteConsommation, unitesSaisissables, phraseConversion, convertirQuantite, canonNom, indexerArticles, trouverArticle, estAmbigu, analyserLignes |
 | public/lib/useStockLocations.js | useStockLocations | magasins, stations, parcelles, loading |

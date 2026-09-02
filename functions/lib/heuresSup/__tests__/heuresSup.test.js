@@ -9,7 +9,13 @@ const {
   normalizeFonctionLabel,
   matchesExcludedFonction,
   shouldExcludeWorkerDay,
+  isGardiennage,
+  isSansEquipe,
+  GARDIENNAGE_PATTERN,
 } = require('../heuresSup');
+
+// Configuration réellement présente en prod dans app_settings/heures_sup.
+const PROD_EXCLUDED = ['Gardien de nuit', 'Gardien du jour'];
 
 // ---- parseHHMM ----
 
@@ -123,7 +129,137 @@ test('shouldExcludeWorkerDay: hors-récolte standard conservé', () => {
 
 // ---- normalizeFonctionLabel ----
 
-test('normalizeFonctionLabel: minuscule + espaces réduits', () => {
-  assert.equal(normalizeFonctionLabel('  12.   Gardiennage  '), '12. gardiennage');
+test('normalizeFonctionLabel: minuscule + espaces réduits + préfixe retiré', () => {
+  assert.equal(normalizeFonctionLabel('  12.   Gardiennage  '), 'gardiennage');
   assert.equal(normalizeFonctionLabel(null), '');
+});
+
+test('normalizeFonctionLabel: accents dépliés et préfixe numérique retiré', () => {
+  assert.equal(normalizeFonctionLabel('08. Service Générale'), 'service generale');
+  assert.equal(normalizeFonctionLabel('8. Récolte'), 'recolte');
+  assert.equal(normalizeFonctionLabel('08. Récolte'), 'recolte');
+});
+
+// ---- isGardiennage ----
+
+test('isGardiennage: vrai sur l’opération, quelles que soient les variantes', () => {
+  assert.equal(isGardiennage('08. Service générale', 'Gardiennage'), true);
+  assert.equal(isGardiennage('08. Service générale', 'Gardien de nuit'), true);
+  assert.equal(isGardiennage('08. Service générale', 'Gardien du jour'), true);
+  assert.equal(isGardiennage('08. Service générale', 'Gardienne'), true);
+});
+
+test('isGardiennage: faux sur les autres opérations de la même famille', () => {
+  assert.equal(isGardiennage('08. Service générale', 'Magasinier'), false);
+  assert.equal(isGardiennage('08. Service générale', 'Technicien'), false);
+  assert.equal(isGardiennage('08. Service générale', 'Conducteur de voiture'), false);
+  assert.equal(isGardiennage('08. Service générale', null), false);
+});
+
+test('GARDIENNAGE_PATTERN: racine « gardien »', () => {
+  assert.equal(GARDIENNAGE_PATTERN.test('gardiennage'), true);
+  assert.equal(GARDIENNAGE_PATTERN.test('magasinier'), false);
+});
+
+// ---- gardiennage réel (libellés de production) ----
+
+test('shouldExcludeWorkerDay: gardiennage prod exclu SANS config', () => {
+  assert.equal(
+    shouldExcludeWorkerDay({ operationFamille: '08. Service générale', operation: 'Gardiennage' }, []),
+    true
+  );
+});
+
+test('shouldExcludeWorkerDay: gardiennage prod exclu AVEC la config actuelle', () => {
+  assert.equal(
+    shouldExcludeWorkerDay({ operationFamille: '08. Service générale', operation: 'Gardiennage' }, PROD_EXCLUDED),
+    true
+  );
+  assert.equal(
+    shouldExcludeWorkerDay({ operationFamille: '08. Service générale', operation: 'Gardien de nuit' }, PROD_EXCLUDED),
+    true
+  );
+});
+
+test('shouldExcludeWorkerDay: autres métiers de « Service générale » conservés', () => {
+  for (const op of ['Magasinier', 'Technicien', 'Conducteur de voiture']) {
+    assert.equal(
+      shouldExcludeWorkerDay({ operationFamille: '08. Service générale', operation: op }, PROD_EXCLUDED),
+      false,
+      `attendu conservé : ${op}`
+    );
+  }
+});
+
+test('shouldExcludeWorkerDay: familles techniques conservées', () => {
+  assert.equal(
+    shouldExcludeWorkerDay(
+      { operationFamille: '11. Ferti-irrigation', operation: 'Irrigation & fertigation' },
+      PROD_EXCLUDED
+    ),
+    false
+  );
+  assert.equal(
+    shouldExcludeWorkerDay(
+      { operationFamille: '04. Traitement phyto/Désherbage', operation: 'Traitement phyto' },
+      PROD_EXCLUDED
+    ),
+    false
+  );
+});
+
+test('shouldExcludeWorkerDay: récolte zéro-padée « 08. Récolte » exclue', () => {
+  assert.equal(
+    shouldExcludeWorkerDay({ operationFamille: '08. Récolte', operation: 'caisse 2.4 kg' }, []),
+    true
+  );
+});
+
+test('matchesExcludedFonction: inclusion sur l’opération, pas sur la famille', () => {
+  // "gardien" configuré attrape la variante longue de l'opération…
+  assert.equal(matchesExcludedFonction('08. Service générale', 'Gardien de nuit', ['gardien']), true);
+  // …mais pas par inclusion dans la famille (trop large).
+  assert.equal(matchesExcludedFonction('08. Service générale', 'Magasinier', ['service']), false);
+  // Entrée trop courte : pas d'inclusion accidentelle.
+  assert.equal(matchesExcludedFonction('08. Service générale', 'Magasinier', ['ma']), false);
+});
+
+// ---- isSansEquipe ----
+// Matricules RÉELS relevés dans prod_presence (2026-08-19, 2026-08-22, 2026-09-01).
+
+test('isSansEquipe: matricule purement numérique = sans équipe', () => {
+  for (const mat of ['5', '6', '102', '190', '11523', '3397']) {
+    assert.equal(isSansEquipe(mat), true, `attendu sans équipe : ${mat}`);
+  }
+});
+
+// ZU / ZZ / DD ne figurent PAS dans les 13 préfixes de functions/equipesConfig.js,
+// et sont pourtant bien présents en production : la règle conserve tout matricule
+// portant une lettre, qu'il corresponde ou non à un préfixe connu.
+test('isSansEquipe: matricule contenant au moins une lettre = conservé', () => {
+  for (const mat of ['ZU11501', 'HAFI234', 'ZZ44594', 'MM01', 'AY02', 'DD10502']) {
+    assert.equal(isSansEquipe(mat), false, `attendu conservé : ${mat}`);
+  }
+});
+
+test('isSansEquipe: le prédicat est « aucune lettre », pas « commence par un chiffre »', () => {
+  // Chiffre en tête mais lettre présente → conservé (ce cas distingue la
+  // sémantique demandée d'un test /^\d/).
+  assert.equal(isSansEquipe('1A234'), false);
+});
+
+test('isSansEquipe: espaces autour ignorés', () => {
+  assert.equal(isSansEquipe('  102  '), true);
+  assert.equal(isSansEquipe('  MM01 '), false);
+});
+
+test('isSansEquipe: casse indifférente', () => {
+  assert.equal(isSansEquipe('zu11501'), false);
+});
+
+test('isSansEquipe: matricule vide/absent = sans équipe (ne peut porter aucun préfixe)', () => {
+  assert.equal(isSansEquipe(''), true);
+  assert.equal(isSansEquipe('   '), true);
+  assert.equal(isSansEquipe(null), true);
+  assert.equal(isSansEquipe(undefined), true);
 });

@@ -114,7 +114,7 @@
                     quantite_commandee: it.quantite,
                     quantite_deja_recue: d ? d.qLiv : 0,
                     reliquat: d ? d.reste : (parseFloat(it.quantite) || 0),
-                    quantite_recue: '', unite: it.unite || 'kg', note: '',
+                    quantite_recue: '', unite: it.unite || '', note: '',
                 };
             });
             setBlForm(prev => ({ ...prev, items }));
@@ -164,7 +164,7 @@
                 created_by: { profileId: currentProfile, name: profileData?.name || currentProfile, userId: profileData?.userId || '' },
             }),
         }).then(r => r.json()).then(json => {
-            if (json.success) { alert('Bon de réception créé. En attente de valorisation Achats.'); setShowForm(false); setSelectedBdc(null); loadData(); }
+            if (json.success) { alert(window.BdcReceptionUtils.buildReceptionCreatedMessage(json.reception_numero, json.valorisation)); setShowForm(false); setSelectedBdc(null); loadData(); }
             else alert('Erreur: ' + (json.error || 'Echec'));
         }).catch(() => alert('Erreur réseau'));
     };

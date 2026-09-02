@@ -226,6 +226,35 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Alias de scan des bons de consommation (libellé manuscrit -> article du
+    // catalogue) — lecture pour utilisateur authentifié, écriture via la Cloud
+    // Function stockManagement (action save-bc-scan-alias) uniquement.
+    match /bc_scan_aliases/{docId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    // Alias de scan des PARCELLES (en-tête de pile manuscrit -> libellé BEE ONE),
+    // clé = <campagne>__<en-tête normalisé> : un alias appris sur une campagne ne
+    // doit jamais s'appliquer à la suivante (parcelles renouvelées). Lecture pour
+    // utilisateur authentifié, écriture via la Cloud Function stockManagement
+    // (action save-bc-scan-parcelle-alias) uniquement.
+    match /bc_scan_parcelle_aliases/{docId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    // Journal de PRÉCISION du scan des bons de consommation : un document par
+    // ligne enregistrée (confirmations ET corrections — sans les confirmations,
+    // aucun taux n'est calculable). Purement observationnel, exploité par
+    // scripts/scan-precision-report.js. Lecture pour utilisateur authentifié,
+    // écriture via la Cloud Function stockManagement (action
+    // save-bc-scan-journal) uniquement.
+    match /bc_scan_corrections/{docId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
     // Stock balances — read-only for authenticated users, write via Cloud Functions
     match /stock_balances/{docId} {
       allow read: if request.auth != null;

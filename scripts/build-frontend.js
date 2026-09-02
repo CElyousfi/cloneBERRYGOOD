@@ -140,6 +140,7 @@ const COMPONENT_SENTINELS = {
   "MagBonsCommandeTab.js": "window.MagBonsCommandeTab",
   "MagBdcReceptionTab.js": "window.MagBdcReceptionTab",
   "MagBCTab.js": "window.MagBCTab",
+  "ArticleConversionFields.js": "window.ArticleConversionFields",
   "ParcellesParamsTab.js": "window.ParcellesParamsTab",
   "ParcellesGroupesPanel.js": "window.ParcellesGroupesPanel",
   "PmpDetailPopup.js": "window.PmpDetailPopup",
@@ -177,6 +178,31 @@ if (fs.existsSync(COMPONENTS_DIR)) {
         process.exit(2);
       }
     }
+  }
+}
+
+// 2quinquies. Chaque composant DOIT être référencé par un <script> dans
+// index.html. Sans cette garde, un composant peut être construit, committé et
+// déployé sans jamais être chargé par la page : le fichier répond en 200, mais
+// `window.X` reste undefined et la fonctionnalité est muette, sans la moindre
+// erreur. Cas réel du 2026-08-26 : la balise de CaisseDetailPopup a été perdue
+// en résolvant un conflit de rebase sur index.html, et rien ne l'a signalé.
+{
+  const indexHtmlPath = path.join(ROOT, "public/index.html");
+  const indexHtmlSrc = fs.readFileSync(indexHtmlPath, "utf8");
+  const jsxFiles = fs.existsSync(COMPONENTS_DIR)
+    ? fs.readdirSync(COMPONENTS_DIR).filter((f) => f.endsWith(".jsx")).sort()
+    : [];
+  const orphelins = jsxFiles
+    .map((f) => f.replace(/\.jsx$/, ".js"))
+    .filter((js) => indexHtmlSrc.indexOf("components/" + js) === -1);
+  if (orphelins.length > 0) {
+    console.error(
+      "[build-frontend] composant(s) construits mais JAMAIS chargés par public/index.html : " + orphelins.join(", ") + "\n" +
+      "  Ajoute la balise correspondante dans public/index.html :\n" +
+      orphelins.map((js) => '    <script defer src="components/' + js + '"></script>').join("\n")
+    );
+    process.exit(2);
   }
 }
 

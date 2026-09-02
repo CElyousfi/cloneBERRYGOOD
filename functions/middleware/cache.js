@@ -6,7 +6,7 @@
  *   const data = await withCache("my-key", 5 * 60 * 1000, async () => fetchExpensiveData());
  */
 
-const { db } = require("../config/firebase");
+const { db, admin } = require("../config/firebase");
 
 function safeCacheKey(cacheKey) {
   return cacheKey.replace(/[\/\.\s#\[\]*]/g, "_").slice(0, 200);
@@ -53,4 +53,49 @@ async function invalidateCache(cacheKey) {
   await db.collection("api_cache").doc(safeKey).delete().catch(() => {});
 }
 
-module.exports = { withCache, invalidateCache };
+/**
+ * Invalide TOUTES les entrées de cache dont la clé commence par `prefix`.
+ *
+ * Pourquoi un préfixe et pas une clé : les réponses ferme-aware sont cachées
+ * une fois PAR PÉRIMÈTRE (`pointageCacheKey` suffixe `_all`, `_f1`,
+ * `_f1_framboise`…). Après une correction de donnée, supprimer la seule entrée
+ * `_all` laisserait les chefs sur une réponse périmée — et énumérer les
+ * périmètres connus serait un fail-open : le jour où un périmètre s'ajoute, son
+ * cache survivrait en silence.
+ *
+ * Balayage par plage d'identifiants de document (`documentId() >= prefix` et
+ * `< prefix + \uf8ff`), donc borné au préfixe : jamais un `.get()` sur toute
+ * la collection `api_cache`.
+ *
+ * Best-effort, comme `invalidateCache` : un échec de purge ne doit pas faire
+ * échouer l'écriture métier qui l'a déclenchée (le cache expirera de lui-même).
+ *
+ * @param {string} prefix préfixe de clé (avant passage par safeCacheKey).
+ * @returns {Promise<number>} nombre d'entrées supprimées (0 en cas d'échec).
+ */
+async function invalidateCachePrefix(prefix) {
+  const safePrefix = safeCacheKey(String(prefix || ""));
+  if (!safePrefix) return 0;
+  try {
+    const snap = await db
+      .collection("api_cache")
+      .where(admin.firestore.FieldPath.documentId(), ">=", safePrefix)
+      .where(admin.firestore.FieldPath.documentId(), "<", safePrefix + "\uf8ff")
+      .get();
+    if (snap.empty) return 0;
+    // Chunks de 400 : limite Firestore de 500 écritures/batch, marge de 100
+    // (convention du repo).
+    const docs = snap.docs;
+    for (let i = 0; i < docs.length; i += 400) {
+      const batch = db.batch();
+      docs.slice(i, i + 400).forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+    }
+    return docs.length;
+  } catch (e) {
+    console.error("[cache] invalidateCachePrefix échec:", e.message);
+    return 0;
+  }
+}
+
+module.exports = { withCache, invalidateCache, invalidateCachePrefix };

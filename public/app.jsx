@@ -47513,28 +47513,60 @@ ${rejetHtml}
             const [showCreate, setShowCreate] = useState(false);
             const [createForm, setCreateForm] = useState({ reference:'', nom:'', unite:'U', prix_ht:0, taux_tva:20, prix_ttc:0, categorie:'', sous_categorie:'', type:'', reference_technique:'', multi_ferme:false });
             // --- Fusion de doublons ---
-            const isAchats = currentProfile === 'achats';
+            const peutFusionner = currentProfile === 'achats' || currentProfile === 'dg';
             const [showMerge, setShowMerge] = useState(false);
             const [mergeGroups, setMergeGroups] = useState(null); // null = pas chargé
             const [mergeLoading, setMergeLoading] = useState(false);
             const [mergeMasters, setMergeMasters] = useState({}); // normalized -> master_ref
             const [mergePreview, setMergePreview] = useState(null); // { normalized, data }
             const [mergeBusy, setMergeBusy] = useState(false);
+            // --- Fusion EN MASSE (sélection multiple) ---
+            // Omar a traité 20 groupes à l'unité ; il en reste 85. C'est le VOLUME
+            // qui pose problème, pas la mécanique : on réutilise `merge-articles`
+            // groupe par groupe, sans rien réécrire côté fusion.
+            const [mergeSelection, setMergeSelection] = useState({}); // normalized -> coché
+            const [mergeApercu, setMergeApercu] = useState(null); // { signature, total }
+            const [mergeProgress, setMergeProgress] = useState(null); // { phase, fait, total }
+            const [mergeRapport, setMergeRapport] = useState(null);
 
             const actor = () => ({ uid: currentProfile, profileId: currentProfile, name: profileData?.name||currentProfile, email: profileData?.email||'' });
 
+            // Logique PURE d'orchestration (public/lib/fusionMasse.js) : sélection
+            // fail-closed, adressage par docId, signature du lot chiffré, comptes
+            // rendus. Rien de tout ça ne vit dans le monolithe.
+            const FM = window.FusionMasse || {};
+            const mergeLotComplet = FM.construireLot
+                ? FM.construireLot(mergeGroups||[], mergeMasters, mergeSelection)
+                : { lot: [], ignores: [] };
+            const mergeLot = mergeLotComplet.lot;
+            const mergeIgnores = mergeLotComplet.ignores;
+            // L'aperçu ne vaut QUE pour le lot qu'il a chiffré : dès que la sélection
+            // ou un master change, la signature diverge et la fusion se réinterdit.
+            const mergeApercuAJour = !!(mergeApercu && FM.signatureLot && mergeApercu.signature === FM.signatureLot(mergeLot));
+
             const loadDuplicates = () => {
                 setShowMerge(true); setMergeLoading(true); setMergeGroups(null); setMergeMasters({}); setMergePreview(null);
+                setMergeSelection({}); setMergeApercu(null); setMergeProgress(null); setMergeRapport(null);
                 fetch('/api/stock?action=suggest-article-duplicates&profileId='+encodeURIComponent(currentProfile))
                 .then(r=>r.json()).then(j=>{
-                    if(j.success){ setMergeGroups(j.groups||[]); const m={}; (j.groups||[]).forEach(g=>{ if(g.articles[0]) m[g.normalized]=g.articles[0].reference; }); setMergeMasters(m); }
+                    // Présélection = le maître SUGGÉRÉ par le serveur (règle pure
+                    // lib/stockMerge/masterSuggestion.js), jamais g.articles[0] :
+                    // la première fiche du tableau est un ordre Firestore, et
+                    // merge-articles ne transfère ni prix ni nb_achats au maître.
+                    // Groupe non décidable -> AUCUNE présélection (fail-closed).
+                    if(j.success){ setMergeGroups(j.groups||[]); const m={}; (j.groups||[]).forEach(g=>{ if(g.decidable && g.master_suggere) m[g.normalized]=g.master_suggere; }); setMergeMasters(m); }
                     else alert('Erreur: '+j.error);
                 }).catch(()=>alert('Erreur réseau')).finally(()=>setMergeLoading(false));
             };
 
+            // ⚠️ On adresse par a.id (le docId), JAMAIS par a.reference : le
+            // serveur résout par .doc(<clé>), et 92 fiches ont un `reference`
+            // espacé que le docId n'a pas (« ENG 0149 » vs « ENG0149 »). Pire,
+            // des documents fantômes sans nom existent à ces références-là :
+            // la fusion s'y exécuterait et viderait les libellés de BDC.
             const previewMerge = (group) => {
                 const masterRef = mergeMasters[group.normalized];
-                const doublonRefs = group.articles.map(a=>a.reference).filter(r=>r!==masterRef);
+                const doublonRefs = group.articles.map(a=>a.id).filter(r=>r!==masterRef);
                 if(!masterRef || doublonRefs.length===0){ alert('Sélectionnez un master et au moins un doublon'); return; }
                 setMergeBusy(true); setMergePreview(null);
                 fetch('/api/stock?action=merge-articles', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ master_ref: masterRef, doublon_refs: doublonRefs, mode:'preview', by: actor() }) })
@@ -47543,11 +47575,94 @@ ${rejetHtml}
 
             const executeMerge = (group) => {
                 const masterRef = mergeMasters[group.normalized];
-                const doublonRefs = group.articles.map(a=>a.reference).filter(r=>r!==masterRef);
+                const doublonRefs = group.articles.map(a=>a.id).filter(r=>r!==masterRef);
+                // Même garde que previewMerge : depuis le fail-closed, un groupe
+                // indécidable laisse légitimement masterRef à undefined — sans
+                // ce contrôle le confirm() annoncerait « fusion dans undefined ».
+                if(!masterRef || doublonRefs.length===0){ alert('Sélectionnez un master et au moins un doublon'); return; }
                 if(!confirm('Confirmer la fusion de '+doublonRefs.length+' doublon(s) dans « '+masterRef+' » ?\nLes doublons seront désactivés (réversible).')) return;
                 setMergeBusy(true);
                 fetch('/api/stock?action=merge-articles', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ master_ref: masterRef, doublon_refs: doublonRefs, mode:'execute', by: actor() }) })
                 .then(r=>r.json()).then(j=>{ if(j.success){ alert('Fusion effectuée : '+(j.counts?.movements||0)+' mouvement(s), '+(j.counts?.balances||0)+' solde(s), '+(j.counts?.bdc||0)+' BDC réassignés.'); setMergePreview(null); load(); loadDuplicates(); } else alert('Erreur: '+j.error); }).catch(()=>alert('Erreur réseau')).finally(()=>setMergeBusy(false));
+            };
+
+            // Coche / décoche un groupe. Un groupe non sélectionnable (aucun article
+            // à conserver déterminé) ne peut pas entrer dans le lot : fail-closed,
+            // une fusion en masse ne devine jamais un master.
+            const basculerSelection = (group) => {
+                if(!FM.estSelectionnable || !FM.estSelectionnable(group, mergeMasters)) return;
+                setMergeApercu(null);
+                setMergeSelection(s => { const n = {...s}; if(n[group.normalized]) delete n[group.normalized]; else n[group.normalized] = true; return n; });
+            };
+
+            const toutSelectionner = (tout) => {
+                setMergeApercu(null);
+                if(!tout){ setMergeSelection({}); return; }
+                const cles = FM.clesSelectionnables ? FM.clesSelectionnables(mergeGroups||[], mergeMasters) : [];
+                const n = {}; cles.forEach(c => { n[c] = true; }); setMergeSelection(n);
+            };
+
+            // APERÇU GLOBAL — obligatoire avant toute écriture. Un `merge-articles`
+            // en mode `preview` par groupe (la MÊME action que la fusion unitaire),
+            // puis addition des chiffres SERVEUR : l'écran n'invente aucun nombre.
+            // Chaque preview scanne cinq collections : la progression est affichée,
+            // sinon 85 aperçus font conclure au plantage.
+            const apercuLot = async () => {
+                if(mergeLot.length===0){ alert('Sélectionnez au moins un groupe fusionnable.'); return; }
+                setMergeBusy(true); setMergeApercu(null); setMergeRapport(null);
+                setMergeProgress({ phase:'apercu', fait:0, total:mergeLot.length, courant:'' });
+                const entrees = [];
+                for(let i=0;i<mergeLot.length;i++){
+                    const e = mergeLot[i];
+                    setMergeProgress({ phase:'apercu', fait:i, total:mergeLot.length, courant:e.normalized });
+                    let j;
+                    try {
+                        j = await fetch('/api/stock?action=merge-articles', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ master_ref: e.master_ref, doublon_refs: e.doublon_refs, mode:'preview', by: actor() }) }).then(r=>r.json());
+                    } catch(err) { j = { success:false, error:'erreur réseau' }; }
+                    if(!j || !j.success){
+                        alert('Aperçu interrompu sur « '+e.normalized+' » : '+((j&&j.error)||'erreur inconnue')+'\nAucune écriture n\'a eu lieu.');
+                        setMergeProgress(null); setMergeBusy(false); return;
+                    }
+                    entrees.push({ normalized:e.normalized, doublon_refs:e.doublon_refs, preview:j.preview });
+                }
+                setMergeApercu({ signature: FM.signatureLot(mergeLot), total: FM.agregerApercu(entrees) });
+                setMergeProgress(null); setMergeBusy(false);
+            };
+
+            // EXÉCUTION SÉQUENTIELLE, un groupe après l'autre, via `merge-articles`
+            // en mode `execute` — mécanique inchangée. ARRÊT à la première anomalie :
+            // les fusions déjà passées sont acquises (chacune a son audit
+            // `article_merges` avec snapshot de rollback) et le compte rendu dit
+            // lesquelles, sinon un échec à mi-parcours laisse le lot dans le flou.
+            const executerLot = async () => {
+                if(!mergeApercuAJour){ alert('Prévisualisez le lot avant de fusionner (la sélection a changé depuis le dernier aperçu).'); return; }
+                const t = mergeApercu.total;
+                if(!confirm('Fusionner '+t.groupes+' groupe(s) de doublons ?\n'
+                    +'• '+t.fiches_desactivees+' fiche(s) désactivée(s)\n'
+                    +'• '+t.soldes_agreges+' solde(s) agrégé(s) vers le master\n'
+                    +'• '+t.mouvements+' mouvement(s) et '+t.bdc+' BDC ouvert(s) réassignés\n'
+                    +'Les doublons sont désactivés (réversible).')) return;
+                setMergeBusy(true); setMergeRapport(null); setMergePreview(null);
+                const resultats = [];
+                for(let i=0;i<mergeLot.length;i++){
+                    const e = mergeLot[i];
+                    setMergeProgress({ phase:'execution', fait:i, total:mergeLot.length, courant:e.normalized });
+                    let j;
+                    try {
+                        j = await fetch('/api/stock?action=merge-articles', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ master_ref: e.master_ref, doublon_refs: e.doublon_refs, mode:'execute', by: actor() }) }).then(r=>r.json());
+                    } catch(err) { j = { success:false, error:'erreur réseau' }; }
+                    if(!j || !j.success){
+                        resultats.push({ normalized:e.normalized, ok:false, error:(j&&j.error)||'erreur inconnue' });
+                        break;
+                    }
+                    resultats.push({ normalized:e.normalized, ok:true, doublon_refs:e.doublon_refs, counts:j.counts||{} });
+                    setMergeProgress({ phase:'execution', fait:i+1, total:mergeLot.length, courant:'' });
+                }
+                const rapport = FM.resumerExecution(mergeLot, resultats, mergeIgnores);
+                setMergeProgress(null); setMergeBusy(false);
+                // `loadDuplicates` remet le compte rendu à zéro : on le repose APRÈS,
+                // sinon Omar perdrait le bilan du lot qu'il vient de lancer.
+                load(); loadDuplicates(); setMergeRapport(rapport);
             };
 
             const load = () => { setLoading(true); fetch('/api/stock?action=list-articles'+(filterCat?'&categorie='+encodeURIComponent(filterCat):'')).then(r=>r.json()).then(j=>{ if(j.success) setArticles(j.articles||[]); }).finally(()=>setLoading(false)); };
@@ -47574,7 +47689,10 @@ ${rejetHtml}
                 }).catch(e => setImportResult({ type:'error', message: e.message })).finally(() => setImporting(false));
             };
 
-            const openDetail = (a) => { setSelectedArticle(a); setEditMode(false); setEditForm({ nom:a.nom, reference:a.reference||'', reference_technique:a.reference_technique||'', unite:a.unite||'U', prix_ht:a.prix_ht||0, taux_tva:a.taux_tva||20, prix_ttc:a.prix_ttc||0, categorie:a.categorie||'', sous_categorie:a.sous_categorie||'', type:a.type||'', multi_ferme:a.multi_ferme||false }); };
+            // unite_consommation / stock_par_unite_consommation : conversion
+            // « unité de consommation → unité de stock » (public/lib/uniteConsoUtils.js).
+            // Optionnelles : absentes, on consomme dans l'unité de stock et rien ne change.
+            const openDetail = (a) => { setSelectedArticle(a); setEditMode(false); setEditForm({ nom:a.nom, reference:a.reference||'', reference_technique:a.reference_technique||'', unite:a.unite||'U', prix_ht:a.prix_ht||0, taux_tva:a.taux_tva||20, prix_ttc:a.prix_ttc||0, categorie:a.categorie||'', sous_categorie:a.sous_categorie||'', type:a.type||'', multi_ferme:a.multi_ferme||false, unite_consommation:a.unite_consommation||'', stock_par_unite_consommation:(a.stock_par_unite_consommation===null||a.stock_par_unite_consommation===undefined)?'':String(a.stock_par_unite_consommation) }); };
             const closeDetail = () => { setSelectedArticle(null); setEditMode(false); };
 
             const handleUpdate = () => {
@@ -47621,10 +47739,29 @@ ${rejetHtml}
                     <div><label style={labelStyle}>Taux TVA (%)</label><select value={String(parseFloat(form.taux_tva)||0)} onChange={e=>{ const v=e.target.value; setForm(f=>({...f, taux_tva:v, prix_ttc:calcTTC(f.prix_ht,v)})); }} style={fieldStyle}><option value="0">0%</option><option value="10">10%</option><option value="20">20%</option></select></div>
                     <div><label style={labelStyle}>Prix TTC (MAD)</label><input value={form.prix_ttc} disabled style={{...fieldStyle,fontFamily:'monospace',background:'#f8f8f8',color:'#888'}} /></div>
                     <div><label style={labelStyle}>Unité</label><select value={form.unite} onChange={e=>setForm(f=>({...f,unite:e.target.value}))} style={fieldStyle}><option value="U">Unité</option><option value="KG">KG</option><option value="L">Litre</option><option value="M">Mètre</option><option value="ML">ML</option><option value="T">Tonne</option><option value="Sac">Sac</option><option value="Bidon">Bidon</option><option value="Pièce">Pièce</option></select></div>
-                    <div><label style={labelStyle}>Catégorie</label><input list="cat-list-edit" value={form.categorie} onChange={e=>setForm(f=>({...f,categorie:e.target.value}))} style={fieldStyle} /><datalist id="cat-list-edit">{allCats.map(c=><option key={c} value={c} />)}</datalist></div>
+                    {/* Liste FERMÉE (window.ArticleCategories) : le texte libre a produit Engrais/engrais, phyto, PHYTO-SANITAIRE… Une valeur hors liste reste proposée TELLE QUELLE, jamais réécrite en douce. */}
+                    <div><label style={labelStyle}>Catégorie</label><select value={form.categorie||''} onChange={e=>setForm(f=>({...f,categorie:e.target.value}))} style={fieldStyle}>{(window.ArticleCategories ? window.ArticleCategories.optionsCategorie(form.categorie) : []).map(o=><option key={o.label} value={o.value}>{o.label}</option>)}</select></div>
                     <div><label style={labelStyle}>Sous-catégorie</label><input value={form.sous_categorie} onChange={e=>setForm(f=>({...f,sous_categorie:e.target.value}))} style={fieldStyle} /></div>
                     <div><label style={labelStyle}>Type</label><select value={form.type} onChange={e=>setForm(f=>({...f,type:e.target.value}))} style={fieldStyle}><option value="">—</option><option value="Stockable">Stockable</option><option value="Consommable">Consommable</option><option value="Service">Service</option></select></div>
                     <div style={{display:'flex',alignItems:'center',gap:8,gridColumn:'1/-1'}}><input type="checkbox" checked={form.multi_ferme} onChange={e=>setForm(f=>({...f,multi_ferme:e.target.checked}))} /><label style={{fontSize:12}}>Multi-ferme</label></div>
+                    {/* Conversion « unité de consommation → unité de stock ».
+                        Composant PARTAGÉ avec l'écran de saisie d'un bon
+                        (public/components/ArticleConversionFields.jsx) : c'est lui
+                        qui porte la phrase « 1 L = 1,32 KG », seule formulation
+                        non ambiguë du facteur. À l'ÉDITION seulement — la
+                        création d'article (`create-article`) n'écrit pas encore
+                        ces champs, les afficher là ferait croire à une saisie
+                        enregistrée. */}
+                    {isEdit && window.ArticleConversionFields && (
+                        <div style={{gridColumn:'1/-1'}}>
+                            <window.ArticleConversionFields
+                                uniteStock={form.unite}
+                                uniteConsommation={form.unite_consommation}
+                                facteur={form.stock_par_unite_consommation}
+                                onChange={patch=>setForm(f=>({...f, ...patch}))}
+                            />
+                        </div>
+                    )}
                 </div>
             );
 
@@ -47643,7 +47780,7 @@ ${rejetHtml}
                             <button onClick={()=>setShowCreate(true)} style={{background:'#2980b9',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontWeight:600,fontSize:12,display:'flex',alignItems:'center',gap:6}}>
                                 <i className="fa-solid fa-plus"></i>Ajouter un produit
                             </button>
-                            {isAchats && (
+                            {peutFusionner && (
                             <button onClick={loadDuplicates} style={{background:'#e67e22',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontWeight:600,fontSize:12,display:'flex',alignItems:'center',gap:6}}>
                                 <i className="fa-solid fa-code-merge"></i>Fusionner doublons
                             </button>
@@ -47793,23 +47930,130 @@ ${rejetHtml}
                                                 <i className="fa-solid fa-circle-info" style={{marginRight:6,color:'#e67e22'}}></i>
                                                 {mergeGroups.length} groupe(s) de doublons. Choisissez l'article MASTER (à conserver) ; les autres seront fusionnés et désactivés.
                                             </div>
+                                            {/* ── FUSION EN MASSE ────────────────────────────────────────
+                                                Sélection multiple + aperçu global obligatoire + exécution
+                                                séquentielle. La mécanique de fusion elle-même reste celle de
+                                                `merge-articles`, appelée groupe par groupe. */}
+                                            <div style={{border:'1px solid #d5dbe0',borderRadius:10,padding:'12px 14px',background:'#fbfcfd'}}>
+                                                <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+                                                    <label style={{display:'flex',alignItems:'center',gap:6,fontSize:12,fontWeight:600,color:'#2c3e50',cursor:'pointer'}}>
+                                                        <input type="checkbox" disabled={mergeBusy}
+                                                            checked={mergeLot.length>0 && FM.clesSelectionnables && mergeLot.length===FM.clesSelectionnables(mergeGroups, mergeMasters).length}
+                                                            onChange={e=>toutSelectionner(e.target.checked)} />
+                                                        Tout sélectionner
+                                                    </label>
+                                                    <span style={{fontSize:12,color:'#555'}}>
+                                                        <strong>{mergeLot.length}</strong> groupe(s) sélectionné(s)
+                                                        {FM.clesSelectionnables && (mergeGroups.length - FM.clesSelectionnables(mergeGroups, mergeMasters).length) > 0 && (
+                                                            <span style={{color:'#c0392b'}}> · {mergeGroups.length - FM.clesSelectionnables(mergeGroups, mergeMasters).length} non sélectionnable(s) (master à choisir)</span>
+                                                        )}
+                                                    </span>
+                                                    <button onClick={apercuLot} disabled={mergeBusy || mergeLot.length===0} style={{marginLeft:'auto',padding:'7px 14px',borderRadius:8,border:'1px solid #e67e22',background:'#fff',color:'#e67e22',cursor:(mergeBusy||mergeLot.length===0)?'not-allowed':'pointer',fontSize:12,fontWeight:600}}>
+                                                        Aperçu global du lot
+                                                    </button>
+                                                    <button onClick={executerLot} disabled={mergeBusy || !mergeApercuAJour} title={!mergeApercuAJour?'Faites l\'aperçu global du lot d\'abord':''} style={{padding:'7px 16px',borderRadius:8,border:'none',background:(mergeBusy||!mergeApercuAJour)?'#bbb':'#27ae60',color:'#fff',cursor:(mergeBusy||!mergeApercuAJour)?'not-allowed':'pointer',fontSize:12,fontWeight:700}}>
+                                                        <i className="fa-solid fa-layer-group" style={{marginRight:6}}></i>Fusionner le lot
+                                                    </button>
+                                                </div>
+                                                {mergeProgress && (
+                                                    <div style={{marginTop:10,fontSize:12,color:'#2c3e50'}}>
+                                                        <i className="fa-solid fa-spinner fa-spin" style={{marginRight:8,color:'#e67e22'}}></i>
+                                                        {mergeProgress.phase==='execution' ? 'Fusion en cours' : 'Aperçu en cours'} : <strong>{mergeProgress.fait} / {mergeProgress.total}</strong>
+                                                        {mergeProgress.courant ? ' — « '+mergeProgress.courant+' »' : ''}
+                                                        <div style={{marginTop:6,height:6,background:'#e8ecef',borderRadius:4,overflow:'hidden'}}>
+                                                            <div style={{height:'100%',width:(mergeProgress.total?Math.round(100*mergeProgress.fait/mergeProgress.total):0)+'%',background:mergeProgress.phase==='execution'?'#27ae60':'#e67e22'}}></div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                {mergeApercuAJour && !mergeProgress && (
+                                                    <div style={{marginTop:10,background:'#fff',border:'1px solid #e3e8ec',borderRadius:8,padding:'10px 12px',fontSize:12,color:'#2c3e50'}}>
+                                                        <div style={{fontWeight:700,marginBottom:4}}>Aperçu global — ce que la fusion du lot va faire</div>
+                                                        <div>• <strong>{mergeApercu.total.groupes}</strong> groupe(s) fusionné(s)</div>
+                                                        <div>• <strong>{mergeApercu.total.fiches_desactivees}</strong> fiche(s) désactivée(s)</div>
+                                                        <div>• <strong>{mergeApercu.total.soldes_agreges}</strong> solde(s) agrégé(s) vers le master</div>
+                                                        <div>• <strong>{mergeApercu.total.mouvements}</strong> mouvement(s) ouvert(s) et <strong>{mergeApercu.total.bdc}</strong> BDC ouvert(s) réassignés</div>
+                                                        {mergeIgnores.length>0 && (
+                                                            <div style={{marginTop:6,color:'#c0392b'}}>{mergeIgnores.length} groupe(s) coché(s) seront ignorés (master non déterminé).</div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                                {mergeRapport && !mergeProgress && (
+                                                    <div style={{marginTop:10,background:mergeRapport.arret_anomalie?'rgba(231,76,60,0.06)':'rgba(39,174,96,0.07)',border:'1px solid '+(mergeRapport.arret_anomalie?'rgba(231,76,60,0.3)':'rgba(39,174,96,0.3)'),borderRadius:8,padding:'10px 12px',fontSize:12,color:'#2c3e50'}}>
+                                                        <div style={{fontWeight:700,marginBottom:4}}>
+                                                            {mergeRapport.arret_anomalie ? 'Lot interrompu à la première anomalie' : 'Lot fusionné'}
+                                                        </div>
+                                                        <div>• <strong>{mergeRapport.groupes_fusionnes}</strong> groupe(s) fusionné(s), <strong>{mergeRapport.fiches_desactivees}</strong> fiche(s) désactivée(s)</div>
+                                                        <div>• <strong>{mergeRapport.soldes_agreges}</strong> solde(s) agrégé(s), {mergeRapport.mouvements} mouvement(s) et {mergeRapport.bdc} BDC réassignés</div>
+                                                        {mergeRapport.non_fusionnes.length>0 && (
+                                                            <div style={{marginTop:6}}>
+                                                                <div style={{fontWeight:600,color:'#c0392b'}}>Non fusionnés ({mergeRapport.non_fusionnes.length}) :</div>
+                                                                <ul style={{margin:'4px 0 0 16px',padding:0}}>
+                                                                    {mergeRapport.non_fusionnes.map((g,i)=>(<li key={i}>« {g.normalized} » — {g.raison}</li>))}
+                                                                </ul>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
                                             {mergeGroups.map(group => {
                                                 const masterRef = mergeMasters[group.normalized];
                                                 const isPreviewing = mergePreview && mergePreview.normalized===group.normalized;
                                                 const pv = isPreviewing ? mergePreview.data : null;
+                                                // Sélectionnable UNIQUEMENT si un article à conserver est
+                                                // déterminé (fail-closed) : sans master, la case est
+                                                // désactivée et le groupe ne peut pas entrer dans le lot.
+                                                const selectionnable = FM.estSelectionnable ? FM.estSelectionnable(group, mergeMasters) : false;
+                                                const coche = !!mergeSelection[group.normalized];
                                                 return (
-                                                <div key={group.normalized} style={{border:'1px solid #eee',borderRadius:10,padding:14}}>
-                                                    <div style={{fontSize:11,color:'#999',marginBottom:8,fontStyle:'italic'}}>« {group.normalized} »</div>
+                                                <div key={group.normalized} style={{border:'1px solid '+(coche?'rgba(39,174,96,0.5)':'#eee'),borderRadius:10,padding:14,background:coche?'rgba(39,174,96,0.03)':'#fff'}}>
+                                                    <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
+                                                        <input type="checkbox" checked={coche} disabled={!selectionnable || mergeBusy}
+                                                            title={selectionnable ? 'Inclure ce groupe dans la fusion en masse' : (FM.raisonNonSelectionnable ? FM.raisonNonSelectionnable(group, mergeMasters) : 'Choisissez l\'article à conserver')}
+                                                            onChange={()=>basculerSelection(group)} />
+                                                        <span style={{fontSize:11,color:'#999',fontStyle:'italic'}}>« {group.normalized} »</span>
+                                                        {!selectionnable && <span style={{fontSize:10,color:'#c0392b'}}>non sélectionnable en masse</span>}
+                                                    </div>
+                                                    {/* La suggestion vient du serveur (règle pure) et s'EXPLIQUE : Omar
+                                                        confirme d'un coup d'œil au lieu de faire confiance à l'aveugle.
+                                                        Groupe non décidable -> aucune présélection, arbitrage humain. */}
+                                                    {group.decidable ? (
+                                                        <div style={{background:'rgba(39,174,96,0.08)',border:'1px solid rgba(39,174,96,0.25)',borderRadius:6,padding:'6px 10px',fontSize:11,color:'#1e7e45',marginBottom:8}}>
+                                                            <i className="fa-solid fa-lightbulb" style={{marginRight:6}}></i>
+                                                            Suggestion : conserver <strong>{group.master_suggere}</strong> — {group.raison}. Vous pouvez choisir une autre fiche.
+                                                        </div>
+                                                    ) : (
+                                                        <div style={{background:'rgba(231,76,60,0.08)',border:'1px solid rgba(231,76,60,0.25)',borderRadius:6,padding:'6px 10px',fontSize:11,color:'#c0392b',marginBottom:8}}>
+                                                            <i className="fa-solid fa-triangle-exclamation" style={{marginRight:6}}></i>
+                                                            Aucune suggestion — {group.raison}. Choisissez vous-même l'article à conserver avant de fusionner.
+                                                        </div>
+                                                    )}
                                                     <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                                                        {group.articles.map(a => (
-                                                            <label key={a.reference} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 8px',borderRadius:6,background: masterRef===a.reference?'rgba(39,174,96,0.08)':'#fafafa',cursor:'pointer'}}>
-                                                                <input type="radio" name={'master-'+group.normalized} checked={masterRef===a.reference} onChange={()=>{ setMergeMasters(m=>({...m,[group.normalized]:a.reference})); setMergePreview(null); }} />
+                                                        {group.articles.map(a => {
+                                                            const pmpNum = parseFloat(a.prix_pmp);
+                                                            const htNum = parseFloat(a.prix_ht);
+                                                            const prixVal = (isFinite(pmpNum) && pmpNum > 0) ? pmpNum : ((isFinite(htNum) && htNum > 0) ? htNum : null);
+                                                            const prixSrc = (isFinite(pmpNum) && pmpNum > 0) ? 'PMP' : 'HT';
+                                                            const achNum = parseFloat(a.nb_achats);
+                                                            const nbAch = (isFinite(achNum) && achNum > 0) ? achNum : 0;
+                                                            // Comparaison sur le docId, comme l'envoi. Le `!!masterRef`
+                                                            // évite qu'un groupe sans présélection (masterRef undefined)
+                                                            // coche TOUTES les lignes par égalité d'undefined.
+                                                            const estMaster = !!masterRef && masterRef===a.id;
+                                                            // Une fiche NON retenue qui porte un prix ou des achats perdrait
+                                                            // cette donnée à la fusion (merge-articles ne la transfère pas).
+                                                            const perteDonnees = !estMaster && (prixVal!==null || nbAch>0);
+                                                            return (
+                                                            <label key={a.id} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 8px',borderRadius:6,background: estMaster?'rgba(39,174,96,0.08)':(perteDonnees?'rgba(231,76,60,0.06)':'#fafafa'),cursor:'pointer'}}>
+                                                                <input type="radio" name={'master-'+group.normalized} checked={estMaster} onChange={()=>{ setMergeMasters(m=>({...m,[group.normalized]:a.id})); setMergePreview(null); }} />
                                                                 <span style={{fontFamily:'monospace',fontSize:11,color:'var(--berry)',fontWeight:600,minWidth:90}}>{a.reference}</span>
+                                                                {a.id && a.id!==a.reference && <span title="Identifiant réel du document (celui utilisé par la fusion)" style={{fontFamily:'monospace',fontSize:10,color:'#999'}}>doc {a.id}</span>}
                                                                 <span style={{fontSize:13,fontWeight:600}}>{a.nom}</span>
                                                                 <span style={{fontSize:10,color:'#888'}}>{a.categorie||''} {a.unite?'· '+a.unite:''}</span>
-                                                                {masterRef===a.reference ? <span style={{marginLeft:'auto',fontSize:10,color:'#27ae60',fontWeight:700}}>MASTER</span> : <span style={{marginLeft:'auto',fontSize:10,color:'#e67e22',fontWeight:600}}>doublon</span>}
-                                                            </label>
-                                                        ))}
+                                                                <span title="Prix unitaire de la fiche (PMP, sinon prix HT)" style={{fontSize:11,fontWeight:700,color: prixVal!==null?'#2c3e50':'#bbb'}}>{prixVal!==null ? (prixVal.toFixed(2).replace('.',',')+' DH ('+prixSrc+')') : '— DH'}</span>
+                                                                <span title="Nombre d'achats historiques" style={{fontSize:10,color: nbAch>0?'#2c3e50':'#bbb'}}>{nbAch>0 ? (nbAch+' achat'+(nbAch>1?'s':'')) : '0 achat'}</span>
+                                                                {estMaster ? <span style={{marginLeft:'auto',fontSize:10,color:'#27ae60',fontWeight:700}}>MASTER</span> : <span style={{marginLeft:'auto',fontSize:10,color: perteDonnees?'#c0392b':'#e67e22',fontWeight:600}}>{perteDonnees ? 'doublon ⚠ prix/achats perdus' : 'doublon'}</span>}
+                                                            </label>);
+                                                        })}
                                                     </div>
                                                     {pv && (
                                                         <div style={{marginTop:10,background:'#f8f9fa',borderRadius:8,padding:12,fontSize:12,color:'#2c3e50'}}>
@@ -50804,7 +51048,7 @@ ${rejetHtml}
         }
 
         // ===================== MAGASINIER: BONS DE RÉCEPTION (LISTE BR SAISIS) =====================
-        function MagReceptionTab({ currentProfile, profileData }) {
+        function MagReceptionTab({ currentProfile, profileData, setCurrentTab }) {
             const [receptions, setReceptions] = useState([]);
             const [loading, setLoading] = useState(true);
             const [query, setQuery] = useState('');
@@ -50820,21 +51064,7 @@ ${rejetHtml}
             const [detailReception, setDetailReception] = useState(null);
             // Magasins dérivés de la config stock (get-locations) — source unique, plus de hardcode.
             const MAGASINS_BR = useStockLocations().magasins;
-            const UNITES_BR = ['kg', 'L', 'unité', 'carton', 'sac', 'bidon'];
-            const MOTIFS_RECEPTION = ['Livraison urgente', 'Don', 'Retour client', 'Échantillon', 'Régularisation stock'];
 
-            // Garde-fou destination : une valeur hors config stock (ex. BAHIA sur un bon
-            // en cours d'édition) reste proposée dans le select, avec avertissement —
-            // sinon le select contrôlé se désynchronise sans rien dire au magasinier.
-            // Pas de fallback si lib/stockDestinations.js manque : un échec visible vaut
-            // mieux qu'une destination hors config imputée silencieusement au 1er magasin.
-            const resolveDestBR = window.StockDestinations.resolveDestinationOptions;
-            const emptyForm = { date: '', ref_bl_fournisseur: '', magasin: MAGASINS_BR[0] || '', motif: '', motif_autre: '', fournisseur_nom: '', items: [{ article: '', quantite: '', unite: 'kg' }], scan_file: null, scan_preview: null };
-            const [showForm, setShowForm] = useState(false);
-            const [form, setForm] = useState(emptyForm);
-            const [submitting, setSubmitting] = useState(false);
-            const [articles, setArticles] = useState([]);
-            const [suppliers, setSuppliers] = useState([]);
             // Identité du demandeur pour le contrôle créateur (profileId = identité effective).
             const requester = { profileId: currentProfile, userId: (profileData && profileData.userId) || '' };
             const Guard = (typeof window !== 'undefined' && window.StockMovementGuard) || null;
@@ -50855,71 +51085,6 @@ ${rejetHtml}
                     .catch(err => console.warn(err)).finally(() => setLoading(false));
             };
             useEffect(() => { loadReceptions(); }, [filterFerme, filterStatus]);
-            useEffect(() => {
-                cachedFetch('/api/stock?action=list-articles').then(json => { if (json.success) setArticles((json.articles || []).filter(a => a.active !== false)); }).catch(() => {});
-                cachedFetch('/api/stock?action=list-suppliers&status=valide').then(json => { if (json.success) setSuppliers(json.suppliers || []); }).catch(() => {});
-            }, []);
-
-            const updateItem = (idx, field, value) => {
-                const items = [...form.items]; items[idx] = { ...items[idx], [field]: value };
-                setForm({ ...form, items });
-            };
-            const addItem = () => setForm({ ...form, items: [...form.items, { article: '', quantite: '', unite: 'kg' }] });
-            const removeItem = (idx) => { if (form.items.length > 1) setForm({ ...form, items: form.items.filter((_, i) => i !== idx) }); };
-
-            const handleScanFile = (file) => {
-                if (!file) return;
-                if (file.size > 10 * 1024 * 1024) { alert('Fichier trop volumineux (max 10 Mo)'); return; }
-                const reader = new FileReader();
-                reader.onload = (e) => setForm(prev => ({ ...prev, scan_file: e.target.result, scan_preview: file.type.startsWith('image/') ? e.target.result : file.name }));
-                reader.readAsDataURL(file);
-            };
-            const uploadScan = async (base64) => {
-                if (!base64) return null;
-                const res = await fetch('/api/stock?action=upload-scan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ file_base64: base64, filename: 'scan_bl.jpg', contentType: 'image/jpeg' }) });
-                const json = await res.json();
-                return json.success ? json.url : null;
-            };
-
-            const handleCreate = async () => {
-                const motifFinal = form.motif === 'Autre' ? (form.motif_autre || '').trim() : form.motif;
-                if (!motifFinal) { alert('Motif obligatoire'); return; }
-                if (!form.magasin) { alert('Magasin requis'); return; }
-                const validItems = form.items.filter(i => i.article && i.quantite);
-                if (!validItems.length) { alert('Ajoutez au moins un article'); return; }
-                const negative = validItems.find(i => parseFloat(i.quantite) < 0);
-                if (negative) { alert('Quantité invalide pour ' + negative.article + ' (doit être ≥ 0)'); return; }
-                setSubmitting(true);
-                try {
-                    const scanUrl = form.scan_file ? await uploadScan(form.scan_file) : null;
-                    const res = await fetch('/api/stock?action=create-movement', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            type: 'reception',
-                            date: form.date || new Date().toISOString().split('T')[0],
-                            lieu_destination: { type: 'magasin', id: form.magasin },
-                            ferme: form.magasin,
-                            ref_bl_fournisseur: form.ref_bl_fournisseur,
-                            reception_libre: true, reception_libre_motif: motifFinal,
-                            fournisseur_nom: form.fournisseur_nom || null,
-                            scan_url: scanUrl,
-                            items: validItems.map(i => ({ article_ref: i.article, article_nom: i.article, quantite: parseFloat(i.quantite), unite: i.unite })),
-                            created_by: { profileId: currentProfile, name: profileData?.name || currentProfile, userId: profileData?.userId || '' },
-                        }),
-                    });
-                    const json = await res.json();
-                    if (json.success) {
-                        alert('Réception ' + json.numero + ' créée. En attente de valorisation Achats.');
-                        setShowForm(false); setForm(emptyForm); loadReceptions();
-                    } else {
-                        alert('Erreur: ' + (json.error || 'Echec'));
-                    }
-                } catch (e) {
-                    alert('Erreur réseau');
-                } finally {
-                    setSubmitting(false);
-                }
-            };
-
             const handleDelete = (mov) => {
                 if (!confirm('Supprimer le bon ' + mov.numero + ' ? Cette action est irréversible (le bon sera retiré des listes).')) return;
                 fetch('/api/stock?action=delete-movement', { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -51100,9 +51265,10 @@ ${rejetHtml}
                                 <option value="import">Import</option>
                             </select>
                             {currentProfile === 'magasinier' && (
-                                <button onClick={() => { setForm({ ...emptyForm, date: new Date().toISOString().split('T')[0] }); setShowForm(true); }}
+                                <button onClick={() => { if (setCurrentTab) { setCurrentTab('mag_bdc_reception'); localStorage.setItem('lastTab', 'mag_bdc_reception'); } }}
+                                    title="Une réception se saisit à partir du bon de commande correspondant"
                                     style={{background:'var(--berry)',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontWeight:600,fontSize:13}}>
-                                    <i className="fa-solid fa-plus" style={{marginRight:6}}></i>Nouveau bon d'entrée
+                                    <i className="fa-solid fa-truck-ramp-box" style={{marginRight:6}}></i>Réceptionner un BDC
                                 </button>
                             )}
                         </div>
@@ -51146,77 +51312,6 @@ ${rejetHtml}
                             {filtered.length === 0 && <tr><td colSpan={7} style={{textAlign:'center',color:'var(--gray-400)',padding:40}}>Aucun bon de réception trouvé.</td></tr>}
                         </tbody>
                     </table></div>
-
-                    {showForm && (
-                        <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setShowForm(false); }}>
-                            <div className="modal-content" style={{maxWidth:650,maxHeight:'90vh',overflowY:'auto'}}>
-                                <h3 style={{marginTop:0,color:'var(--berry)'}}><i className="fa-solid fa-plus-circle" style={{marginRight:8}}></i>Nouveau bon d'entrée</h3>
-                                <div style={{background:'#e8f5e9',borderRadius:8,padding:10,marginBottom:16,fontSize:12,color:'#1b5e20'}}>
-                                    <i className="fa-solid fa-info-circle" style={{marginRight:6}}></i>Saisie directe d'une entrée en stock. Sera validée immédiatement et impactera les soldes.
-                                </div>
-                                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:16}}>
-                                    <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Date</label>
-                                        <input type="date" value={form.date} onChange={e => setForm({...form, date: e.target.value})} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}} /></div>
-                                    {(() => {
-                                        const destBR = resolveDestBR(MAGASINS_BR, form.magasin);
-                                        const warnBR = destBR.warning && (destBR.options.find(o => o.value === form.magasin) || {}).horsConfig;
-                                        return (
-                                    <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Magasin destination *</label>
-                                        <select value={form.magasin} onChange={e => setForm({...form, magasin: e.target.value})} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid ' + (warnBR ? '#b45309' : '#ddd'),fontSize:13}}>
-                                            {destBR.options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                        </select>
-                                        {warnBR && <div style={{marginTop:4,fontSize:11,color:'#b45309',lineHeight:1.4}}><i className="fa-solid fa-triangle-exclamation" style={{marginRight:4}}></i>{destBR.warning}</div>}
-                                    </div>
-                                        );
-                                    })()}
-                                    <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Fournisseur</label>
-                                        <select value={form.fournisseur_nom} onChange={e => setForm({...form, fournisseur_nom: e.target.value})} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}}>
-                                            <option value="">-- Sélectionner --</option>
-                                            {suppliers.map(s => <option key={s.id} value={s.nom}>{s.nom}{s.ville ? ' ('+s.ville+')' : ''}</option>)}
-                                        </select></div>
-                                    <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Réf BL Fournisseur</label>
-                                        <input value={form.ref_bl_fournisseur} onChange={e => setForm({...form, ref_bl_fournisseur: e.target.value})} placeholder="Référence" style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}} /></div>
-                                    <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Motif / Justification *</label>
-                                        <select value={form.motif} onChange={e => setForm({...form, motif: e.target.value, motif_autre: ''})} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}}>
-                                            <option value="">-- Sélectionner --</option>
-                                            {MOTIFS_RECEPTION.map(m => <option key={m} value={m}>{m}</option>)}
-                                            <option value="Autre">Autre (à préciser)</option>
-                                        </select></div>
-                                    {form.motif === 'Autre' && (
-                                        <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Préciser le motif *</label>
-                                            <input value={form.motif_autre} onChange={e => setForm({...form, motif_autre: e.target.value})} placeholder="Précisez..." style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}} /></div>
-                                    )}
-                                </div>
-                                <div style={{marginBottom:16}}>
-                                    <label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}><i className="fa-solid fa-paperclip" style={{marginRight:4}}></i>Scanner le BL fournisseur</label>
-                                    <input type="file" accept="image/*,application/pdf" onChange={e => handleScanFile(e.target.files[0])} style={{fontSize:12}} />
-                                    {form.scan_preview && (typeof form.scan_preview === 'string' && form.scan_preview.startsWith('data:image') ? <img src={form.scan_preview} alt="Scan" style={{maxHeight:80,marginTop:6,borderRadius:6}} /> : <span style={{fontSize:11,color:'var(--green)',marginLeft:8}}><i className="fa-solid fa-check"></i> Fichier sélectionné</span>)}
-                                </div>
-                                <h4 style={{fontSize:13,marginBottom:8}}>Articles reçus</h4>
-                                <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
-                                    <thead><tr style={{background:'#f8f8f8'}}><th style={{padding:'6px 8px',textAlign:'left'}}>Article</th><th style={{padding:'6px 8px',width:80}}>Qté</th><th style={{padding:'6px 8px',width:70}}>Unité</th><th style={{width:30}}></th></tr></thead>
-                                    <tbody>
-                                        {form.items.map((it, idx) => (
-                                            <tr key={idx}>
-                                                <td><input list="articles-list-bon-entree" value={it.article} onChange={e => updateItem(idx, 'article', e.target.value)} placeholder="Article" style={{width:'100%',padding:'4px 8px',borderRadius:6,border:'1px solid #ddd',fontSize:12}} />
-                                                    <datalist id="articles-list-bon-entree">{articles.map(a => <option key={a.reference || a.nom} value={a.nom}>{a.nom}</option>)}</datalist></td>
-                                                <td><input type="number" value={it.quantite} min="0" onChange={e => updateItem(idx, 'quantite', e.target.value)} style={{width:'100%',padding:'4px 8px',borderRadius:6,border:'1px solid #ddd',fontSize:12}} /></td>
-                                                <td><select value={it.unite} onChange={e => updateItem(idx, 'unite', e.target.value)} style={{width:'100%',padding:'4px 8px',borderRadius:6,border:'1px solid #ddd',fontSize:12}}>{UNITES_BR.map(u => <option key={u} value={u}>{u}</option>)}</select></td>
-                                                <td><button onClick={() => removeItem(idx)} style={{background:'none',border:'none',cursor:'pointer',color:'#e74c3c',fontSize:13}}><i className="fa-solid fa-trash"></i></button></td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                                <button onClick={addItem} style={{marginTop:8,background:'none',border:'1px dashed #ddd',borderRadius:8,padding:'6px 16px',cursor:'pointer',fontSize:12,color:'var(--berry)'}}>+ Ajouter article</button>
-                                <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:16}}>
-                                    <button onClick={() => setShowForm(false)} disabled={submitting} style={{padding:'8px 16px',borderRadius:8,border:'1px solid #ddd',background:'#fff',cursor:submitting?'not-allowed':'pointer',fontSize:13}}>Annuler</button>
-                                    <button onClick={handleCreate} disabled={submitting} style={{padding:'8px 16px',borderRadius:8,border:'none',background:'var(--berry)',color:'#fff',cursor:submitting?'not-allowed':'pointer',fontWeight:600,fontSize:13,opacity:submitting?0.6:1}}>
-                                        {submitting ? <><i className="fa-solid fa-spinner fa-spin" style={{marginRight:6}}></i>Création...</> : 'Créer le bon d\'entrée'}
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
 
                     {detailReception && (() => {
                         const r = detailReception;
@@ -51373,6 +51468,20 @@ ${rejetHtml}
             );
         }
 
+        // Canonicalisation d'un libellé d'article — COPIE FRONT de
+        // functions/lib/stock/articleKey.js `canon` (le monolithe ne peut rien
+        // require ; la parité est verrouillée par tests/unit/articleKey.test.js).
+        // MAJUSCULE + espaces réduits + suffixe d'unité final retiré : c'est la clé
+        // qui résout les mouvements, les soldes et le PMP côté backend. Un seul
+        // exemplaire dans app.jsx — toute copie locale rouvre la divergence que
+        // articleKey.js a fermée.
+        const canonArt = (a) => {
+            let s = (a == null ? '' : String(a)).toUpperCase().trim();
+            s = s.replace(/\s+/g, ' ');
+            s = s.replace(/\s*\((L|KG|G|ML|UNITE|U)\)\s*$/, '');
+            return s.trim();
+        };
+
         // ===================== MAGASINIER: SOLDES STOCK TAB =====================
         function MagFicheStockTab() {
             const [articles, setArticles] = useState([]);
@@ -51399,15 +51508,30 @@ ${rejetHtml}
                     .then(r => r.json())
                     .then(json => {
                         if (json.success) {
+                            // UNE entrée par ARTICLE, c'est-à-dire par clé `canonArt` — celle
+                            // qui résout déjà l'historique, les soldes et le PMP. Sur le nom
+                            // BRUT, « ALGA 600 » et « Alga 600 » donnaient deux entrées au
+                            // stock et aux mouvements identiques : l'écran affirmait deux
+                            // articles là où il n'y en a qu'un.
+                            // Libellé retenu — déterministe et indépendant de l'ordre d'arrivée
+                            // des soldes : l'écriture canonique si elle figure telle quelle
+                            // parmi les variantes (« ALGA 600 » l'emporte sur « Alga 600 »),
+                            // sinon la plus petite en comparaison binaire.
                             const seen = {};
-                            const list = [];
                             (json.balances || []).forEach(b => {
-                                const ref = b.article_ref || b.article_nom;
-                                if (!ref || seen[ref]) return;
-                                seen[ref] = true;
-                                list.push({ ref, label: b.article_nom || b.article_ref });
+                                // NOM d'abord : clé portée par les mouvements (cf. get-article-history).
+                                // Avec la ref d'abord, un article fusionné (solde sur docId) s'affichait
+                                // dans la liste mais son grand livre revenait vide.
+                                const ref = b.article_nom || b.article_ref;
+                                const key = canonArt(ref);
+                                if (!ref || !key) return;
+                                const prev = seen[key];
+                                if (prev === undefined) { seen[key] = ref; return; }
+                                if (prev === key) return;
+                                if (ref === key || ref < prev) seen[key] = ref;
                             });
-                            list.sort((a, b) => a.label.localeCompare(b.label, 'fr', { sensitivity: 'base' }));
+                            const list = Object.keys(seen).map(k => ({ ref: seen[k], label: seen[k] }));
+                            list.sort((a, b) => a.label.localeCompare(b.label, 'fr', { sensitivity: 'base' }) || (a.label < b.label ? -1 : a.label > b.label ? 1 : 0));
                             setArticles(list);
                             setSelectedArticle(prev => (!prev && list.length > 0) ? list[0].ref : prev);
                         }
@@ -51846,15 +51970,9 @@ ${rejetHtml}
             // de clic distincte du badge PMP). Borné à la date d'inventaire affichée.
             const [mvtDetailLine, setMvtDetailLine] = useState(null);
 
-            // Canonicalisation identique au backend (scripts/reconstruct-stock.js) :
+            // canonArt (défini au-dessus de MagFicheStockTab) aligne les deux côtés :
             // les soldes (stock_balances) sont canonicalisés (suffixe d'unité retiré),
-            // alors que le catalogue garde souvent "NOM (KG)". On aligne les deux côtés.
-            const canonArt = (a) => {
-                let s = (a == null ? '' : String(a)).toUpperCase().trim();
-                s = s.replace(/\s+/g, ' ');
-                s = s.replace(/\s*\((L|KG|G|ML|UNITE|U)\)\s*$/, '');
-                return s.trim();
-            };
+            // alors que le catalogue garde souvent "NOM (KG)".
 
             useEffect(() => {
                 fetch('/api/stock?action=get-locations').then(r => r.json())
@@ -52042,7 +52160,12 @@ ${rejetHtml}
                                         <span
                                             title="Voir le détail des mouvements jusqu'à la date d'inventaire"
                                             onClick={() => setMvtDetailLine({
-                                                article: b.article_ref || b.article_nom || '',
+                                                // Le NOM d'abord : c'est la clé que portent les mouvements.
+                                                // Un article fusionné a un solde sur le docId de sa fiche
+                                                // (ex. Ref-Eng0052) que AUCUN mouvement ne porte — envoyer
+                                                // la ref d'abord vidait l'écran. Même priorité que
+                                                // get-pmp-detail (article_nom || article_ref).
+                                                article: b.article_nom || b.article_ref || '',
                                                 article_nom: b.article_nom || b.article_ref || '',
                                                 lieu_id: b.lieu_id || '',
                                                 unite: b.unite || '',
@@ -53160,7 +53283,7 @@ ${rejetHtml}
                             date_reception: json.analysis.date_reception || '',
                             numero_bl_fournisseur: json.analysis.numero_bl_fournisseur || '',
                             items: (json.analysis.items || []).map(it => ({
-                                article: it.article || '', quantite_recue: it.quantite_recue || '', unite: it.unite || 'kg', note: '',
+                                article: it.article || '', quantite_recue: it.quantite_recue || '', unite: it.unite || '', note: '',
                             })),
                         });
                         if (json.matched_bdc?.id) {
@@ -53196,7 +53319,7 @@ ${rejetHtml}
                 const bdcData = selectedBdc || bdcList.find(b => b.id === selectedBdcId);
                 const enrichedItems = validItems.map(it => {
                     const bdcItem = (bdcData?.items || []).find(bi => bi.article && it.article && bi.article.toLowerCase().includes(it.article.toLowerCase()));
-                    return { article: it.article, quantite_commandee: bdcItem ? (parseFloat(bdcItem.quantite) || 0) : 0, quantite_recue: parseFloat(it.quantite_recue) || 0, unite: it.unite || 'kg', note: it.note || '' };
+                    return { article: it.article, quantite_commandee: bdcItem ? (parseFloat(bdcItem.quantite) || 0) : 0, quantite_recue: parseFloat(it.quantite_recue) || 0, unite: it.unite || '', note: it.note || '' };
                 });
                 setCreating(true);
                 fetch('/api/stock?action=create-bl', {
@@ -59327,6 +59450,26 @@ ${rejetHtml}
             rejete:    { label: 'Rejeté',    color: '#991B1B', bg: '#FEE2E2' },
         };
 
+        // Exposés pour public/components/CaisseSaisieSub.jsx (composant extrait,
+        // scope séparé). Propriétés de window, pas de binding lexical : aucune
+        // collision possible avec le scope global (cf. umd-global-collision).
+        window.TXN_TYPE_LABELS = TXN_TYPE_LABELS;
+        window.CAISSE_STATUS_LABELS = STATUS_LABELS;
+
+        // Statuts d'un bon de caisse encore modifiables (miroir UI de la garde
+        // backend update-transaction — la garde qui compte est côté serveur).
+        const CAISSE_STATUTS_EDITABLES = ['brouillon', 'soumis', 'a_revoir', 'rejete', 'valide'];
+        // Types saisis à la main (transferts et compte client exclus).
+        const CAISSE_TYPES_EDITABLES = ['alimentation', 'depense', 'sortie', 'paie', 'transport'];
+
+        // Libellés lisibles des champs, pour l'historique des modifications.
+        const CAISSE_FIELD_LABELS = {
+            date: 'Date', montant: 'Montant', type: 'Type', caisse_id: 'Caisse',
+            code_analytique: 'Code analytique', description: 'Description',
+            matricule: 'Matricule', beneficiaire_nom: 'Bénéficiaire', files: 'Pièces jointes',
+            ferme: 'Ferme', campagne: 'Campagne', culture: 'Culture', parcelle: 'Parcelle',
+        };
+
         function formatMAD(n) { return (n || 0).toLocaleString('fr-MA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' DH'; }
 
         // Sprint 3 — labels mois (utilisé par CaisseRapprochementSub)
@@ -59785,7 +59928,12 @@ ${rejetHtml}
                                                     <tr style={{cursor:'pointer'}} onClick={() => setExpanded(isOpen ? null : r.caisse.id)}>
                                                         <td style={Object.assign({}, td, {fontWeight:600})}>
                                                             <i className={`fa-solid ${isOpen ? 'fa-chevron-down' : 'fa-chevron-right'}`} style={{fontSize:10,marginRight:8,color:'var(--gray-400)'}}></i>
-                                                            {r.caisse.nom || r.caisse.id}
+                                                            {/* Ces comptes n'ont pas de champ `nom` : sans repli,
+                                                                l'écran affiche l'identifiant technique
+                                                                (« compte_client_iraqi_mohamed »). */}
+                                                            {(r.caisse.nom && String(r.caisse.nom).trim())
+                                                                || String(r.caisse.id || '').replace('compte_client_', '').split('_').filter(Boolean).join(' ').toUpperCase()
+                                                                || r.caisse.id}
                                                         </td>
                                                         <td style={tdR}>{formatMAD(r.totals.totalVendu)}</td>
                                                         <td style={Object.assign({}, tdR, {color:'var(--green)'})}>{formatMAD(r.totals.totalEncaisse)}</td>
@@ -59892,6 +60040,11 @@ ${rejetHtml}
                 (isSaisie || isControle) ? { id: 'caisse_import_encaissements', label: 'Import Encaissements', icon: 'fa-file-invoice-dollar' } : null,
                 { id: 'caisse_comptes_clients', label: 'Comptes Clients', icon: 'fa-users' },
                 isControle ? { id: 'caisse_config', label: 'Configuration', icon: 'fa-gear' } : null,
+                // Distinct de « Configuration » (qui gère les caisses elles-mêmes) :
+                // ici on configure les référentiels de SAISIE — fermes et codes
+                // analytiques proposés sur un bon. Visible par tous (le service
+                // Achats doit pouvoir consulter la liste), éditable DG/Finance.
+                { id: 'caisse_parametres', label: 'Paramètres', icon: 'fa-sliders' },
             ].filter(Boolean);
 
             const loadDashboard = () => {
@@ -59938,8 +60091,8 @@ ${rejetHtml}
                         ))}
                     </div>
                     {subTab === 'caisse_dashboard' && <CaisseDashboardSub dashData={dashData} caisses={caisses} isControle={isControle} onNavigate={setSubTab} />}
-                    {subTab === 'caisse_transactions' && <CaisseTransactionsSub caisses={caisses} />}
-                    {subTab === 'caisse_saisie' && <CaisseSaisieSub caisses={caisses} onDone={() => { refresh(); setSubTab('caisse_transactions'); }} />}
+                    {subTab === 'caisse_transactions' && <CaisseTransactionsSub caisses={caisses} isSaisie={isSaisie} isControle={isControle} onRefresh={refresh} />}
+                    {subTab === 'caisse_saisie' && window.CaisseSaisieSub && <window.CaisseSaisieSub caisses={caisses} onDone={() => { refresh(); setSubTab('caisse_transactions'); }} onCancel={() => setSubTab('caisse_transactions')} />}
                     {subTab === 'caisse_alimentations' && <CaisseFilteredTypeSub caisses={caisses} typeFilter="alimentation" title="Alimentations" icon="fa-arrow-down" isSaisie={isSaisie} onDone={refresh} />}
                     {subTab === 'caisse_paie' && <CaisseFilteredTypeSub caisses={caisses} typeFilter="paie" title="Paie" icon="fa-money-check-dollar" isSaisie={isSaisie} onDone={refresh} hasEmployee />}
                     {subTab === 'caisse_transport' && <CaisseFilteredTypeSub caisses={caisses} typeFilter="transport" title="Transport" icon="fa-truck" isSaisie={isSaisie} onDone={refresh} hasEmployee />}
@@ -59952,6 +60105,9 @@ ${rejetHtml}
                     {subTab === 'caisse_import_encaissements' && <CaisseImportEncaissementsSub isControle={isControle} onApplied={refresh} />}
                     {subTab === 'caisse_comptes_clients' && <CaisseComptesClientsSub caisses={caisses} />}
                     {subTab === 'caisse_config' && <CaisseConfigSub caisses={caisses} onDone={refresh} />}
+                    {subTab === 'caisse_parametres' && window.CaisseParametresSub && (
+                        <window.CaisseParametresSub canEdit={isControle || (userProfile && userProfile.role === 'admin')} onSaved={refresh} />
+                    )}
                 </div>
             );
         }
@@ -59960,7 +60116,12 @@ ${rejetHtml}
         function CaisseDashboardSub({ dashData, caisses, isControle, onNavigate }) {
             const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0,10));
             const [selectedCaisseId, setSelectedCaisseId] = useState('');
+            // Entité affichée sur le dashboard. Mémorisée d'une visite à l'autre.
+            const [entite, setEntite] = useState(() => { try { return localStorage.getItem('caisseEntite') || 'BGF'; } catch(e) { return 'BGF'; } });
+            const changerEntite = (code) => { setEntite(code); try { localStorage.setItem('caisseEntite', code); } catch(e) {} };
             const [allTx, setAllTx] = useState([]);
+            // Caisse dont on affiche le détail (pop-up). null = fermée.
+            const [detailCaisse, setDetailCaisse] = useState(null);
             const [txLoaded, setTxLoaded] = useState(false);
 
             React.useEffect(() => {
@@ -59969,13 +60130,20 @@ ${rejetHtml}
                     .catch(() => {});
             }, []);
 
+            // Un bon SAISI a déjà bougé l'argent du tiroir, même sans validation
+            // DG. Ce bloc affiche donc le SOLDE EN CAISSE, même convention que
+            // les cartes ci-dessous — sinon il reste à zéro tant que la DG n'a
+            // pas fait sa revue, ce qui ne dit rien au caissier.
+            const STATUTS_EN_CAISSE = ['valide', 'soumis', 'a_revoir'];
+            const compteEnCaisse = (t) => STATUTS_EN_CAISSE.indexOf(t.status) !== -1;
+
             const computeBalanceForDate = (caisseId, dateStr) => {
                 const caisse = caisses.find(c => c.id === caisseId);
                 if (!caisse) return 0;
                 let bal = caisse.solde_initial || 0;
                 allTx.forEach(t => {
                     if (t.caisse_id !== caisseId) return;
-                    if (t.status !== 'valide') return;
+                    if (!compteEnCaisse(t)) return;
                     if (t.date > dateStr) return;
                     const m = t.montant || 0;
                     if (t.type === 'alimentation' || t.type === 'transfer_in') bal += m;
@@ -59985,7 +60153,7 @@ ${rejetHtml}
             };
 
             const computeDayMovements = (caisseId, dateStr) => {
-                const txOfDay = allTx.filter(t => t.date === dateStr && t.status === 'valide' && (caisseId ? t.caisse_id === caisseId : true));
+                const txOfDay = allTx.filter(t => t.date === dateStr && compteEnCaisse(t) && (caisseId ? t.caisse_id === caisseId : true));
                 let entrees = 0, sorties = 0;
                 txOfDay.forEach(t => {
                     const m = t.montant || 0;
@@ -60001,15 +60169,84 @@ ${rejetHtml}
                 setSelectedDate(d.toISOString().slice(0,10));
             };
 
+            // --- Entité affichée (BERRY GOOD FARMS / BAHIA) ---
+            // Les deux entités ont leurs propres caisses ; les additionner n'a
+            // aucun sens de gestion. On en présente UNE à la fois.
+            const ENTITES_CAISSE = [
+                { code: 'BGF', label: 'BERRY GOOD FARMS' },
+                { code: 'BAHIA', label: 'BAHIA' },
+            ];
+            const mappingEntites = (dashData && dashData.parametres && dashData.parametres.entites) || {};
+            // Rattachement : choix explicite (Paramètres) sinon repli sur le nom,
+            // pour que l'écran soit juste avant toute configuration.
+            const entiteDe = (c) => {
+                const choisi = mappingEntites[c.id];
+                if (choisi && ENTITES_CAISSE.some(e => e.code === choisi)) return choisi;
+                return `${c.id || ''} ${c.nom || ''}`.toLowerCase().indexOf('bahia') !== -1 ? 'BAHIA' : 'BGF';
+            };
+
+            // Les comptes clients du Marché Local vivent dans caisse_definitions
+            // (préfixe compte_client_) mais ne sont PAS des caisses : ils n'ont
+            // pas de nom et s'affichaient en bulles anonymes à 0,00 DH. Ils ont
+            // leur propre onglet « Comptes Clients ».
+            const estCompteClient = (c) => (window.CaisseUtils && window.CaisseUtils.isCompteClientCaisse
+                ? window.CaisseUtils.isCompteClientCaisse(c)
+                : String(c.id || '').indexOf('compte_client_') === 0);
+            // Les caisses « Marché Local F1 / F5 » ne sont plus présentées comme
+            // des caisses : le suivi se fait PAR CLIENT (bloc dédié plus bas).
+            // Elles restent accessibles depuis Transactions et les rapports.
+            const estCaisseMarcheLocal = (c) => String(c.id || '').indexOf('caisse_marche_local') === 0;
+            // Caisses de gestion de l'entité affichée.
+            const caissesReelles = caisses.filter(c => !estCompteClient(c) && !estCaisseMarcheLocal(c) && entiteDe(c) === entite);
+            // Comptes clients Marché Local — rattachés à Berry Good, présentés
+            // séparément : ce sont des créances clients, pas des caisses.
+            const comptesClients = caisses.filter(c => estCompteClient(c) && entiteDe(c) === entite);
+
             const soldeJour = selectedCaisseId
                 ? computeBalanceForDate(selectedCaisseId, selectedDate)
-                : caisses.reduce((s, c) => s + computeBalanceForDate(c.id, selectedDate), 0);
+                : caissesReelles.reduce((s, c) => s + computeBalanceForDate(c.id, selectedDate), 0);
             const dayMov = computeDayMovements(selectedCaisseId, selectedDate);
 
+            // Date du dernier mouvement de la sélection. Sans elle, l'écran
+            // semble figé quand on navigue au-delà du dernier bon : le cumul
+            // est correct mais rien n'explique pourquoi il ne bouge plus.
+            const idsSelection = selectedCaisseId ? [selectedCaisseId] : caissesReelles.map(c => c.id);
+            const derniereDateMvt = allTx.reduce((max, t) => {
+                if (!compteEnCaisse(t) || idsSelection.indexOf(t.caisse_id) === -1) return max;
+                return (!max || t.date > max) ? t.date : max;
+            }, '');
+            const dateApresDernierMvt = !!derniereDateMvt && selectedDate > derniereDateMvt;
+            const formatJour = (iso) => {
+                const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '');
+                return m ? `${m[3]}/${m[2]}/${m[1]}` : (iso || '');
+            };
+
             if (!dashData) return null;
-            const totalSolde = caisses.reduce((s, c) => s + (c.solde_actuel || 0), 0);
+
+            const totalSolde = caissesReelles.reduce((s, c) => s + (c.solde_actuel || 0), 0);
+            // Solde en caisse toutes caisses = validé + bons saisis non validés.
+            const totalSoldeCaisse = caissesReelles.reduce((s, c) => s + (c.solde_provisoire !== undefined ? c.solde_provisoire : (c.solde_actuel || 0)), 0);
+            const totalEnAttente = Math.round(caissesReelles.reduce((s, c) => s + (Number(c.en_attente_montant) || 0), 0) * 100) / 100;
+            const totalEnAttenteCount = caissesReelles.reduce((s, c) => s + (Number(c.en_attente_count) || 0), 0);
             return (
                 <div>
+                    {/* Sélecteur d'entité — chaque entité a ses propres caisses. */}
+                    <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:16,flexWrap:'wrap'}}>
+                        <span style={{fontSize:11,fontWeight:700,color:'var(--gray-400)',letterSpacing:0.5}}>ENTITÉ</span>
+                        {ENTITES_CAISSE.map(e => {
+                            const actif = entite === e.code;
+                            return (
+                                <button key={e.code} onClick={() => changerEntite(e.code)}
+                                    style={{padding:'8px 18px',borderRadius:20,fontSize:12.5,fontWeight:actif?700:500,cursor:'pointer',
+                                        border: actif ? 'none' : '1px solid var(--gray-200)',
+                                        background: actif ? 'var(--berry)' : 'white',
+                                        color: actif ? 'white' : 'var(--gray-600)'}}>
+                                    {e.label}
+                                </button>
+                            );
+                        })}
+                    </div>
+
                     {/* Real-time balance with day navigation */}
                     <div style={{padding:'18px 24px',background:'white',borderRadius:12,marginBottom:20,border:'2px solid var(--berry)',boxShadow:'0 2px 8px rgba(139,34,82,0.08)'}}>
                         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:16}}>
@@ -60030,10 +60267,12 @@ ${rejetHtml}
                             <select value={selectedCaisseId} onChange={e => setSelectedCaisseId(e.target.value)}
                                 style={{padding:'8px 14px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:12,fontWeight:600}}>
                                 <option value="">Toutes caisses</option>
-                                {caisses.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
+                                {/* Restreint à l'entité affichée : proposer une caisse
+                                    de l'autre entité n'aurait aucun sens ici. */}
+                                {caissesReelles.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
                             </select>
                             <div style={{textAlign:'right'}}>
-                                <div style={{fontSize:10,textTransform:'uppercase',letterSpacing:1,color:'var(--gray-600)'}}>Solde de fin de journée</div>
+                                <div style={{fontSize:10,textTransform:'uppercase',letterSpacing:1,color:'var(--gray-600)'}} title="Inclut les bons saisis non encore validés">Solde en caisse en fin de journée</div>
                                 <div style={{fontSize:24,fontWeight:700,color: soldeJour >= 0 ? 'var(--berry)' : 'var(--red)'}}>{txLoaded ? formatMAD(soldeJour) : '...'}</div>
                                 <div style={{fontSize:11,color:'var(--gray-600)',marginTop:2}}>
                                     <span style={{color:'var(--green)'}}>+{formatMAD(dayMov.entrees)}</span>
@@ -60042,6 +60281,23 @@ ${rejetHtml}
                                     <span style={{margin:'0 6px',color:'var(--gray-400)'}}>•</span>
                                     <span>{dayMov.count} mvt(s)</span>
                                 </div>
+                                {/* Explique un solde qui « ne bouge pas » : au-delà du
+                                    dernier bon, le cumul est forcément constant. */}
+                                {txLoaded && dateApresDernierMvt && (
+                                    <div style={{fontSize:11,color:'var(--orange)',marginTop:4}}>
+                                        <i className="fa-solid fa-circle-info" style={{marginRight:4}}></i>
+                                        Aucun mouvement depuis le {formatJour(derniereDateMvt)} — le solde est inchangé depuis
+                                        <button onClick={() => setSelectedDate(derniereDateMvt)}
+                                            style={{marginLeft:6,padding:'2px 8px',borderRadius:6,border:'1px solid var(--orange)',background:'white',color:'var(--orange)',cursor:'pointer',fontSize:10.5,fontWeight:600}}>
+                                            Aller au dernier mouvement
+                                        </button>
+                                    </div>
+                                )}
+                                {txLoaded && !derniereDateMvt && (
+                                    <div style={{fontSize:11,color:'var(--gray-400)',marginTop:4}}>
+                                        Aucun mouvement enregistré sur cette sélection.
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -60049,8 +60305,14 @@ ${rejetHtml}
                     <div style={{padding:'18px 24px',background:'linear-gradient(135deg, var(--berry) 0%, var(--berry-light) 100%)',borderRadius:12,marginBottom:20,color:'white'}}>
                         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:12}}>
                             <div>
-                                <div style={{fontSize:11,textTransform:'uppercase',letterSpacing:1,opacity:0.7,marginBottom:4}}>Solde Total Toutes Caisses</div>
-                                <div style={{fontSize:26,fontWeight:700}}>{formatMAD(totalSolde)}</div>
+                                <div style={{fontSize:11,textTransform:'uppercase',letterSpacing:1,opacity:0.7,marginBottom:4}}>Solde en caisse — toutes caisses</div>
+                                <div style={{fontSize:26,fontWeight:700}}>{formatMAD(totalSoldeCaisse)}</div>
+                                <div style={{fontSize:11,opacity:0.85,marginTop:4}}>
+                                    Solde validé : <strong>{formatMAD(totalSolde)}</strong>
+                                    {totalEnAttenteCount > 0 && (
+                                        <span> · {totalEnAttenteCount} bon(s) en attente&nbsp;: {totalEnAttente >= 0 ? '+' : '−'}{formatMAD(Math.abs(totalEnAttente))}</span>
+                                    )}
+                                </div>
                             </div>
                             <div style={{display:'flex',gap:24,textAlign:'center'}}>
                                 <div>
@@ -60071,10 +60333,14 @@ ${rejetHtml}
 
                     {/* KPI cards per caisse */}
                     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))',gap:12,marginBottom:20}}>
-                        {caisses.map(c => {
+                        {caissesReelles.map(c => {
                             const cc = getCaisseColor(c.id);
                             return (
-                                <div key={c.id} style={{padding:16,background:'white',borderRadius:12,border:'1px solid var(--gray-200)',position:'relative',overflow:'hidden'}}>
+                                <div key={c.id} onClick={() => setDetailCaisse(c)}
+                                    title={'Voir le détail de ' + (c.nom || c.id)}
+                                    style={{padding:16,background:'white',borderRadius:12,border:'1px solid var(--gray-200)',position:'relative',overflow:'hidden',cursor:'pointer',transition:'box-shadow 0.15s, transform 0.15s'}}
+                                    onMouseEnter={e=>{e.currentTarget.style.boxShadow='0 4px 14px rgba(0,0,0,0.08)';e.currentTarget.style.transform='translateY(-1px)';}}
+                                    onMouseLeave={e=>{e.currentTarget.style.boxShadow='none';e.currentTarget.style.transform='none';}}>
                                     <div style={{position:'absolute',top:0,left:0,width:4,height:'100%',background:cc.color}}></div>
                                     <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10,paddingLeft:8}}>
                                         <div style={{width:36,height:36,borderRadius:10,background:cc.bg,display:'flex',alignItems:'center',justifyContent:'center'}}>
@@ -60082,11 +60348,92 @@ ${rejetHtml}
                                         </div>
                                         <div style={{fontSize:12,fontWeight:600,color:'var(--gray-800)'}}>{c.nom}</div>
                                     </div>
-                                    <div style={{fontSize:20,fontWeight:700,color:cc.color,paddingLeft:8}}>{formatMAD(c.solde_actuel)}</div>
+                                    {/* Deux soldes distincts et jamais confondus :
+                                        — Solde en caisse : ce que le caissier doit trouver dans
+                                          son tiroir (inclut les bons saisis non encore validés) ;
+                                        — Solde validé : le solde comptable, seul utilisé par le
+                                          rapprochement mensuel.
+                                        Le solde en caisse est mis en avant car c'est celui qui
+                                        sert au quotidien ; le validé reste visible en dessous. */}
+                                    {(() => {
+                                        const enAttente = Number(c.en_attente_montant) || 0;
+                                        const aDesEnAttente = (Number(c.en_attente_count) || 0) > 0;
+                                        const soldeCaisse = c.solde_provisoire !== undefined ? c.solde_provisoire : c.solde_actuel;
+                                        return (
+                                            <div style={{paddingLeft:8}}>
+                                                <div style={{fontSize:10,textTransform:'uppercase',letterSpacing:0.6,color:'var(--gray-400)'}}>
+                                                    Solde en caisse
+                                                </div>
+                                                <div style={{fontSize:20,fontWeight:700,color:cc.color}}>{formatMAD(soldeCaisse)}</div>
+                                                {aDesEnAttente ? (
+                                                    <div style={{marginTop:6,paddingTop:6,borderTop:'1px dashed var(--gray-200)',fontSize:11,color:'var(--gray-600)',lineHeight:1.5}}>
+                                                        <div>Solde validé : <strong>{formatMAD(c.solde_actuel)}</strong></div>
+                                                        <div style={{color:'#E67E22'}}>
+                                                            <i className="fa-solid fa-clock" style={{marginRight:4}}></i>
+                                                            {c.en_attente_count} bon(s) en attente&nbsp;: {enAttente >= 0 ? '+' : '−'}{formatMAD(Math.abs(enAttente))}
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div style={{marginTop:6,fontSize:11,color:'var(--gray-400)'}}>
+                                                        <i className="fa-solid fa-check" style={{marginRight:4}}></i>Tout est validé
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })()}
                                 </div>
                             );
                         })}
                     </div>
+
+                    {/* Détail d'une caisse — alimentations / décaissements.
+                        Aucun appel réseau : allTx est déjà chargé. */}
+                    {detailCaisse && window.CaisseDetailPopup && (
+                        <window.CaisseDetailPopup
+                            caisse={detailCaisse}
+                            transactions={allTx}
+                            onClose={() => setDetailCaisse(null)}
+                        />
+                    )}
+
+                    {/* Marché Local — détail par client. Uniquement là où des
+                        comptes clients existent (Berry Good aujourd'hui). Ce sont
+                        des créances : montant restant dû, pas un fonds de caisse. */}
+                    {(comptesClients.length > 0 || entite === 'BGF') && (
+                        <div style={{padding:16,background:'white',borderRadius:12,border:'1px solid var(--gray-200)',marginBottom:20}}>
+                            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:12,flexWrap:'wrap'}}>
+                                <i className="fa-solid fa-store" style={{color:'var(--berry)'}}></i>
+                                <span style={{fontWeight:600,fontSize:14,color:'var(--gray-800)'}}>Marché Local — par client</span>
+                                <span style={{fontSize:11,color:'var(--gray-400)'}}>{comptesClients.length} client(s) actif(s)</span>
+                                <button onClick={() => onNavigate('caisse_comptes_clients')}
+                                    style={{marginLeft:'auto',padding:'6px 12px',borderRadius:8,border:'1px solid var(--gray-200)',background:'white',cursor:'pointer',fontSize:12,color:'var(--gray-600)'}}>
+                                    Détail<i className="fa-solid fa-arrow-right" style={{marginLeft:6}}></i>
+                                </button>
+                            </div>
+                            {comptesClients.length === 0 && (
+                                <div style={{padding:'14px 16px',borderRadius:10,background:'#FEF3C7',border:'1px solid #FDE68A',fontSize:12,color:'#92400E'}}>
+                                    <i className="fa-solid fa-circle-info" style={{marginRight:6}}></i>
+                                    Aucun client actif pour la campagne. Activez-les dans <strong>Paramètres → Clients Marché Local</strong> pour démarrer le suivi.
+                                </div>
+                            )}
+                            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))',gap:10}}>
+                                {comptesClients.map(c => {
+                                    // Les comptes existants n'ont pas de champ `nom` :
+                                    // on dérive un libellé lisible de leur identifiant.
+                                    const nom = (c.nom && String(c.nom).trim())
+                                        || String(c.id || '').replace('compte_client_', '').split('_').filter(Boolean).join(' ').toUpperCase();
+                                    const solde = Number(c.solde_actuel) || 0;
+                                    return (
+                                        <div key={c.id} style={{padding:'10px 12px',background:'var(--gray-100)',borderRadius:10}}>
+                                            <div style={{fontSize:11,fontWeight:600,color:'var(--gray-800)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={nom}>{nom}</div>
+                                            <div style={{fontSize:15,fontWeight:700,color: solde > 0 ? 'var(--orange)' : 'var(--green)',marginTop:2}}>{formatMAD(solde)}</div>
+                                            <div style={{fontSize:10,color:'var(--gray-400)'}}>{solde > 0 ? 'reste dû' : 'soldé'}</div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Pending validations panel — DG/Finance only */}
                     {isControle && dashData.pendingCount > 0 && (
@@ -60096,8 +60443,11 @@ ${rejetHtml}
                                     <i className="fa-solid fa-clock" style={{color:'#E67E22'}}></i>
                                     <span style={{fontWeight:600,fontSize:14,color:'var(--gray-800)'}}>{dashData.pendingCount} transaction(s) en attente de validation</span>
                                 </div>
+                                {/* Ce bouton NE valide rien : il ouvre la revue. Le libellé
+                                    « Valider » + l'icône double-coche le faisaient passer pour
+                                    une validation en masse, qui n'existe pas. */}
                                 <button onClick={() => onNavigate('caisse_validation')} style={{padding:'6px 14px',borderRadius:8,background:'#E67E22',color:'white',border:'none',cursor:'pointer',fontSize:12,fontWeight:600}}>
-                                    <i className="fa-solid fa-check-double" style={{marginRight:4}}></i>Valider
+                                    <i className="fa-solid fa-arrow-right" style={{marginRight:4}}></i>Ouvrir la revue
                                 </button>
                             </div>
                         </div>
@@ -60160,11 +60510,15 @@ ${rejetHtml}
         }
 
         // ---- Transactions List Sub ----
-        function CaisseTransactionsSub({ caisses: caissesProp }) {
+        function CaisseTransactionsSub({ caisses: caissesProp, isSaisie, isControle, onRefresh }) {
             const [transactions, setTransactions] = useState([]);
+            // Transaction en cours de modification (pop-up d'édition). null = fermée.
+            const [editTx, setEditTx] = useState(null);
             const [loading, setLoading] = useState(true);
             const [filterCaisse, setFilterCaisse] = useState('');
             const [filterStatus, setFilterStatus] = useState('');
+            // Filtres par axes analytiques — client-side (les bons sont déjà chargés).
+            const [filterAxes, setFilterAxes] = useState({ ferme: '', culture: '', parcelle: '', code_analytique: '' });
             const [filterDateFrom, setFilterDateFrom] = useState('');
             const [filterDateTo, setFilterDateTo] = useState('');
             const [selectedTx, setSelectedTx] = useState(null);
@@ -60210,10 +60564,33 @@ ${rejetHtml}
                 [transactions, searchQuery]
             );
 
-            const filteredByType = useMemo(
+            const filteredByQuickType = useMemo(
                 () => (window.CaisseUtils ? window.CaisseUtils.filterByQuickType(searchedTransactions, quickType) : searchedTransactions),
                 [searchedTransactions, quickType]
             );
+
+            // Filtres ferme / culture / parcelle / analytique. Placés AVANT la
+            // détection d'anomalies pour que le compteur « À contrôler » suive
+            // la vue affichée, comme le fait déjà le filtre de type.
+            const filteredByType = useMemo(
+                () => (window.CaisseUtils && window.CaisseUtils.filterByAxes
+                    ? window.CaisseUtils.filterByAxes(filteredByQuickType, filterAxes)
+                    : filteredByQuickType),
+                [filteredByQuickType, filterAxes]
+            );
+
+            // Options des listes déroulantes : dérivées de TOUS les bons chargés,
+            // pas de la vue filtrée — sinon choisir une ferme viderait les autres
+            // listes et on ne pourrait plus revenir en arrière.
+            const axeOptions = useMemo(() => {
+                const CU = window.CaisseUtils;
+                const d = (champ) => (CU && CU.distinctAxeValues ? CU.distinctAxeValues(transactions, champ) : []);
+                return { ferme: d('ferme'), culture: d('culture'), parcelle: d('parcelle'), code_analytique: d('code_analytique') };
+            }, [transactions]);
+
+            const axesActifs = Object.keys(filterAxes).filter((k) => filterAxes[k] !== '').length;
+            const setAxe = (champ, valeur) => setFilterAxes((cur) => ({ ...cur, [champ]: valeur }));
+            const resetAxes = () => setFilterAxes({ ferme: '', culture: '', parcelle: '', code_analytique: '' });
 
             // detectAnomaliesBatch (Sprint 2) — combine Sprint 1 per-tx rules + 5 cross-dataset rules
             const anomaliesByTx = useMemo(() => {
@@ -60270,6 +60647,11 @@ ${rejetHtml}
                     if (key === 'code_analytique') return (tx.code_analytique || '').toLowerCase();
                     if (key === 'montant')         return Number(tx.montant) || 0;
                     if (key === 'status')          return (STATUS_LABELS[tx.status] || {}).label || tx.status || '';
+                    // Axes analytiques (ferme / campagne / culture / parcelle)
+                    if (key === 'ferme')           return (tx.ferme || '').toLowerCase();
+                    if (key === 'campagne')        return tx.campagne || '';
+                    if (key === 'culture')         return (tx.culture || '').toLowerCase();
+                    if (key === 'parcelle')        return (tx.parcelle || '').toLowerCase();
                     return '';
                 };
                 const indexed = controlFiltered.map((tx, i) => ({ tx, i, k: getKey(tx) }));
@@ -60292,6 +60674,29 @@ ${rejetHtml}
                     return { key, dir: 'asc' };
                 });
             };
+            // Droit de modifier un bon — MIROIR COSMÉTIQUE de la garde backend
+            // (update-transaction). La garde qui fait foi est côté serveur : ce
+            // helper ne sert qu'à ne pas proposer un bouton qui échouerait.
+            const canEditTx = (tx) => {
+                if (!tx || !window.CaisseSaisieSub) return false;
+                if (CAISSE_STATUTS_EDITABLES.indexOf(tx.status) === -1) return false;
+                if (CAISSE_TYPES_EDITABLES.indexOf(tx.type) === -1) return false;
+                // Tout profil ayant accès à la caisse voit l'action. La propriété
+                // (« Achats ne modifie que ses propres saisies ») est vérifiée par
+                // le BACKEND, qui renvoie un 403 explicite. La masquer ici rendait
+                // la fonctionnalité invisible sans dire pourquoi.
+                return !!(isSaisie || isControle);
+            };
+
+            // Rendu lisible d'une valeur d'historique selon le champ.
+            const formatChangeValue = (field, value) => {
+                if (field === 'montant') return formatMAD(Number(value) || 0);
+                if (field === 'caisse_id') return (caisses.find(c => c.id === value) || {}).nom || value || '—';
+                if (field === 'type') return (TXN_TYPE_LABELS[value] || {}).label || value || '—';
+                if (field === 'files') return `${value} photo(s)`;
+                return (value === '' || value === undefined || value === null) ? '—' : String(value);
+            };
+
             // Helper : indicator glyph per column
             const sortIndicator = (key) => {
                 if (!sortConfig || sortConfig.key !== key || !sortConfig.dir) return '⇅';
@@ -60373,6 +60778,7 @@ ${rejetHtml}
                     Date: tx.date, Caisse: caisses.find(c=>c.id===tx.caisse_id)?.nom||tx.caisse_id,
                     Type: TXN_TYPE_LABELS[tx.type]?.label||tx.type, Référence: tx.reference,
                     Description: tx.description, Montant: tx.montant, 'Code Analytique': tx.code_analytique, Statut: STATUS_LABELS[tx.status]?.label||tx.status,
+                    Ferme: tx.ferme||'', Campagne: tx.campagne||'', Culture: tx.culture||'', Parcelle: tx.parcelle||'',
                     'Saisi par': tx.saisie_by?.name||'',
                 })));
                 const wb = XLSX.utils.book_new();
@@ -60484,17 +60890,8 @@ ${rejetHtml}
                     setBulkLoading(false);
                 }
             };
-            const bulkValidate = async () => {
-                const ids = Array.from(selectedIds);
-                if (ids.length === 0) return;
-                if (!window.confirm(`Valider ${ids.length} transaction(s) ?`)) return;
-                const json = await _postBulk('validate-transactions-batch', { ids });
-                if (json) {
-                    showToast(`${json.count || ids.length} transactions validées`);
-                    clearSelection();
-                    load();
-                }
-            };
+            // bulkValidate SUPPRIMÉ : plus de validation en masse. Un bon qui
+            // engage le solde se valide un par un dans la revue DG.
             const bulkMarkRevoir = async () => {
                 const ids = Array.from(selectedIds);
                 if (ids.length === 0) return;
@@ -60545,6 +60942,10 @@ ${rejetHtml}
                     Montant: tx.montant,
                     'Code Analytique': tx.code_analytique,
                     Statut: (STATUS_LABELS[tx.status] || {}).label || tx.status,
+                    Ferme: tx.ferme || '',
+                    Campagne: tx.campagne || '',
+                    Culture: tx.culture || '',
+                    Parcelle: tx.parcelle || '',
                     'Saisi par': (tx.saisie_by && tx.saisie_by.name) || '',
                 })));
                 const wb = XLSX.utils.book_new();
@@ -60617,11 +61018,62 @@ ${rejetHtml}
                             <option value="valide">Validé</option>
                             <option value="rejete">Rejeté</option>
                         </select>
-                        <input type="date" value={filterDateFrom} onChange={e=>onManualDateChange('from', e.target.value)} style={{padding:'8px 12px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:12}} placeholder="Du" />
-                        <input type="date" value={filterDateTo} onChange={e=>onManualDateChange('to', e.target.value)} style={{padding:'8px 12px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:12}} placeholder="Au" />
+                        {/* Libellés VISIBLES : un input[type=date] n'affiche jamais son
+                            placeholder, les deux champs passaient donc pour des dates
+                            déjà saisies au lieu d'un filtre à remplir. */}
+                        <label style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:'var(--gray-600)'}}>
+                            Du
+                            <input type="date" value={filterDateFrom} onChange={e=>onManualDateChange('from', e.target.value)} aria-label="Filtrer à partir du"
+                                style={{padding:'8px 12px',borderRadius:8,fontSize:12,
+                                    border: filterDateFrom ? '1px solid var(--berry)' : '1px solid var(--gray-200)'}} />
+                        </label>
+                        <label style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:'var(--gray-600)'}}>
+                            Au
+                            <input type="date" value={filterDateTo} onChange={e=>onManualDateChange('to', e.target.value)} aria-label="Filtrer jusqu'au"
+                                style={{padding:'8px 12px',borderRadius:8,fontSize:12,
+                                    border: filterDateTo ? '1px solid var(--berry)' : '1px solid var(--gray-200)'}} />
+                        </label>
+                        {(filterDateFrom || filterDateTo) && (
+                            <button onClick={()=>{ onManualDateChange('from',''); onManualDateChange('to',''); }}
+                                aria-label="Effacer le filtre de dates"
+                                style={{padding:'7px 10px',borderRadius:8,border:'1px solid var(--gray-200)',background:'white',cursor:'pointer',fontSize:12,color:'var(--gray-600)'}}>
+                                <i className="fa-solid fa-xmark"></i>
+                            </button>
+                        )}
                         <button onClick={exportExcel} style={{padding:'8px 14px',borderRadius:8,background:'var(--green)',color:'white',border:'none',cursor:'pointer',fontSize:12,fontWeight:600,marginLeft:'auto'}}>
                             <i className="fa-solid fa-file-excel" style={{marginRight:4}}></i>Exporter
                         </button>
+                    </div>
+
+                    {/* Filtres par axes analytiques — ferme / culture / parcelle / analytique.
+                        Client-side : les bons sont déjà chargés, aucun aller-retour serveur. */}
+                    <div data-testid="caisse-axes-filters"
+                        style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center',marginBottom:12}}>
+                        <span style={{fontSize:11,fontWeight:700,color:'var(--gray-400)',letterSpacing:0.4}}>AFFECTATION</span>
+                        {[
+                            { champ: 'ferme',           label: 'Toutes les fermes' },
+                            { champ: 'culture',         label: 'Toutes les cultures' },
+                            { champ: 'parcelle',        label: 'Toutes les parcelles' },
+                            { champ: 'code_analytique', label: 'Tous les analytiques' },
+                        ].map(({ champ, label }) => (
+                            <select key={champ} value={filterAxes[champ]} onChange={e=>setAxe(champ, e.target.value)}
+                                aria-label={label}
+                                style={{padding:'8px 12px',borderRadius:8,fontSize:12,maxWidth:230,
+                                    border: filterAxes[champ] ? '1px solid var(--berry)' : '1px solid var(--gray-200)',
+                                    background: filterAxes[champ] ? 'var(--berry-pale)' : 'white',
+                                    fontWeight: filterAxes[champ] ? 600 : 400}}>
+                                <option value="">{label}</option>
+                                <option value={(window.CaisseUtils && window.CaisseUtils.AXE_NON_RENSEIGNE) || '__VIDE__'}>— Non renseigné —</option>
+                                {axeOptions[champ].map(v => <option key={v} value={v}>{v}</option>)}
+                            </select>
+                        ))}
+                        {axesActifs > 0 && (
+                            <button onClick={resetAxes}
+                                style={{padding:'7px 12px',borderRadius:8,border:'1px solid var(--gray-200)',background:'white',cursor:'pointer',fontSize:12,color:'var(--gray-600)'}}>
+                                <i className="fa-solid fa-xmark" style={{marginRight:4}}></i>
+                                Réinitialiser ({axesActifs})
+                            </button>
+                        )}
                     </div>
 
                     {/* Sprint 2 — Sticky bulk actions bar (visible when selection > 0) */}
@@ -60632,10 +61084,10 @@ ${rejetHtml}
                                 <i className="fa-solid fa-square-check" style={{marginRight:6}}></i>
                                 {selectedIds.size} sélectionnée{selectedIds.size > 1 ? 's' : ''}
                             </span>
-                            <button onClick={bulkValidate} disabled={bulkLoading}
-                                style={{padding:'6px 12px',borderRadius:6,border:'none',background:'var(--green)',color:'white',cursor:'pointer',fontSize:12,fontWeight:600,opacity:bulkLoading?0.6:1}}>
-                                <i className="fa-solid fa-check" style={{marginRight:4}}></i>Valider
-                            </button>
+                            {/* Validation en masse RETIRÉE (décision Omar, 2026-08-26) : un bon
+                                qui engage le solde se valide un par un, dans la revue DG, en
+                                ayant vu le montant et le justificatif. Les actions groupées
+                                restantes ne touchent pas au solde. */}
                             <button onClick={bulkMarkRevoir} disabled={bulkLoading}
                                 style={{padding:'6px 12px',borderRadius:6,border:'none',background:'#F39C12',color:'white',cursor:'pointer',fontSize:12,fontWeight:600,opacity:bulkLoading?0.6:1}}>
                                 <i className="fa-solid fa-rotate-right" style={{marginRight:4}}></i>Marquer à revoir
@@ -60750,6 +61202,12 @@ ${rejetHtml}
                                                 { key: 'reference',       label: 'Réf.',        align: 'left'  },
                                                 { key: 'description',     label: 'Description', align: 'left'  },
                                                 { key: 'code_analytique', label: 'Analytique',  align: 'left'  },
+                                                { key: 'ferme',           label: 'Ferme',       align: 'left'  },
+                                                // Campagne volontairement ABSENTE du tableau : déductible de
+                                                // la colonne Date, elle ne payait pas sa largeur. Elle reste
+                                                // dans le détail, l'export et la recherche.
+                                                { key: 'culture',         label: 'Culture',     align: 'left'  },
+                                                { key: 'parcelle',        label: 'Parcelle',    align: 'left'  },
                                                 { key: 'montant',         label: 'Montant',     align: 'right' },
                                                 { key: 'status',          label: 'Statut',      align: 'center'},
                                             ];
@@ -60765,7 +61223,10 @@ ${rejetHtml}
                                                 </th>
                                             ));
                                         })()}
-                                        <th style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'var(--gray-600)'}}>Saisi par</th>
+                                        {/* « Saisi par » retirée du tableau pour que tout tienne
+                                            en un seul écran. L'info reste dans la pop-up de
+                                            détail et dans les deux exports Excel. */}
+                                        <th style={{padding:'10px 6px',textAlign:'center',fontWeight:600,color:'var(--gray-600)',width:44}} title="Modifier le bon">✎</th>
                                     </tr></thead>
                                     <tbody>
                                         {displayedTransactions.map((tx, i) => {
@@ -60817,13 +61278,31 @@ ${rejetHtml}
                                                     <td style={{padding:'10px 12px',fontSize:11,fontFamily:'monospace'}}>{tx.reference}</td>
                                                     <td style={{padding:'10px 12px',maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{tx.description}</td>
                                                     <td style={{padding:'10px 12px',fontSize:11}}>{tx.code_analytique}</td>
+                                                    <td style={{padding:'10px 12px',fontSize:11,whiteSpace:'nowrap'}}>{tx.ferme||''}</td>
+                                                    <td style={{padding:'10px 12px',fontSize:11,whiteSpace:'nowrap'}}>{tx.culture||''}</td>
+                                                    <td style={{padding:'10px 12px',fontSize:11,maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={tx.parcelle||''}>{tx.parcelle||''}</td>
                                                     <td style={{padding:'10px 12px',textAlign:'right',fontWeight:600,color:['depense','sortie','transfer_out'].includes(tx.type)?'var(--red)':'var(--green)'}}>
                                                         {['depense','sortie','transfer_out'].includes(tx.type)?'-':'+'}{formatMAD(tx.montant)}
                                                     </td>
                                                     <td style={{padding:'10px 12px',textAlign:'center'}}>
                                                         <span style={{padding:'3px 8px',borderRadius:12,background:ss.bg||'#eee',color:ss.color||'#333',fontSize:10,fontWeight:600}}>{ss.label||tx.status}</span>
                                                     </td>
-                                                    <td style={{padding:'10px 12px',fontSize:11}}>{tx.saisie_by?.name||''}</td>
+                                                    {/* Action Modifier directement dans la ligne — la pop-up de
+                                                        détail garde le même bouton, mais l'action ne doit pas
+                                                        dépendre d'un clic préalable pour être découverte. */}
+                                                    <td style={{padding:'10px 6px',textAlign:'center'}} onClick={(e) => e.stopPropagation()}>
+                                                        {canEditTx(tx) && (
+                                                            <button onClick={()=>setEditTx(tx)}
+                                                                title={tx.status === 'valide'
+                                                                    ? 'Modifier — le bon repassera en « Saisi » et devra être re-validé'
+                                                                    : 'Modifier ce bon'}
+                                                                aria-label={`Modifier ${tx.reference || tx.id}`}
+                                                                style={{background:'none',border:'1px solid var(--gray-200)',borderRadius:8,cursor:'pointer',
+                                                                    padding:'4px 8px',color:'var(--berry)',fontSize:12,lineHeight:1}}>
+                                                                <i className="fa-solid fa-pen-to-square"></i>
+                                                            </button>
+                                                        )}
+                                                    </td>
                                                 </tr>
                                             );
                                         })}
@@ -60831,7 +61310,8 @@ ${rejetHtml}
                                     {/* Sticky footer — totaux suivent les filtres */}
                                     <tfoot>
                                         <tr style={{position:'sticky',bottom:0,background:'var(--gray-100)',borderTop:'2px solid var(--berry)',boxShadow:'0 -2px 6px rgba(0,0,0,0.04)'}}>
-                                            <td colSpan={11} style={{padding:'12px 14px',fontSize:12}}>
+                                            {/* 14 = ⚠ + case à cocher + 11 colonnes triables + action ✎ */}
+                                            <td colSpan={14} style={{padding:'12px 14px',fontSize:12}}>
                                                 <div style={{display:'flex',flexWrap:'wrap',gap:'4px 18px',alignItems:'center',fontWeight:500,color:'var(--gray-800)'}}>
                                                     <span><strong style={{color:'var(--berry)'}}>{totals.count}</strong> transactions</span>
                                                     <span style={{color:'var(--gray-400)'}}>·</span>
@@ -60871,6 +61351,11 @@ ${rejetHtml}
                                     <div><span style={{color:'var(--gray-400)',fontSize:11}}>Statut</span><div>{(() => { const s = STATUS_LABELS[selectedTx.status]||{}; return <span style={{padding:'3px 10px',borderRadius:12,background:s.bg||'#eee',color:s.color||'#333',fontSize:11,fontWeight:600}}>{s.label||selectedTx.status}</span>; })()}</div></div>
                                     <div style={{gridColumn:'1/-1'}}><span style={{color:'var(--gray-400)',fontSize:11}}>Description</span><div>{selectedTx.description || '—'}</div></div>
                                     {selectedTx.code_analytique && <div style={{gridColumn:'1/-1'}}><span style={{color:'var(--gray-400)',fontSize:11}}>Code Analytique</span><div>{selectedTx.code_analytique}</div></div>}
+                                    {/* Axes analytiques — affichés même vides, pour signaler un bon non affecté */}
+                                    <div><span style={{color:'var(--gray-400)',fontSize:11}}>Ferme</span><div>{selectedTx.ferme || '—'}</div></div>
+                                    <div><span style={{color:'var(--gray-400)',fontSize:11}}>Campagne</span><div>{selectedTx.campagne || '—'}</div></div>
+                                    <div><span style={{color:'var(--gray-400)',fontSize:11}}>Culture</span><div>{selectedTx.culture || '—'}</div></div>
+                                    <div><span style={{color:'var(--gray-400)',fontSize:11}}>Parcelle</span><div>{selectedTx.parcelle || '—'}</div></div>
                                     <div><span style={{color:'var(--gray-400)',fontSize:11}}>Saisi par</span><div>{selectedTx.saisie_by?.name||'—'}</div></div>
                                     {selectedTx.valide_par && <div><span style={{color:'var(--gray-400)',fontSize:11}}>Validé par</span><div>{selectedTx.valide_par?.name||'—'}</div></div>}
                                     {selectedTx.rejete_par && <div style={{gridColumn:'1/-1'}}><span style={{color:'var(--gray-400)',fontSize:11}}>Rejeté par</span><div>{selectedTx.rejete_par?.name||'—'} — <em style={{color:'var(--red)'}}>{selectedTx.motif_rejet}</em></div></div>}
@@ -60895,11 +61380,48 @@ ${rejetHtml}
                                                 <div key={j} style={{fontSize:11,color:'var(--gray-600)',padding:'4px 8px',background:'var(--gray-100)',borderRadius:6}}>
                                                     <strong>{h.action}</strong> par {h.by?.name||'—'} le {h.at ? new Date(h.at).toLocaleString('fr-FR') : '—'}
                                                     {h.motif && <span style={{color:'var(--red)'}}> — {h.motif}</span>}
+                                                    {h.devalidated && <span style={{color:'var(--orange)',fontWeight:600}}> — dévalidé</span>}
+                                                    {/* Détail avant → après d'une modification (action 'modification') */}
+                                                    {Array.isArray(h.changes) && h.changes.length > 0 && (
+                                                        <div style={{marginTop:3,paddingLeft:8,borderLeft:'2px solid var(--gray-200)',display:'flex',flexDirection:'column',gap:1}}>
+                                                            {h.changes.map((c,k) => (
+                                                                <div key={k}>
+                                                                    {CAISSE_FIELD_LABELS[c.field] || c.field}{' '}
+                                                                    <span style={{color:'var(--gray-400)',textDecoration:'line-through'}}>{formatChangeValue(c.field, c.from)}</span>
+                                                                    {' → '}
+                                                                    <strong>{formatChangeValue(c.field, c.to)}</strong>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
                                                 </div>
                                             ))}
                                         </div>
                                     </div>
                                 )}
+                                {/* Actions — modification d'un bon après création */}
+                                {canEditTx(selectedTx) && (
+                                    <div style={{marginTop:20,paddingTop:16,borderTop:'1px solid var(--gray-200)',display:'flex',justifyContent:'flex-end',gap:10}}>
+                                        <button onClick={()=>{ const tx = selectedTx; setSelectedTx(null); setEditTx(tx); }}
+                                            style={{padding:'9px 18px',borderRadius:10,border:'none',background:'var(--berry)',color:'white',cursor:'pointer',fontSize:13,fontWeight:600}}>
+                                            <i className="fa-solid fa-pen-to-square" style={{marginRight:6}}></i>Modifier
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Modale d'édition — réutilise le formulaire de saisie en mode édition */}
+                    {editTx && window.CaisseSaisieSub && (
+                        <div className="modal-overlay" onClick={()=>setEditTx(null)}>
+                            <div className="modal-content" onClick={e=>e.stopPropagation()} style={{maxWidth:680,padding:0,background:'transparent',border:'none',boxShadow:'none'}}>
+                                <window.CaisseSaisieSub
+                                    caisses={caisses}
+                                    editTx={editTx}
+                                    onCancel={()=>setEditTx(null)}
+                                    onDone={()=>{ setEditTx(null); load(); onRefresh && onRefresh(); }}
+                                />
                             </div>
                         </div>
                     )}
@@ -60908,152 +61430,10 @@ ${rejetHtml}
         }
 
         // ---- Saisie Sub (Achats only) ----
-        function CaisseSaisieSub({ caisses, onDone, defaultType, defaultCaisseId }) {
-            const [form, setForm] = useState({ caisse_id: defaultCaisseId || caisses[0]?.id || '', type: defaultType || 'depense', montant: '', reference: '', description: '', code_analytique: '', date: new Date().toISOString().slice(0,10), files: [], matricule: '', beneficiaire_nom: '' });
-            const [saving, setSaving] = useState(false);
-            const [codesAnalytiques, setCodesAnalytiques] = useState([]);
-
-            React.useEffect(() => {
-                fetch('/api/stock?action=list-codes-analytiques').then(r=>r.json()).then(json => {
-                    if (json.success && json.codes) setCodesAnalytiques(json.codes);
-                }).catch(()=>{});
-            }, []);
-
-            const handleFile = (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
-                const reader = new FileReader();
-                reader.onload = (ev) => {
-                    const img = new Image();
-                    img.onload = () => {
-                        const canvas = document.createElement('canvas');
-                        const maxW = 1200;
-                        let w = img.width, h = img.height;
-                        if (w > maxW) { h = h * maxW / w; w = maxW; }
-                        canvas.width = w; canvas.height = h;
-                        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-                        const compressed = canvas.toDataURL('image/jpeg', 0.7);
-                        setForm(f => ({ ...f, files: [...f.files, { name: file.name, data: compressed }].slice(0, 3) }));
-                    };
-                    img.src = ev.target.result;
-                };
-                reader.readAsDataURL(file);
-            };
-
-            const removeFile = (idx) => setForm(f => ({ ...f, files: f.files.filter((_, i) => i !== idx) }));
-
-            const submit = (asBrouillon) => {
-                if (!form.caisse_id || !form.type || !form.montant || !form.date) return alert('Veuillez remplir les champs obligatoires');
-                if (parseFloat(form.montant) <= 0) return alert('Le montant doit être positif');
-                setSaving(true);
-                fetch('/api/caisse?action=create-transaction', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ...form, montant: parseFloat(form.montant), submit: !asBrouillon }),
-                }).then(r => r.json()).then(json => {
-                    if (json.success) { alert(asBrouillon ? 'Brouillon enregistré' : 'Transaction soumise pour validation'); onDone(); }
-                    else alert('Erreur: ' + (json.error || 'Inconnue'));
-                }).catch(err => alert('Erreur: ' + err.message)).finally(() => setSaving(false));
-            };
-
-            const inputStyle = { width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid var(--gray-200)', fontSize: 13, fontFamily: 'Inter, sans-serif' };
-
-            return (
-                <div style={{maxWidth:640}}>
-                    <div style={{background:'white',borderRadius:12,border:'1px solid var(--gray-200)',padding:24}}>
-                        <h4 style={{margin:'0 0 20px',display:'flex',alignItems:'center',gap:8}}>
-                            <i className="fa-solid fa-plus-circle" style={{color:'var(--berry)'}}></i>Nouvelle Transaction
-                        </h4>
-                        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
-                            <div>
-                                <label style={{fontSize:11,fontWeight:600,color:'var(--gray-600)',marginBottom:4,display:'block'}}>Caisse *</label>
-                                <select value={form.caisse_id} onChange={e=>setForm({...form,caisse_id:e.target.value})} style={inputStyle}>
-                                    {caisses.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
-                                </select>
-                            </div>
-                            <div>
-                                <label style={{fontSize:11,fontWeight:600,color:'var(--gray-600)',marginBottom:4,display:'block'}}>Type *</label>
-                                <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-                                    {['alimentation','depense','sortie','paie','transport'].map(t => {
-                                        const tt = TXN_TYPE_LABELS[t];
-                                        return (
-                                            <button key={t} onClick={()=>setForm({...form,type:t})}
-                                                style={{flex:'1 0 calc(33% - 6px)',padding:'8px 6px',borderRadius:8,border: form.type===t ? `2px solid ${tt.color}` : '1px solid var(--gray-200)',
-                                                    background: form.type===t ? tt.bg : 'white', color: form.type===t ? tt.color : 'var(--gray-600)',
-                                                    fontSize:11,fontWeight:form.type===t?700:500,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:4}}>
-                                                <i className={`fa-solid ${tt.icon}`}></i>{tt.label}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                            <div>
-                                <label style={{fontSize:11,fontWeight:600,color:'var(--gray-600)',marginBottom:4,display:'block'}}>Montant (DH) *</label>
-                                <input type="number" step="0.01" min="0" value={form.montant} onChange={e=>setForm({...form,montant:e.target.value})} style={inputStyle} placeholder="0.00" />
-                            </div>
-                            <div>
-                                <label style={{fontSize:11,fontWeight:600,color:'var(--gray-600)',marginBottom:4,display:'block'}}>Date *</label>
-                                <input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})} style={inputStyle} />
-                            </div>
-                            <div>
-                                <label style={{fontSize:11,fontWeight:600,color:'var(--gray-600)',marginBottom:4,display:'block'}}>Référence</label>
-                                <input type="text" value={form.reference} onChange={e=>setForm({...form,reference:e.target.value})} style={inputStyle} placeholder="Auto-générée si vide" />
-                            </div>
-                            <div>
-                                <label style={{fontSize:11,fontWeight:600,color:'var(--gray-600)',marginBottom:4,display:'block'}}>Code Analytique</label>
-                                <select value={form.code_analytique} onChange={e=>setForm({...form,code_analytique:e.target.value})} style={inputStyle}>
-                                    <option value="">— Aucun —</option>
-                                    {codesAnalytiques.map(c => <option key={c} value={c}>{c}</option>)}
-                                </select>
-                            </div>
-                            {(form.type === 'paie' || form.type === 'transport') && (
-                                <>
-                                    <div>
-                                        <label style={{fontSize:11,fontWeight:600,color:'var(--gray-600)',marginBottom:4,display:'block'}}>Matricule</label>
-                                        <input type="text" value={form.matricule} onChange={e=>setForm({...form,matricule:e.target.value})} style={inputStyle} placeholder="Ex: 02123" />
-                                    </div>
-                                    <div>
-                                        <label style={{fontSize:11,fontWeight:600,color:'var(--gray-600)',marginBottom:4,display:'block'}}>Bénéficiaire (Nom)</label>
-                                        <input type="text" value={form.beneficiaire_nom} onChange={e=>setForm({...form,beneficiaire_nom:e.target.value})} style={inputStyle} placeholder="Nom de l'employé" />
-                                    </div>
-                                </>
-                            )}
-                            <div style={{gridColumn:'1/-1'}}>
-                                <label style={{fontSize:11,fontWeight:600,color:'var(--gray-600)',marginBottom:4,display:'block'}}>Description</label>
-                                <textarea value={form.description} onChange={e=>setForm({...form,description:e.target.value})} style={{...inputStyle,minHeight:70,resize:'vertical'}} placeholder="Description de la transaction..." />
-                            </div>
-                            <div style={{gridColumn:'1/-1'}}>
-                                <label style={{fontSize:11,fontWeight:600,color:'var(--gray-600)',marginBottom:4,display:'block'}}>Pièces jointes (max 3)</label>
-                                <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:8}}>
-                                    {form.files.map((f,i) => (
-                                        <div key={i} style={{position:'relative',width:70,height:70}}>
-                                            <img src={f.data} alt="" style={{width:70,height:70,objectFit:'cover',borderRadius:8,border:'1px solid var(--gray-200)'}} />
-                                            <button onClick={()=>removeFile(i)} style={{position:'absolute',top:-6,right:-6,width:20,height:20,borderRadius:'50%',background:'var(--red)',color:'white',border:'none',cursor:'pointer',fontSize:10,display:'flex',alignItems:'center',justifyContent:'center'}}>
-                                                <i className="fa-solid fa-xmark"></i>
-                                            </button>
-                                        </div>
-                                    ))}
-                                </div>
-                                {form.files.length < 3 && (
-                                    <label style={{display:'inline-flex',alignItems:'center',gap:6,padding:'8px 14px',borderRadius:8,border:'1px dashed var(--gray-200)',cursor:'pointer',fontSize:12,color:'var(--gray-600)'}}>
-                                        <i className="fa-solid fa-camera"></i>Ajouter une photo
-                                        <input type="file" accept="image/*" onChange={handleFile} style={{display:'none'}} />
-                                    </label>
-                                )}
-                            </div>
-                        </div>
-                        <div style={{display:'flex',gap:10,marginTop:20,justifyContent:'flex-end'}}>
-                            <button onClick={()=>submit(true)} disabled={saving} style={{padding:'10px 20px',borderRadius:10,border:'1px solid var(--gray-200)',background:'white',cursor:'pointer',fontSize:13,fontWeight:500,opacity:saving?0.5:1}}>
-                                <i className="fa-solid fa-floppy-disk" style={{marginRight:6}}></i>Enregistrer brouillon
-                            </button>
-                            <button onClick={()=>submit(false)} disabled={saving} style={{padding:'10px 20px',borderRadius:10,border:'none',background:'var(--berry)',color:'white',cursor:'pointer',fontSize:13,fontWeight:600,opacity:saving?0.5:1}}>
-                                {saving ? <i className="fa-solid fa-spinner fa-spin" style={{marginRight:6}}></i> : <i className="fa-solid fa-paper-plane" style={{marginRight:6}}></i>}
-                                Soumettre pour validation
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            );
-        }
+        // EXTRAIT vers public/components/CaisseSaisieSub.jsx (règle de modularisation,
+        // CLAUDE.md). Bimodal : création + édition (action update-transaction).
+        // Référencé via window.CaisseSaisieSub — jamais en référence nue (crash global
+        // si le <script> du composant n'a pas chargé, cf. tab-bare-global-ref-crash).
 
         // ---- Filtered Type Sub (Alimentations / Paie / Transport) ----
         function CaisseFilteredTypeSub({ caisses, typeFilter, title, icon, isSaisie, onDone, hasEmployee }) {
@@ -61123,7 +61503,7 @@ ${rejetHtml}
                         <button onClick={() => setShowForm(false)} style={{padding:'6px 14px',borderRadius:8,border:'1px solid var(--gray-200)',background:'white',cursor:'pointer',fontSize:12,marginBottom:16}}>
                             <i className="fa-solid fa-arrow-left" style={{marginRight:6}}></i>Retour à la liste
                         </button>
-                        <CaisseSaisieSub caisses={caisses} defaultType={typeFilter} onDone={() => { setShowForm(false); load(); onDone && onDone(); }} />
+                        {window.CaisseSaisieSub && <window.CaisseSaisieSub caisses={caisses} defaultType={typeFilter} onDone={() => { setShowForm(false); load(); onDone && onDone(); }} />}
                     </div>
                 );
             }
@@ -61329,6 +61709,29 @@ ${rejetHtml}
             const [actionLoading, setActionLoading] = useState(null);
             const [rejectModal, setRejectModal] = useState(null);
             const [rejectMotif, setRejectMotif] = useState('');
+            // Mode revue : un bon à la fois, navigation ← →. C'est le mode par
+            // défaut — empiler 40 cartes fait perdre le fil à la DG.
+            const [modeRevue, setModeRevue] = useState(true);
+
+            // Décision unitaire depuis la revue. Réutilise les actions existantes ;
+            // la validation UNITAIRE mouvemente le solde de façon atomique.
+            const decisionRevue = (id, decision, motifRejet) => {
+                const cfg = {
+                    valide:   { action: 'validate-transaction', body: { id } },
+                    rejete:   { action: 'reject-transaction',   body: { id, motif: motifRejet } },
+                    a_revoir: { action: 'mark-revoir-batch',    body: { ids: [id], motif: motifRejet || '' } },
+                }[decision];
+                if (!cfg) return Promise.resolve(false);
+                return fetch('/api/caisse?action=' + cfg.action, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(cfg.body),
+                }).then(r => r.json()).then(json => {
+                    if (!json.success) { alert('Erreur: ' + (json.error || 'Inconnue')); return false; }
+                    setTransactions(prev => prev.filter(t => t.id !== id));
+                    onDone();
+                    return true;
+                }).catch(err => { alert('Erreur: ' + err.message); return false; });
+            };
 
             const load = () => {
                 setLoading(true);
@@ -61370,10 +61773,27 @@ ${rejetHtml}
                 </div>
             );
 
+            if (modeRevue && window.CaisseRevueValidation) return (
+                <window.CaisseRevueValidation
+                    transactions={transactions}
+                    caisses={caisses}
+                    onDecision={decisionRevue}
+                    onQuitter={() => setModeRevue(false)}
+                />
+            );
+
             return (
                 <div>
-                    <div style={{marginBottom:12,fontSize:13,color:'var(--gray-600)'}}>
-                        <strong>{transactions.length}</strong> transaction(s) en attente de validation
+                    <div style={{marginBottom:12,display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
+                        <span style={{fontSize:13,color:'var(--gray-600)'}}>
+                            <strong>{transactions.length}</strong> transaction(s) en attente de validation
+                        </span>
+                        {window.CaisseRevueValidation && (
+                            <button onClick={() => setModeRevue(true)}
+                                style={{padding:'7px 14px',borderRadius:8,border:'none',background:'var(--berry)',color:'white',cursor:'pointer',fontSize:12,fontWeight:600}}>
+                                <i className="fa-solid fa-layer-group" style={{marginRight:6}}></i>Revue une par une
+                            </button>
+                        )}
                     </div>
                     <div style={{display:'flex',flexDirection:'column',gap:12}}>
                         {transactions.map(tx => {
@@ -68788,7 +69208,7 @@ ${rejetHtml}
                                 {renderTab('mag_parc', MagParcTab, { data }, 'Parc')}
                                 {renderTab('mag_bdc_liste', window.MagBonsCommandeTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Bons de Commande')}
                                 {renderTab('mag_bdc_reception', window.MagBdcReceptionTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'BDC à réceptionner')}
-                                {renderTab('mag_reception', MagReceptionTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Bons de Réception')}
+                                {renderTab('mag_reception', MagReceptionTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile), setCurrentTab }, 'Bons de Réception')}
                                 {renderTab('mag_transfert', MagTransfertTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Transfert')}
                                 {renderTab('mag_sortie', MagSortieTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Sortie')}
                                 {renderTab('mag_stock_intrants', MagStockIntrantsTab, {}, 'Stock Intrants')}

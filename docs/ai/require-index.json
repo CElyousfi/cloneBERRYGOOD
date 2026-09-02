@@ -2,22 +2,24 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:23d85b1defb25c1f",
+    "sourceFingerprint": "sha256:0db32f6fc32109ed",
     "stats": {
-      "targetFiles": 238,
-      "targetFilesWithDirectTests": 137,
-      "targetFilesWithTransitiveTests": 158,
-      "testFilesScanned": 205
+      "targetFiles": 294,
+      "targetFilesWithDirectTests": 177,
+      "targetFilesWithTransitiveTests": 199,
+      "testFilesScanned": 275
     }
   },
   "index": {
     "functions/lib/auth/paieAccess.js": {
       "directTests": [
         "tests/unit/paieAccess.test.js",
+        "tests/unit/pointageGatingExempt.test.js",
         "tests/unit/registryAccess.test.js"
       ],
       "transitiveTests": [
         "tests/unit/paieAccess.test.js",
+        "tests/unit/pointageGatingExempt.test.js",
         "tests/unit/registryAccess.test.js"
       ]
     },
@@ -103,6 +105,70 @@
       ],
       "transitiveTests": [
         "tests/unit/validateBugReport.test.js"
+      ]
+    },
+    "functions/lib/caisse/batchValidation.js": {
+      "directTests": [
+        "functions/lib/caisse/__tests__/caisse.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/caisse/__tests__/caisse.test.js"
+      ]
+    },
+    "functions/lib/caisse/champsAnalytiques.js": {
+      "directTests": [
+        "functions/lib/caisse/__tests__/caisse.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/caisse/__tests__/caisse.test.js"
+      ]
+    },
+    "functions/lib/caisse/entites.js": {
+      "directTests": [
+        "functions/lib/caisse/__tests__/caisse.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/caisse/__tests__/caisse.test.js"
+      ]
+    },
+    "functions/lib/caisse/parametres.js": {
+      "directTests": [
+        "functions/lib/caisse/__tests__/caisse.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/caisse/__tests__/caisse.test.js"
+      ]
+    },
+    "functions/lib/caisse/rapprochementLock.js": {
+      "directTests": [
+        "functions/lib/caisse/__tests__/caisse.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/caisse/__tests__/caisse.test.js"
+      ]
+    },
+    "functions/lib/caisse/soldeDelta.js": {
+      "directTests": [
+        "functions/lib/caisse/__tests__/caisse.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/caisse/__tests__/caisse.test.js"
+      ]
+    },
+    "functions/lib/caisse/soldeProvisoire.js": {
+      "directTests": [
+        "functions/lib/caisse/__tests__/caisse.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/caisse/__tests__/caisse.test.js"
+      ]
+    },
+    "functions/lib/caisse/txDiff.js": {
+      "directTests": [
+        "functions/lib/caisse/__tests__/caisse.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/caisse/__tests__/caisse.test.js"
       ]
     },
     "functions/lib/caisseImport/detectCols.js": {
@@ -200,7 +266,13 @@
       "transitiveTests": [
         "functions/lib/campagneExport/__tests__/buildWorkbook.test.js",
         "functions/lib/campagneExport/__tests__/renderXlsx.test.js",
-        "tests/unit/campagneExportBackend.test.js"
+        "functions/lib/consoBons/__tests__/aggregateParcelle.test.js",
+        "functions/lib/consoBons/__tests__/articleCategories.test.js",
+        "functions/lib/consoBons/__tests__/bonsToConsoRows.test.js",
+        "tests/unit/bcScan.test.js",
+        "tests/unit/bcScanMatch.test.js",
+        "tests/unit/campagneExportBackend.test.js",
+        "tests/unit/fetchBonsSupprimes.test.js"
       ]
     },
     "functions/lib/campagneExport/index.js": {
@@ -257,6 +329,63 @@
         "functions/lib/campagneRapportHebdo/__tests__/runJob.test.js",
         "functions/lib/campagneRapportHebdo/__tests__/whatsappDocument.test.js"
       ]
+    },
+    "functions/lib/consoBons/aggregateParcelle.js": {
+      "directTests": [
+        "functions/lib/consoBons/__tests__/aggregateParcelle.test.js",
+        "functions/lib/consoBons/__tests__/articleCategories.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/consoBons/__tests__/aggregateParcelle.test.js",
+        "functions/lib/consoBons/__tests__/articleCategories.test.js"
+      ]
+    },
+    "functions/lib/consoBons/bonsToConsoRows.js": {
+      "directTests": [
+        "functions/lib/consoBons/__tests__/aggregateParcelle.test.js",
+        "functions/lib/consoBons/__tests__/articleCategories.test.js",
+        "functions/lib/consoBons/__tests__/bonsToConsoRows.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/consoBons/__tests__/aggregateParcelle.test.js",
+        "functions/lib/consoBons/__tests__/articleCategories.test.js",
+        "functions/lib/consoBons/__tests__/bonsToConsoRows.test.js",
+        "tests/unit/fetchBonsSupprimes.test.js"
+      ]
+    },
+    "functions/lib/consoBons/cacheKeys.js": {
+      "directTests": [
+        "functions/middleware/__tests__/cacheInvalidatePrefix.test.js",
+        "tests/unit/classer-article-cablage.test.js"
+      ],
+      "transitiveTests": [
+        "functions/middleware/__tests__/cacheInvalidatePrefix.test.js",
+        "tests/unit/classer-article-cablage.test.js"
+      ]
+    },
+    "functions/lib/consoBons/fermeConso.js": {
+      "directTests": [
+        "functions/lib/consoBons/__tests__/fermeConso.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/consoBons/__tests__/aggregateParcelle.test.js",
+        "functions/lib/consoBons/__tests__/articleCategories.test.js",
+        "functions/lib/consoBons/__tests__/bonsToConsoRows.test.js",
+        "functions/lib/consoBons/__tests__/fermeConso.test.js",
+        "tests/unit/fetchBonsSupprimes.test.js"
+      ]
+    },
+    "functions/lib/consoBons/fetchBons.js": {
+      "directTests": [
+        "tests/unit/fetchBonsSupprimes.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/fetchBonsSupprimes.test.js"
+      ]
+    },
+    "functions/lib/consoBons/index.js": {
+      "directTests": [],
+      "transitiveTests": []
     },
     "functions/lib/fonctions/fonctionsHistory.js": {
       "directTests": [
@@ -527,11 +656,17 @@
         "tests/unit/campagneUtilsBackend.test.js"
       ],
       "transitiveTests": [
+        "functions/lib/consoBons/__tests__/aggregateParcelle.test.js",
+        "functions/lib/consoBons/__tests__/articleCategories.test.js",
+        "functions/lib/consoBons/__tests__/bonsToConsoRows.test.js",
         "functions/lib/mappingConso/__tests__/resolver.test.js",
         "functions/lib/pointage/__tests__/campagnePeriodes.test.js",
         "functions/lib/pointage/__tests__/mirrorWindow.test.js",
+        "tests/unit/bcDate.test.js",
+        "tests/unit/bcScanJournal.test.js",
         "tests/unit/campagne-export-fail-loud.test.js",
-        "tests/unit/campagneUtilsBackend.test.js"
+        "tests/unit/campagneUtilsBackend.test.js",
+        "tests/unit/fetchBonsSupprimes.test.js"
       ]
     },
     "functions/lib/mappingConso/familles.js": {
@@ -969,6 +1104,11 @@
         "tests/unit/refParcelleFerme.test.js"
       ],
       "transitiveTests": [
+        "functions/lib/consoBons/__tests__/aggregateParcelle.test.js",
+        "functions/lib/consoBons/__tests__/articleCategories.test.js",
+        "functions/lib/consoBons/__tests__/bonsToConsoRows.test.js",
+        "functions/lib/consoBons/__tests__/fermeConso.test.js",
+        "tests/unit/fetchBonsSupprimes.test.js",
         "tests/unit/refParcelleFerme.test.js",
         "tests/unit/referentielSync.test.js"
       ]
@@ -1089,6 +1229,24 @@
       "directTests": [],
       "transitiveTests": []
     },
+    "functions/lib/receptionValorisation/prixLigne.js": {
+      "directTests": [
+        "functions/lib/receptionValorisation/__tests__/prixLigne.test.js",
+        "functions/lib/receptionValorisation/__tests__/receptionBdc.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/receptionValorisation/__tests__/prixLigne.test.js",
+        "functions/lib/receptionValorisation/__tests__/receptionBdc.test.js"
+      ]
+    },
+    "functions/lib/receptionValorisation/receptionBdc.js": {
+      "directTests": [
+        "functions/lib/receptionValorisation/__tests__/receptionBdc.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/receptionValorisation/__tests__/receptionBdc.test.js"
+      ]
+    },
     "functions/lib/sentinel/sentinelRecipients.js": {
       "directTests": [
         "tests/unit/sentinelRecipients.test.js"
@@ -1099,10 +1257,121 @@
     },
     "functions/lib/stock/articleHistoryIndex.js": {
       "directTests": [
-        "tests/unit/articleHistoryIndex.test.js"
+        "tests/unit/articleHistoryIndex.test.js",
+        "tests/unit/articleHistoryKeyReconciliation.test.js",
+        "tests/unit/articleKey.test.js",
+        "tests/unit/ficheStockArticleListDedup.test.js"
       ],
       "transitiveTests": [
-        "tests/unit/articleHistoryIndex.test.js"
+        "tests/unit/articleHistoryIndex.test.js",
+        "tests/unit/articleHistoryKeyReconciliation.test.js",
+        "tests/unit/articleKey.test.js",
+        "tests/unit/ficheStockArticleListDedup.test.js"
+      ]
+    },
+    "functions/lib/stock/articleKey.js": {
+      "directTests": [
+        "tests/unit/articleHistoryKeyReconciliation.test.js",
+        "tests/unit/articleKey.test.js",
+        "tests/unit/articleSelect.test.js",
+        "tests/unit/ficheStockArticleListDedup.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/receptionValorisation/__tests__/prixLigne.test.js",
+        "functions/lib/receptionValorisation/__tests__/receptionBdc.test.js",
+        "functions/lib/stock/__tests__/correctionUniteStock.test.js",
+        "functions/lib/stock/__tests__/demandeCreationArticle.test.js",
+        "functions/lib/stock/__tests__/demandesCreationIO.test.js",
+        "functions/lib/stock/__tests__/identiteArticle.test.js",
+        "functions/lib/stock/__tests__/recleSoldes.test.js",
+        "tests/unit/articleHistoryIndex.test.js",
+        "tests/unit/articleHistoryKeyReconciliation.test.js",
+        "tests/unit/articleKey.test.js",
+        "tests/unit/articleSelect.test.js",
+        "tests/unit/ficheStockArticleListDedup.test.js",
+        "tests/unit/pmpDetail.test.js"
+      ]
+    },
+    "functions/lib/stock/bcDate.js": {
+      "directTests": [
+        "tests/unit/bcDate.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/bcDate.test.js"
+      ]
+    },
+    "functions/lib/stock/bcDoublons.js": {
+      "directTests": [
+        "tests/unit/bcDoublons.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/bcDoublons.test.js"
+      ]
+    },
+    "functions/lib/stock/bcScan.js": {
+      "directTests": [
+        "tests/unit/bcScan.test.js",
+        "tests/unit/bcScanMatch.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/bcScan.test.js",
+        "tests/unit/bcScanMatch.test.js"
+      ]
+    },
+    "functions/lib/stock/bcScanJournal.js": {
+      "directTests": [
+        "tests/unit/bcScanJournal.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/bcScanJournal.test.js"
+      ]
+    },
+    "functions/lib/stock/bcSuppression.js": {
+      "directTests": [
+        "tests/unit/bcSuppression.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/bcSuppression.test.js"
+      ]
+    },
+    "functions/lib/stock/correctionUniteStock.js": {
+      "directTests": [
+        "functions/lib/stock/__tests__/correctionUniteStock.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/stock/__tests__/correctionUniteStock.test.js"
+      ]
+    },
+    "functions/lib/stock/demandeCreationArticle.js": {
+      "directTests": [
+        "functions/lib/stock/__tests__/demandeCreationArticle.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/stock/__tests__/demandeCreationArticle.test.js",
+        "functions/lib/stock/__tests__/demandesCreationIO.test.js"
+      ]
+    },
+    "functions/lib/stock/demandesCreationIO.js": {
+      "directTests": [
+        "functions/lib/stock/__tests__/demandesCreationIO.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/stock/__tests__/demandesCreationIO.test.js"
+      ]
+    },
+    "functions/lib/stock/identiteArticle.js": {
+      "directTests": [
+        "functions/lib/stock/__tests__/demandeCreationArticle.test.js",
+        "functions/lib/stock/__tests__/demandesCreationIO.test.js",
+        "functions/lib/stock/__tests__/identiteArticle.test.js",
+        "functions/lib/stock/__tests__/recleSoldes.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/stock/__tests__/correctionUniteStock.test.js",
+        "functions/lib/stock/__tests__/demandeCreationArticle.test.js",
+        "functions/lib/stock/__tests__/demandesCreationIO.test.js",
+        "functions/lib/stock/__tests__/identiteArticle.test.js",
+        "functions/lib/stock/__tests__/recleSoldes.test.js"
       ]
     },
     "functions/lib/stock/locationsConfig.js": {
@@ -1116,23 +1385,40 @@
     "functions/lib/stock/movementGuard.js": {
       "directTests": [],
       "transitiveTests": [
+        "functions/lib/receptionValorisation/__tests__/receptionBdc.test.js",
+        "tests/unit/bcSuppression.test.js",
         "tests/unit/movementImpact.test.js"
       ]
     },
     "functions/lib/stock/movementImpact.js": {
       "directTests": [
+        "functions/lib/receptionValorisation/__tests__/receptionBdc.test.js",
         "tests/unit/movementImpact.test.js"
       ],
       "transitiveTests": [
+        "functions/lib/receptionValorisation/__tests__/receptionBdc.test.js",
+        "tests/unit/bcSuppression.test.js",
         "tests/unit/movementImpact.test.js"
       ]
     },
     "functions/lib/stock/pmpDetail.js": {
       "directTests": [
+        "tests/unit/articleKey.test.js",
         "tests/unit/pmpDetail.test.js"
       ],
       "transitiveTests": [
+        "functions/lib/receptionValorisation/__tests__/prixLigne.test.js",
+        "functions/lib/receptionValorisation/__tests__/receptionBdc.test.js",
+        "tests/unit/articleKey.test.js",
         "tests/unit/pmpDetail.test.js"
+      ]
+    },
+    "functions/lib/stock/recleSoldes.js": {
+      "directTests": [
+        "functions/lib/stock/__tests__/recleSoldes.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/stock/__tests__/recleSoldes.test.js"
       ]
     },
     "functions/lib/stock/scanAttachment.js": {
@@ -1165,6 +1451,8 @@
         "tests/unit/valuationPMP.test.js"
       ],
       "transitiveTests": [
+        "functions/lib/receptionValorisation/__tests__/prixLigne.test.js",
+        "functions/lib/receptionValorisation/__tests__/receptionBdc.test.js",
         "tests/unit/valuationPMP.test.js"
       ]
     },
@@ -1236,12 +1524,144 @@
         "functions/lib/stockFiles/__tests__/reminders.test.js"
       ]
     },
+    "functions/lib/stockMerge/articleCategories.js": {
+      "directTests": [
+        "tests/unit/articleCatalogWiring.test.js",
+        "tests/unit/articleCategorieCanonique.test.js",
+        "tests/unit/articleMerge.test.js",
+        "tests/unit/classer-article-cablage.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/articleCatalogWiring.test.js",
+        "tests/unit/articleCategorieCanonique.test.js",
+        "tests/unit/articleMerge.test.js",
+        "tests/unit/classer-article-cablage.test.js"
+      ]
+    },
     "functions/lib/stockMerge/articleMerge.js": {
       "directTests": [
+        "functions/lib/stock/__tests__/identiteArticle.test.js",
+        "tests/unit/articleCatalogWiring.test.js",
+        "tests/unit/articleCategorieCanonique.test.js",
+        "tests/unit/articleMasterPick.test.js",
         "tests/unit/articleMerge.test.js"
       ],
       "transitiveTests": [
-        "tests/unit/articleMerge.test.js"
+        "functions/lib/consoBons/__tests__/aggregateParcelle.test.js",
+        "functions/lib/consoBons/__tests__/articleCategories.test.js",
+        "functions/lib/consoBons/__tests__/bonsToConsoRows.test.js",
+        "functions/lib/receptionValorisation/__tests__/prixLigne.test.js",
+        "functions/lib/receptionValorisation/__tests__/receptionBdc.test.js",
+        "functions/lib/stock/__tests__/identiteArticle.test.js",
+        "functions/lib/stock/__tests__/recleSoldes.test.js",
+        "functions/lib/stockMerge/__tests__/reunionSoldes.test.js",
+        "functions/lib/stockMerge/__tests__/soldesMaster.test.js",
+        "functions/lib/stockRoles/__tests__/articleClassement.test.js",
+        "functions/lib/stockRoles/__tests__/articleConversionPermissions.test.js",
+        "tests/unit/articleCatalogMergeButton.test.js",
+        "tests/unit/articleCatalogWiring.test.js",
+        "tests/unit/articleCategorieCanonique.test.js",
+        "tests/unit/articleMasterPick.test.js",
+        "tests/unit/articleMerge.test.js",
+        "tests/unit/bcScan.test.js",
+        "tests/unit/bcScanMatch.test.js",
+        "tests/unit/bcSuppression.test.js",
+        "tests/unit/classer-article-cablage.test.js",
+        "tests/unit/fetchBonsSupprimes.test.js"
+      ]
+    },
+    "functions/lib/stockMerge/masterSuggestion.js": {
+      "directTests": [
+        "tests/unit/articleMasterPick.test.js",
+        "tests/unit/articleMasterSuggestion.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/consoBons/__tests__/aggregateParcelle.test.js",
+        "functions/lib/consoBons/__tests__/articleCategories.test.js",
+        "functions/lib/consoBons/__tests__/bonsToConsoRows.test.js",
+        "functions/lib/receptionValorisation/__tests__/prixLigne.test.js",
+        "functions/lib/receptionValorisation/__tests__/receptionBdc.test.js",
+        "functions/lib/stock/__tests__/identiteArticle.test.js",
+        "functions/lib/stock/__tests__/recleSoldes.test.js",
+        "functions/lib/stockMerge/__tests__/reunionSoldes.test.js",
+        "functions/lib/stockMerge/__tests__/soldesMaster.test.js",
+        "functions/lib/stockRoles/__tests__/articleClassement.test.js",
+        "functions/lib/stockRoles/__tests__/articleConversionPermissions.test.js",
+        "tests/unit/articleCatalogMergeButton.test.js",
+        "tests/unit/articleCatalogWiring.test.js",
+        "tests/unit/articleCategorieCanonique.test.js",
+        "tests/unit/articleMasterPick.test.js",
+        "tests/unit/articleMasterSuggestion.test.js",
+        "tests/unit/articleMerge.test.js",
+        "tests/unit/bcScan.test.js",
+        "tests/unit/bcScanMatch.test.js",
+        "tests/unit/bcSuppression.test.js",
+        "tests/unit/classer-article-cablage.test.js",
+        "tests/unit/fetchBonsSupprimes.test.js"
+      ]
+    },
+    "functions/lib/stockMerge/reunionSoldes.js": {
+      "directTests": [
+        "functions/lib/stock/__tests__/recleSoldes.test.js",
+        "functions/lib/stockMerge/__tests__/reunionSoldes.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/stock/__tests__/recleSoldes.test.js",
+        "functions/lib/stockMerge/__tests__/reunionSoldes.test.js"
+      ]
+    },
+    "functions/lib/stockMerge/soldesMaster.js": {
+      "directTests": [
+        "functions/lib/stockMerge/__tests__/soldesMaster.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/stock/__tests__/recleSoldes.test.js",
+        "functions/lib/stockMerge/__tests__/reunionSoldes.test.js",
+        "functions/lib/stockMerge/__tests__/soldesMaster.test.js"
+      ]
+    },
+    "functions/lib/stockRoles/articleClassement.js": {
+      "directTests": [
+        "functions/lib/stockRoles/__tests__/articleClassement.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/stockRoles/__tests__/articleClassement.test.js",
+        "functions/lib/stockRoles/__tests__/articleConversionPermissions.test.js",
+        "tests/unit/articleCatalogMergeButton.test.js",
+        "tests/unit/articleCatalogWiring.test.js",
+        "tests/unit/bcSuppression.test.js",
+        "tests/unit/classer-article-cablage.test.js"
+      ]
+    },
+    "functions/lib/stockRoles/articlePermissions.js": {
+      "directTests": [
+        "functions/lib/stockRoles/__tests__/articleFusionPermissions.test.js",
+        "functions/lib/stockRoles/__tests__/articlePermissions.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/stockRoles/__tests__/articleConversionPermissions.test.js",
+        "functions/lib/stockRoles/__tests__/articleFusionPermissions.test.js",
+        "functions/lib/stockRoles/__tests__/articlePermissions.test.js",
+        "tests/unit/articleCatalogMergeButton.test.js",
+        "tests/unit/articleCatalogWiring.test.js",
+        "tests/unit/bcSuppression.test.js",
+        "tests/unit/classer-article-cablage.test.js"
+      ]
+    },
+    "functions/lib/stockRoles/index.js": {
+      "directTests": [
+        "functions/lib/stockRoles/__tests__/articleConversionPermissions.test.js",
+        "tests/unit/articleCatalogMergeButton.test.js",
+        "tests/unit/articleCatalogWiring.test.js",
+        "tests/unit/bcSuppression.test.js",
+        "tests/unit/classer-article-cablage.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/stockRoles/__tests__/articleConversionPermissions.test.js",
+        "tests/unit/articleCatalogMergeButton.test.js",
+        "tests/unit/articleCatalogWiring.test.js",
+        "tests/unit/bcSuppression.test.js",
+        "tests/unit/classer-article-cablage.test.js"
       ]
     },
     "functions/lib/suppliers/supplierValidation.js": {
@@ -1262,6 +1682,23 @@
         "tests/unit/bugTriage.test.js"
       ]
     },
+    "functions/lib/uniteConso/conversionUnite.js": {
+      "directTests": [],
+      "transitiveTests": [
+        "functions/lib/uniteConso/__tests__/conversionUnite.test.js",
+        "tests/unit/uniteConsoUtils.test.js"
+      ]
+    },
+    "functions/lib/uniteConso/index.js": {
+      "directTests": [
+        "functions/lib/uniteConso/__tests__/conversionUnite.test.js",
+        "tests/unit/uniteConsoUtils.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/uniteConso/__tests__/conversionUnite.test.js",
+        "tests/unit/uniteConsoUtils.test.js"
+      ]
+    },
     "functions/lib/validation/validationAccess.js": {
       "directTests": [
         "tests/unit/validationAccess.test.js"
@@ -1274,20 +1711,30 @@
       "directTests": [
         "tests/unit/consoAccessControl.test.js",
         "tests/unit/paieAccess.test.js",
+        "tests/unit/pointageGatingExempt.test.js",
         "tests/unit/registryAccess.test.js"
       ],
       "transitiveTests": [
         "tests/unit/consoAccessControl.test.js",
         "tests/unit/paieAccess.test.js",
+        "tests/unit/pointageGatingExempt.test.js",
         "tests/unit/registryAccess.test.js"
       ]
     },
     "functions/lib/valorisation/consoValorisation.js": {
       "directTests": [
+        "tests/unit/articleCategories.test.js",
+        "tests/unit/classer-article-cablage.test.js",
         "tests/unit/consoValorisation.test.js"
       ],
       "transitiveTests": [
-        "tests/unit/consoValorisation.test.js"
+        "functions/lib/consoBons/__tests__/aggregateParcelle.test.js",
+        "functions/lib/consoBons/__tests__/articleCategories.test.js",
+        "functions/lib/consoBons/__tests__/bonsToConsoRows.test.js",
+        "tests/unit/articleCategories.test.js",
+        "tests/unit/classer-article-cablage.test.js",
+        "tests/unit/consoValorisation.test.js",
+        "tests/unit/fetchBonsSupprimes.test.js"
       ]
     },
     "functions/lib/valorisation/fermeParcelle.js": {
@@ -1295,14 +1742,21 @@
         "tests/unit/fermeParcelle.test.js"
       ],
       "transitiveTests": [
-        "tests/unit/fermeParcelle.test.js"
+        "functions/lib/consoBons/__tests__/aggregateParcelle.test.js",
+        "functions/lib/consoBons/__tests__/articleCategories.test.js",
+        "functions/lib/consoBons/__tests__/bonsToConsoRows.test.js",
+        "functions/lib/consoBons/__tests__/fermeConso.test.js",
+        "tests/unit/fermeParcelle.test.js",
+        "tests/unit/fetchBonsSupprimes.test.js"
       ]
     },
     "functions/middleware/cache.js": {
       "directTests": [
+        "functions/middleware/__tests__/cacheInvalidatePrefix.test.js",
         "tests/unit/campagne-analytique-cache-key.test.js"
       ],
       "transitiveTests": [
+        "functions/middleware/__tests__/cacheInvalidatePrefix.test.js",
         "tests/unit/campagne-analytique-cache-key.test.js"
       ]
     },
@@ -1326,6 +1780,22 @@
       "directTests": [],
       "transitiveTests": []
     },
+    "public/components/ArticleConversionFields.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/ArticleConversionFields.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/BCDoublonDialog.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/BCDoublonDialog.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
     "public/components/BugReportButton.js": {
       "directTests": [],
       "transitiveTests": []
@@ -1339,6 +1809,38 @@
       "transitiveTests": []
     },
     "public/components/BugReportsAdmin.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/CaisseDetailPopup.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/CaisseDetailPopup.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/CaisseParametresSub.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/CaisseParametresSub.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/CaisseRevueValidation.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/CaisseRevueValidation.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/CaisseSaisieSub.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/CaisseSaisieSub.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
@@ -1379,6 +1881,14 @@
       "transitiveTests": []
     },
     "public/components/InventaireMouvementsPopup.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/MagBCScanModal.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/MagBCScanModal.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
@@ -1530,6 +2040,26 @@
         "tests/unit/campagneExportUtils.test.js"
       ]
     },
+    "public/lib/articleCategories.js": {
+      "directTests": [
+        "tests/unit/articleCategorieCanonique.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/articleCategorieCanonique.test.js"
+      ]
+    },
+    "public/lib/articleSelect.js": {
+      "directTests": [
+        "tests/unit/articleSelect.test.js",
+        "tests/unit/magBCArticleFerme.test.js",
+        "tests/unit/magBCUniteConversion.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/articleSelect.test.js",
+        "tests/unit/magBCArticleFerme.test.js",
+        "tests/unit/magBCUniteConversion.test.js"
+      ]
+    },
     "public/lib/authResilience.js": {
       "directTests": [
         "tests/unit/authResilience.test.js"
@@ -1538,12 +2068,24 @@
         "tests/unit/authResilience.test.js"
       ]
     },
-    "public/lib/bdcReceptionUtils.js": {
+    "public/lib/bcScanMatch.js": {
       "directTests": [
-        "tests/unit/bdcReceptionUtils.test.js"
+        "tests/unit/bcScanMatch.test.js",
+        "tests/unit/magBCScanModal.test.js"
       ],
       "transitiveTests": [
-        "tests/unit/bdcReceptionUtils.test.js"
+        "tests/unit/bcScanMatch.test.js",
+        "tests/unit/magBCScanModal.test.js"
+      ]
+    },
+    "public/lib/bdcReceptionUtils.js": {
+      "directTests": [
+        "tests/unit/bdcReceptionUtils.test.js",
+        "tests/unit/receptionCreatedMessage.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/bdcReceptionUtils.test.js",
+        "tests/unit/receptionCreatedMessage.test.js"
       ]
     },
     "public/lib/bdcWorkflow.js": {
@@ -1606,14 +2148,26 @@
     },
     "public/lib/campagneUtils.js": {
       "directTests": [
+        "tests/unit/bcDoublonFrontWiring.test.js",
         "tests/unit/campagnePeriodes.test.js",
         "tests/unit/campagneUtils.test.js",
-        "tests/unit/campagneUtilsBackend.test.js"
+        "tests/unit/campagneUtilsBackend.test.js",
+        "tests/unit/magBCArticleFerme.test.js",
+        "tests/unit/magBCSuppressionDoubleConfirm.test.js",
+        "tests/unit/magBCTabDateSaisie.test.js",
+        "tests/unit/magBCTabEditDate.test.js",
+        "tests/unit/magBCUniteConversion.test.js"
       ],
       "transitiveTests": [
+        "tests/unit/bcDoublonFrontWiring.test.js",
         "tests/unit/campagnePeriodes.test.js",
         "tests/unit/campagneUtils.test.js",
-        "tests/unit/campagneUtilsBackend.test.js"
+        "tests/unit/campagneUtilsBackend.test.js",
+        "tests/unit/magBCArticleFerme.test.js",
+        "tests/unit/magBCSuppressionDoubleConfirm.test.js",
+        "tests/unit/magBCTabDateSaisie.test.js",
+        "tests/unit/magBCTabEditDate.test.js",
+        "tests/unit/magBCUniteConversion.test.js"
       ]
     },
     "public/lib/coutMainOeuvre.js": {
@@ -1622,16 +2176,20 @@
     },
     "public/lib/cultureUtils.js": {
       "directTests": [
+        "tests/unit/bcScanMatch.test.js",
         "tests/unit/campagneBudgetQuinzaine.test.js",
         "tests/unit/campagneBudgetTab.test.js",
         "tests/unit/campagneExportBackend.test.js",
-        "tests/unit/cultureUtils.test.js"
+        "tests/unit/cultureUtils.test.js",
+        "tests/unit/magBCScanModal.test.js"
       ],
       "transitiveTests": [
+        "tests/unit/bcScanMatch.test.js",
         "tests/unit/campagneBudgetQuinzaine.test.js",
         "tests/unit/campagneBudgetTab.test.js",
         "tests/unit/campagneExportBackend.test.js",
-        "tests/unit/cultureUtils.test.js"
+        "tests/unit/cultureUtils.test.js",
+        "tests/unit/magBCScanModal.test.js"
       ]
     },
     "public/lib/emargementExcel.js": {
@@ -1658,12 +2216,32 @@
         "tests/unit/factureExportUtils.test.js"
       ]
     },
+    "public/lib/fusionMasse.js": {
+      "directTests": [
+        "tests/unit/articleMergeLot.test.js",
+        "tests/unit/articleMergePopupChoix.test.js",
+        "tests/unit/fusionMasse.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/articleMergeLot.test.js",
+        "tests/unit/articleMergePopupChoix.test.js",
+        "tests/unit/fusionMasse.test.js"
+      ]
+    },
     "public/lib/growthUtils.js": {
       "directTests": [
         "tests/unit/growthUtils.test.js"
       ],
       "transitiveTests": [
         "tests/unit/growthUtils.test.js"
+      ]
+    },
+    "public/lib/imageDownscale.js": {
+      "directTests": [
+        "tests/unit/imageDownscale.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/imageDownscale.test.js"
       ]
     },
     "public/lib/inflightDedup.js": {
@@ -1798,6 +2376,18 @@
       ],
       "transitiveTests": [
         "tests/unit/stockMovementGuard.test.js"
+      ]
+    },
+    "public/lib/uniteConsoUtils.js": {
+      "directTests": [
+        "tests/unit/magBCArticleFerme.test.js",
+        "tests/unit/magBCUniteConversion.test.js",
+        "tests/unit/uniteConsoUtils.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/magBCArticleFerme.test.js",
+        "tests/unit/magBCUniteConversion.test.js",
+        "tests/unit/uniteConsoUtils.test.js"
       ]
     },
     "public/lib/useStockLocations.js": {

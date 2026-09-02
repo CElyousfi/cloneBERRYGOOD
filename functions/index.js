@@ -5,7 +5,7 @@ const nodemailer = require("nodemailer");
 const { admin, db: db_firestore, bucket } = require("./config/firebase");
 const sqlConfig = require("./config/sqlConfig");
 const { setCors } = require("./middleware/cors");
-const { withCache } = require("./middleware/cache");
+const { withCache, invalidateCachePrefix: invalidateApiCachePrefix } = require("./middleware/cache");
 const { verifyAuth, requireAuth } = require("./middleware/requireAuth");
 const { dispatchNotification } = require("./notificationDispatcher");
 const { validateBdcCore } = require("./bdcValidationService");
@@ -14,15 +14,29 @@ const { updateBdcVirementCore, recordVirementAvis } = require("./bdcVirementServ
 const bdcWorkflow = require("./lib/bdc/workflow");
 const bdcReceptionGuard = require("./lib/bdc/receptionGuard");
 const caisseImport = require("./lib/caisseImport");
+const { computeSoldeDelta, isTypeEditable } = require("./lib/caisse/soldeDelta");
+const { periodesAVerifier } = require("./lib/caisse/rapprochementLock");
+const { computeChanges } = require("./lib/caisse/txDiff");
+const caisseAxes = require("./lib/caisse/champsAnalytiques");
+const { planBatchValidation, applyDelta } = require("./lib/caisse/batchValidation");
+const caisseParametres = require("./lib/caisse/parametres");
+const caisseSoldeProvisoire = require("./lib/caisse/soldeProvisoire");
+const caisseEntites = require("./lib/caisse/entites");
 const { validateSupplier } = require("./lib/suppliers/supplierValidation");
 const stockCaneva = require("./lib/stockCaneva");
 const articleMerge = require("./lib/stockMerge/articleMerge");
+// LIBELLÉ CANONIQUE d'une catégorie d'article — SEULE règle de normalisation de
+// catégorie du dépôt (copie backend verrouillée de public/lib/articleCategories.js).
+const articleCategories = require("./lib/stockMerge/articleCategories");
+// Droits d'écriture sur le catalogue d'articles (règle PURE, cf. lib/stockRoles).
+const stockRoles = require("./lib/stockRoles");
 const { resolveCallerRole, resolveCallerProfile } = require("./lib/auth/resolveRole");
 const paieAccess = require("./lib/auth/paieAccess");
 const { validateBugReport } = require("./lib/bugReports/validateBugReport");
 const { isAdminProfile, validateStatusUpdate, sortReportsByCreatedDesc, isValidStatus, isFilterableStatus } = require("./lib/bugReports/bugStatus");
 const bugTriage = require("./lib/triage/bugTriage");
 const stockMovementGuard = require("./lib/stock/movementGuard");
+const receptionBdc = require("./lib/receptionValorisation/receptionBdc");
 const { planEncaissementWrites } = require("./lib/marcheLocalCaisse/applyEncaissements");
 const pointageValidationSM = require("./lib/pointageValidation/stateMachine");
 const { authorizeValidationAction } = require("./lib/validation/validationAccess");
@@ -33,9 +47,24 @@ const pmpDetailLib = require("./lib/stock/pmpDetail");
 const consoValorisationLib = require("./lib/valorisation/consoValorisation");
 const consoAccessControl = require("./lib/valorisation/accessControl");
 const { deriveFermeFromParcelle } = require("./lib/valorisation/fermeParcelle");
+// Consommation depuis les BONS Smart Berry (`consumption_vouchers`) — la source
+// BEE ONE `sql_mirror_consommation` est tarie depuis avril 2026.
+const consoBons = require("./lib/consoBons");
 const parcelleGroupSplit = require("./lib/parcelleGroupes/split");
+// Conversion « unité de consommation → unité de stock » (Acide Nitrique acheté
+// au KG, dosé au L). Module PUR, fail-closed : jamais de facteur deviné.
+const uniteConso = require("./lib/uniteConso");
 const locationsConfig = require("./lib/stock/locationsConfig");
 const scanAttachment = require("./lib/stock/scanAttachment");
+const bcScan = require("./lib/stock/bcScan");
+// Journal de précision du scan (observation pure — ne change rien au scanner).
+const bcScanJournal = require("./lib/stock/bcScanJournal");
+const bcDate = require("./lib/stock/bcDate");
+const bcDoublons = require("./lib/stock/bcDoublons");
+const bcSuppression = require("./lib/stock/bcSuppression");
+const identiteArticle = require("./lib/stock/identiteArticle");
+const demandeCreationArticle = require("./lib/stock/demandeCreationArticle");
+const demandesCreationIO = require("./lib/stock/demandesCreationIO");
 const stockFilesRecord = require("./lib/stockFiles/recordSubmission");
 const { createStockFileReminders } = require("./lib/stockFiles/reminders");
 const { STOCK_FILE_ALLOWED_MIME, STOCK_FILE_ALLOWED_FORMATS_LABEL } = require("./lib/stockFiles/allowedMime");
@@ -70,6 +99,130 @@ async function getArticleHistoryIndex(db_firestore) {
   const index = buildArticleHistoryIndex(snap.docs, stockMovementGuard);
   _articleHistoryCache = { index, expiresAt: now + ARTICLE_HISTORY_CACHE_TTL_MS };
   return index;
+}
+
+// --- Index d'IDENTITÉ d'article (résolution libellé -> docId de fiche) ----
+// Même mécanisme de cache mémoire que l'index grand-livre ci-dessus, et même
+// TTL : `create-bl` et `create-movement` doivent résoudre l'identité de chaque
+// ligne AVANT d'écrire un solde, ce qui coûterait sinon une lecture complète
+// d'`articles_catalog` par bon saisi.
+//
+// ⚠️ Le catalogue est lu ENTIER (pas `where active == true`) : suivre une
+// chaîne `merged_into` exige de voir les fiches DÉSACTIVÉES par une fusion.
+// C'est précisément ce chaînage qui fait qu'un article fusionné écrit dans le
+// solde de son MAÎTRE au lieu d'en créer un second à côté.
+//
+// ⚠️ INVALIDATION EXPLICITE (`invalidateIdentiteArticleIndex`), contrairement à
+// l'index grand-livre : depuis le refus fail-closed, un index périmé de 5 min
+// signifie qu'un magasinier qui vient de créer un article au catalogue se voit
+// REFUSER son bon pendant 5 minutes. Le cache est donc purgé à chaque création
+// de fiche, et les appelants réessaient une fois sur un refus.
+const IDENTITE_ARTICLE_CACHE_TTL_MS = 5 * 60 * 1000;
+let _identiteArticleCache = null; // { index, expiresAt }
+
+function invalidateIdentiteArticleIndex() {
+  _identiteArticleCache = null;
+}
+
+async function getIdentiteArticleIndex(db_firestore, opts) {
+  const now = Date.now();
+  if (!(opts && opts.force) && _identiteArticleCache && _identiteArticleCache.expiresAt > now) {
+    return _identiteArticleCache.index;
+  }
+  const snap = await db_firestore.collection("articles_catalog").get();
+  const index = identiteArticle.indexerFiches(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+  _identiteArticleCache = { index, expiresAt: now + IDENTITE_ARTICLE_CACHE_TTL_MS };
+  return index;
+}
+
+/**
+ * Résout les lignes d'un mouvement, FAIL-CLOSED, en rattrapant l'index périmé.
+ * Un premier refus déclenche UNE relecture forcée du catalogue : sans elle, un
+ * article créé il y a moins de 5 minutes ferait échouer le bon alors qu'il
+ * existe. Un vrai article inconnu coûte une lecture de plus, ce qui est le bon
+ * arbitrage : ce chemin est rare et il bloque un utilisateur.
+ */
+async function resoudreLignesStock(db_firestore, lignes) {
+  let index = await getIdentiteArticleIndex(db_firestore);
+  let resolution = identiteArticle.resoudreLignes(lignes, index);
+  if (!resolution.ok) {
+    index = await getIdentiteArticleIndex(db_firestore, { force: true });
+    resolution = identiteArticle.resoudreLignes(lignes, index);
+  }
+  return resolution;
+}
+
+/**
+ * Traite TOUTES les résolutions fautives : demande de création pour ce qui est
+ * introuvable, ALERTE pour ce qui ne se crée pas.
+ *
+ * ⚠️ LA LOGIQUE N'EST PLUS ICI. Elle vit dans `lib/stock/demandesCreationIO`,
+ * avec ses dépendances INJECTÉES, parce qu'une fonction enfermée dans ce
+ * monolithe n'est gardée que par des assertions de SOURCE — et deux mutants
+ * ont prouvé que cela ne suffit pas :
+ *   R2 — un `throw` avant les notifications ;
+ *   R3 — `if (ecarts.length)` devenu `if (ecarts.length && enregistres.length)`,
+ *        qui rendait 0 dispatch sur un article ambigu pendant que le bon
+ *        affirmait « Le DG a été alerté », avec 35 tests de câblage VERTS.
+ * Ne pas réintroduire de logique ici : elle redeviendrait invérifiable.
+ *
+ * @param {*} db_firestore
+ * @param {Array<Object>} resolutions résolutions fautives
+ * @param {*} demandePar {uid, profileId, name}
+ * @param {*} contexte {origine, type, numero}
+ * @returns {Promise<string[]>} libellés RÉELLEMENT enregistrés
+ */
+async function enregistrerDemandesCreation(db_firestore, resolutions, demandePar, contexte) {
+  return demandesCreationIO.enregistrerDemandesCreation(
+    {
+      db: db_firestore,
+      dispatchNotification,
+      increment: (n) => admin.firestore.FieldValue.increment(n),
+      serverTimestamp: () => admin.firestore.FieldValue.serverTimestamp(),
+      logError: (message, e) => console.error(message, e && e.message ? e.message : e),
+    },
+    resolutions,
+    demandePar,
+    contexte
+  );
+}
+
+/**
+ * Clôt les demandes que le catalogue satisfait désormais.
+ *
+ * C'est ce qui remplace un bouton « valider » : le DG crée l'article sur
+ * l'écran Catalogue qu'il a déjà, et la demande se ferme d'elle-même. La règle
+ * de correspondance est `canon`, la MÊME que l'identité — pas une comparaison
+ * de noms réécrite pour l'occasion.
+ *
+ * @param {*} db_firestore
+ * @returns {Promise<number>} nombre de demandes closes
+ */
+async function cloturerDemandesCreationSatisfaites(db_firestore) {
+  const snap = await db_firestore.collection(demandeCreationArticle.COLLECTION)
+    .where("statut", "==", demandeCreationArticle.STATUT_EN_ATTENTE).get();
+  if (snap.empty) return 0;
+  const index = await getIdentiteArticleIndex(db_firestore, { force: true });
+  const aClore = demandeCreationArticle.demandesAClore(
+    snap.docs.map((d) => ({ id: d.id, ...d.data() })),
+    index
+  );
+  if (!aClore.length) return 0;
+  const now = Date.now();
+  // Chunks de 400 (limite Firestore 500/batch, marge de 100).
+  for (let i = 0; i < aClore.length; i += 400) {
+    const batch = db_firestore.batch();
+    for (const c of aClore.slice(i, i + 400)) {
+      batch.update(db_firestore.collection(demandeCreationArticle.COLLECTION).doc(c.id), {
+        statut: demandeCreationArticle.STATUT_CREE,
+        cree_at: now,
+        cree_article_id: c.article_id,
+        updated_at: now,
+      });
+    }
+    await batch.commit();
+  }
+  return aClore.length;
 }
 
 // --- Index facture par article stock (pour get-pmp-detail) ---------------
@@ -7512,16 +7665,75 @@ exports.stockManagement = functions
           return res.status(reliquatRejection.status).json({ success: false, error: reliquatRejection.error });
         }
 
-        const numero = await getNextNumber("delivery_note", "BL");
-        const blItems = items.map((it) => ({
+        const blItemsSaisis = items.map((it) => ({
           article: it.article || "",
           quantite_commandee: parseFloat(it.quantite_commandee) || 0,
           quantite_recue: parseFloat(it.quantite_recue) || 0,
-          unite: it.unite || "kg",
+          // Pas de « kg » fabriqué : 85,7 % des lignes de BDC n'ont pas d'unité,
+          // et l'inventer ici la transformait en critère de refus plus bas.
+          unite: it.unite || "",
           ecart: (parseFloat(it.quantite_recue) || 0) - (parseFloat(it.quantite_commandee) || 0),
           note: it.note || "",
         }));
 
+        // --- IDENTITÉ D'ARTICLE (lib/stock/identiteArticle) ----------------
+        //
+        // ⚠️ LA RÉCEPTION NE BLOQUE JAMAIS — DÉCISION D'OMAR.
+        // Une ligne de BL vient d'un BDC déjà validé par le DG : le magasinier
+        // n'a pas choisi ce libellé. Le refuser reviendrait à le punir pour une
+        // décision d'achat qui n'est pas la sienne, et à retenir une
+        // marchandise physiquement livrée. Mesuré : 16 lignes de BDC en attente
+        // sont dans ce cas (rouleau adhésif, film, souffleur, substrat) — du
+        // matériel qui n'a pas vocation à être tenu en stock.
+        //
+        // Donc : la réception est ENREGISTRÉE, la ligne non résolue n'entre PAS
+        // en stock (écrire un mouvement sous un libellé non résolu recréerait
+        // le solde orphelin que tout ce chantier supprime), elle est MARQUÉE
+        // sur le BL, et une demande de création part au DG.
+        //
+        // Seules les lignes RÉELLEMENT reçues sont examinées — filtre exact de
+        // `receptionBdc.lignesDepuisBl` : une ligne commandée mais non livrée
+        // n'entre pas en stock, elle n'a donc pas besoin d'identité.
+        const blIndexIdentite = await getIdentiteArticleIndex(db_firestore);
+        const blLignesRecues = blItemsSaisis.filter((it) => it.quantite_recue > 0);
+        const blPartition = demandeCreationArticle.partitionnerLignesReception(
+          blLignesRecues,
+          blIndexIdentite
+        );
+        const blDemandes = blPartition.ecartees.length
+          ? await enregistrerDemandesCreation(
+            db_firestore,
+            blPartition.resolutions,
+            { uid: authUser.uid, profileId: (created_by || {}).profileId || "", name: (created_by || {}).name || "" },
+            { origine: "create-bl", type: "reception", numero: bdc.numero || "" }
+          )
+          : [];
+        // Le BL garde TOUTES ses lignes — c'est le document du fournisseur.
+        // Les écartées portent seulement la raison de leur absence du stock :
+        // sans cette marque, l'écart entre le BL et le mouvement de réception
+        // serait invisible et passerait pour une perte.
+        const blItems = demandeCreationArticle.marquerLignesEcartees(
+          blItemsSaisis,
+          blPartition.ecartees,
+          // Le motif est DÉRIVÉ de l'issue de chaque ligne : « absent du
+          // catalogue » et « en double au catalogue » appellent des gestes
+          // opposés (créer / fusionner). Un motif constant en envoyait un seul,
+          // et se trompait dans l'autre cas.
+          blPartition.resolutions
+        );
+        // Table libellé -> docId de fiche, pour les seules lignes retenues.
+        const blIdentites = new Map(
+          blPartition.retenues.map((it) => [
+            it.article || "",
+            identiteArticle.identiteImpact(it, blIndexIdentite),
+          ])
+        );
+
+        // Numéro alloué SEULEMENT maintenant : tous les refus de cette action
+        // (BDC absent, statut, reliquat) sont derrière nous. Il était pris plus
+        // haut, si bien qu'une réception rejetée consommait un numéro de
+        // séquence pour rien.
+        const numero = await getNextNumber("delivery_note", "BL");
         const blData = {
           numero, bdc_id, bdc_numero: bdc.numero,
           fournisseur_nom: bdc.fournisseur?.nom || "",
@@ -7539,36 +7751,74 @@ exports.stockManagement = functions
           await db_firestore.collection("bl_scans").doc(scan_id).update({ bl_id: docRef.id, bl_numero: numero }).catch(() => {});
         }
 
-        // Create stock_movement of type reception (brouillon, needs achats+chef validation)
-        const brNumero = await getNextNumber("stock_reception", "BR");
-        const brItems = blItems.map((it) => {
-          const bdcItem = (bdc.items || []).find(bi => (bi.article || "").toLowerCase() === (it.article || "").toLowerCase());
-          return {
-            article_ref: it.article || "", article_nom: it.article || "",
-            quantite: it.quantite_recue || 0, unite: it.unite || "kg",
-            prix_unitaire: bdcItem ? (parseFloat(bdcItem.prix_unitaire) || 0) : 0,
-          };
-        }).filter((it) => it.quantite > 0);
-        if (brItems.length > 0) {
-          const magasin = req.body.magasin || bdc.ferme || "";
-          // Identité créateur du mouvement de réception : userId = uid du TOKEN
-          // (anti-spoof), profileId/name conservés. Cf. stockMovementGuard.
-          const brCreatedBy = { ...(created_by || {}), userId: authUser.uid };
-          await db_firestore.collection("stock_movements").add({
-            numero: brNumero, type: "reception",
-            date: date_reception || new Date().toISOString().split("T")[0],
-            lieu_source: null,
-            lieu_destination: { type: "magasin", id: magasin },
-            ferme: magasin, items: brItems,
-            ref_bl_fournisseur: numero_bl_fournisseur || "",
-            bdc_id: bdc_id, bl_id: docRef.id,
-            reception_libre: false, reception_libre_motif: "",
-            ref_bon_physique: "", sortie_type: null, scan_url: scan_url || null,
-            status: "en_attente_achats",
-            validations: { magasinier: { by: brCreatedBy.userId || "", name: brCreatedBy.name || "", at: Date.now() } },
-            rejection: null,
-            created_by: brCreatedBy, created_at: Date.now(), updated_at: Date.now(),
+        // Create stock_movement of type reception — valorisé et EN STOCK immédiatement.
+        //
+        // L'étape de validation Achats est supprimée : le BDC lié est déjà validé
+        // par le DG, et personne ne validait plus depuis le 5 juin (62 réceptions
+        // bloquées au 27/08/2026 — un compte qui AUGMENTE tant que ceci n'est pas
+        // déployé, leur marchandise jamais entrée en stock). Cf.
+        // docs/spec-reception-sans-validation-achats.md.
+        //
+        // Le prix n'est plus recopié du BDC ici : il est choisi par le module PUR
+        // receptionValorisation/prixLigne, qui descend la hiérarchie facture > bon_commande
+        // > bon_entree, refuse une unité divergente, et ne pose JAMAIS un prix à
+        // zéro par défaut — une ligne sans prix entre en stock NON valorisée, avec
+        // son motif tracé. Un stock valorisé à zéro ressemble à un vrai chiffre ;
+        // une absence assumée se voit et se corrige.
+        // Destination vérifiable AVANT d'écrire quoi que ce soit : la règle vit
+        // dans le module (resoudreMagasinDestination), on ne fait que refuser tôt
+        // avec un message utile plutôt que de laisser le module lever une 500.
+        if (!receptionBdc.resoudreMagasinDestination(req.body.magasin, bdc)) {
+          return res.status(400).json({
+            success: false,
+            error: "Magasin de destination introuvable : choisissez un magasin, ou renseignez la ferme du bon de commande.",
+            code: "destination_requise",
           });
+        }
+
+        // Numéro BR alloué SEULEMENT s'il y a une réception à créer : sans
+        // ligne retenue (BDC 100 % hors catalogue), il n'y a pas de mouvement,
+        // et prendre un numéro laisserait un trou dans la séquence.
+        const brNumero = blPartition.retenues.length
+          ? await getNextNumber("stock_reception", "BR")
+          : "";
+        // Identité créateur du mouvement de réception : userId = uid du TOKEN
+        // (anti-spoof), profileId/name conservés. Cf. stockMovementGuard.
+        const brCreatedBy = { ...(created_by || {}), userId: authUser.uid };
+        // TOUTES les décisions (lignes retenues, prix, statut) sont prises dans le
+        // module pur, donc testées. Ici il ne reste que deux gestes : écrire, et
+        // appliquer l'impact stock. La source `facture` n'est pas encore branchée
+        // sur Firestore (lot suivant) ; le module l'accepte déjà.
+        const brMovement = brNumero ? receptionBdc.construireMouvementReception({
+          numero: brNumero,
+          // ⚠️ Les lignes RETENUES, jamais `blItems` : une ligne écartée ne
+          // doit produire AUCUN mouvement de stock. La lui passer ici la
+          // ferait entrer en stock sous son libellé — exactement le solde
+          // orphelin que ce lot supprime.
+          blItems: blPartition.retenues,
+          bdc,
+          magasinDemande: req.body.magasin,
+          bdcId: bdc_id,
+          blId: docRef.id,
+          date: date_reception,
+          refBlFournisseur: numero_bl_fournisseur,
+          scanUrl: scan_url,
+          createdBy: brCreatedBy,
+        }) : null;
+        // null = aucune ligne retenue → aucune réception à créer. Le BL, lui,
+        // existe : la livraison est enregistrée même si rien n'entre en stock.
+        if (brMovement) {
+          // `receptionBdc.lignesDepuisBl` recopie le libellé du BL dans
+          // `article_ref` — le module est PUR, il n'a pas le catalogue. On
+          // substitue ici le docId de la fiche, en gardant le libellé dans
+          // `article_nom` (ce que la valorisation lit en priorité).
+          brMovement.items = brMovement.items.map((it) => ({
+            ...it,
+            article_ref: blIdentites.get(it.article_nom || it.article_ref || "") || it.article_ref,
+          }));
+          await db_firestore.collection("stock_movements").add(brMovement);
+          // Entrée en stock immédiate : c'est ce que l'étape Achats retenait.
+          await applyStockImpact(brMovement);
         }
 
         // Update BDC delivery_status — réutilise received/ordered calculés avant la création du
@@ -7577,7 +7827,21 @@ exports.stockManagement = functions
         const deliveryStatus = bdcReceptionGuard.deriveDeliveryStatus(ordered, received);
         await db_firestore.collection("purchase_orders").doc(bdc_id).update({ delivery_status: deliveryStatus, updated_at: Date.now() });
 
-        return res.json({ success: true, id: docRef.id, numero, delivery_status: deliveryStatus });
+        // `numero` est celui du BL. Le numéro du bon de RÉCEPTION (BR) est distinct :
+        // l'exposer séparément évite d'annoncer « Réception BL-0042 créée ».
+        return res.json({
+          success: true, id: docRef.id, numero, delivery_status: deliveryStatus,
+          reception_numero: brMovement ? brMovement.numero : null,
+          valorisation: brMovement ? brMovement.valorisation : null,
+          // Ce qui N'EST PAS entré en stock, et pourquoi. La réception réussit
+          // (statut 200) même si zéro ligne est entrée : sans ces champs, la
+          // réponse serait un succès muet, et l'appelant ne pourrait pas
+          // distinguer « tout est en stock » de « rien ne l'est ».
+          // ⚠️ Aucun écran ne les affiche encore — `public/app.jsx` est gelé.
+          // C'est la limite N4 remontée par la QA, à lever au dégel.
+          lignes_hors_stock: blPartition.ecartees.length,
+          demandes_creation: blDemandes,
+        });
       }
 
       // ========== STOCK LEVELS ==========
@@ -7763,14 +8027,25 @@ exports.stockManagement = functions
         if (type) query = query.where("type", "==", type);
         if (ferme) query = query.where("ferme", "==", ferme);
         const snap = await query.get();
-        const bcs = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        // Les bons soft-deleted (`delete-bc`) sortent de la liste : sans ce
+        // filtre, un doublon supprimé resterait affiché, mouvements annulés.
+        const bcs = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+          .filter((bc) => bc.deleted !== true);
         return res.json({ success: true, bcs });
       }
 
       if (action === "create-bc" && req.method === "POST") {
-        const { type, date, authorized_by, items, scan_url, created_by } = req.body;
-        if (!type || !items?.length) {
-          return res.status(400).json({ success: false, error: "Champs requis: type, items[]" });
+        const { date, authorized_by, items, scan_url, created_by } = req.body;
+        // `type` est une DÉCLARATION D'INTENTION du magasinier : il ne pilote
+        // PLUS la classification analytique, qui vient désormais de la fiche
+        // catalogue de chaque ARTICLE (functions/lib/consoBons). L'onglet
+        // « Tous » n'a pas de type ; plutôt qu'un repli MUET côté client
+        // (`type || 'engrais'`, qui a produit 48 bons /48 en engrais et un
+        // onglet Pesticides structurellement vide), le défaut est posé ICI,
+        // explicitement et en un seul endroit.
+        const type = String(req.body.type || "").trim() || "engrais";
+        if (!items?.length) {
+          return res.status(400).json({ success: false, error: "Champs requis: items[]" });
         }
         if (!["engrais", "pesticide"].includes(type)) {
           return res.status(400).json({ success: false, error: "Type invalide (engrais|pesticide)" });
@@ -7820,8 +8095,7 @@ exports.stockManagement = functions
           }
         }
 
-        const numero = await getNextNumber("consumption_voucher", "BC");
-        const bcItems = bcSourceItems.map((it) => ({
+        const bcItemsSaisis = bcSourceItems.map((it) => ({
           article: it.article || "", quantite: parseFloat(it.quantite) || 0, unite: it.unite || "kg",
           parcelle: it.parcelle || "", culture: it.culture || "", ferme: it.ferme || "",
           // parcelle_ref : clé stable BEE ONE envoyée par le front, jusqu'ici
@@ -7830,18 +8104,178 @@ exports.stockManagement = functions
           parcelle_ref: it.parcelle_ref || "",
           groupe_id: it.groupe_id || "", groupe_label: it.groupe_label || "",
         }));
+
+        // --- CONVERSION D'UNITÉ (lib/uniteConso) ---------------------------
+        // Mesuré en production : 87 lignes sur 648 sont saisies dans une unité
+        // qui n'est PAS celle où le stock est tenu (Acide Nitrique acheté au KG,
+        // dosé au L). Jusqu'ici le système retirait « 5 L » d'un solde en kilos.
+        // La quantité DÉDUITE est donc désormais convertie vers l'unité de
+        // stock quand la fiche article porte `unite_consommation` +
+        // `stock_par_unite_consommation` (« 1 L = 1,32 KG »).
+        //
+        // ⚠️ PORTÉE STRICTEMENT LIMITÉE AU SOLDE DE STOCK. La VALORISATION
+        // (lib/consoBons/bonsToConsoRows.js → lib/valorisation/consoValorisation.js)
+        // lit toujours la quantité SAISIE et la multiplie par un PMP exprimé
+        // dans l'unité de stock : pour 5 L d'acide nitrique, le solde est juste
+        // mais le coût reste sous-estimé de 32 %. Chantier séparé, au backlog
+        // (validé par Omar) — ne pas lire ce bloc comme si le coût suivait.
+        //
+        // FAIL-CLOSED, et sans blocage (décision d'Omar) : sans conversion
+        // exploitable, la ligne est déduite TELLE QUELLE — comportement
+        // strictement identique à avant — mais marquée `conversion_manquante`
+        // et remontée dans `lignes_non_convertibles`, pour être signalée au
+        // magasinier et rester repérable après coup. Aucun facteur n'est
+        // deviné : une densité est propre au produit.
+        //
+        // ⚠️ Le catalogue est désormais lu ENTIER (le `where active == true` a
+        // sauté) pour un SEUL usage supplémentaire : l'index d'IDENTITÉ, qui
+        // doit voir les fiches désactivées par une fusion pour suivre leur
+        // chaîne `merged_into`. Toujours UNE lecture — c'est le branchement le
+        // moins coûteux du dépôt, le catalogue était déjà sur ce chemin
+        // critique. La conversion d'unité, elle, continue de ne voir QUE les
+        // fiches actives : son comportement est strictement inchangé.
+        const bcCatalogSnap = await db_firestore.collection("articles_catalog").get();
+        const bcCatalogDocs = bcCatalogSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        // `active === true` STRICTEMENT, pas `!== false` : la requête d'avant
+        // (`where("active","==",true)`) excluait les documents SANS champ
+        // `active` — les 5 fantômes de production. Le filtre mémoire doit
+        // rendre exactement le même ensemble, sinon ce lot changerait la
+        // conversion d'unité par effet de bord.
+        const bcIndexUnites = uniteConso.indexerArticles(bcCatalogDocs.filter((a) => a.active === true));
+        const bcIndexIdentite = identiteArticle.indexerFiches(bcCatalogDocs);
+        const bcConversion = uniteConso.analyserLignes(bcItemsSaisis, bcIndexUnites);
+        const bcItems = bcItemsSaisis.map((it, i) => {
+          const v = bcConversion.lignes[i];
+          // Le bon conserve la saisie du magasinier (`quantite`/`unite`) : c'est
+          // ce qui est écrit sur le bon papier. La quantité en unité de stock
+          // est AJOUTÉE à côté, jamais substituée.
+          return Object.assign({}, it, {
+            unite_stock: v.converti ? v.unite_stock : it.unite,
+            quantite_stock: v.converti ? v.quantite_stock : it.quantite,
+            conversion_facteur: v.facteur,
+            conversion_appliquee: v.converti,
+            conversion_manquante: !v.convertible,
+            conversion_motif: v.convertible ? "" : v.motif,
+          });
+        });
+        // --- IDENTITÉ D'ARTICLE (lib/stock/identiteArticle) ----------------
+        // Résolution AVANT `getNextNumber` et avant toute écriture : un bon
+        // refusé ne doit consommer ni numéro de séquence, ni document.
+        // FAIL-CLOSED (décision d'Omar) : un article inconnu ou ambigu fait
+        // échouer le bon, en le nommant.
+        //
+        // Le BON, lui, garde le libellé dans `items[].article` : c'est ce qui
+        // est écrit sur le papier. Seules les LIGNES DE STOCK reçoivent
+        // l'identité, via cette table.
+        const bcResolution = identiteArticle.resoudreLignes(
+          bcItems.map((it) => ({ article: it.article })),
+          bcIndexIdentite
+        );
+        if (!bcResolution.ok) {
+          // Même sortie que create-movement : le refus ouvre la demande.
+          const bcDemandes = await enregistrerDemandesCreation(
+            db_firestore,
+            bcResolution.refus.details,
+            { uid: authUser.uid, profileId: (created_by || {}).profileId || "", name: (created_by || {}).name || "" },
+            { origine: "create-bc", type: type || "", numero: "" }
+          );
+          return res.status(400).json({
+            success: false,
+            error: demandeCreationArticle.messageRefus(bcResolution.refus.details, bcDemandes),
+            code: bcResolution.refus.code,
+            demandes_creation: bcDemandes,
+          });
+        }
+        // Table construite par le CONSTRUCTEUR de Map, jamais par mutation :
+        // le cliquet createBcDoublonsWiring interdit toute forme d'écriture
+        // avant le refus de doublon, pour prouver qu'un bon refusé n'écrit
+        // rien. Il lit le source brut et ne peut pas distinguer une mutation
+        // mémoire d'une écriture Firestore — l'affaiblir pour lui plaire serait
+        // exactement le mauvais arbitrage.
+        const bcFicheParArticle = new Map(
+          bcItems.map((it, i) => [it.article || "", bcResolution.lignes[i].article_ref])
+        );
+
         const allParcelles = [...new Set(bcItems.map(i => i.parcelle).filter(Boolean))];
         const allFermes = [...new Set(bcItems.map(i => i.ferme).filter(Boolean))];
+        // Date résolue UNE fois : le bon et ses mouvements de stock doivent
+        // porter la même (deux `new Date()` peuvent enjamber minuit).
+        const bcDateValue = date || new Date().toISOString().split("T")[0];
+
+        // --- GARDE ANTI-DOUBLON (lib/stock/bcDoublons) ---
+        // Le magasinier soumet deux fois le même scan : mesuré 2 fois sur 49
+        // bons en production (BC-2026-0032/0033, BC-2026-0039/0040), à 23 et 29
+        // secondes d'intervalle, avec le MÊME `scan_url`. On bloque, on nomme le
+        // bon existant, et le magasinier peut forcer — le forçage est tracé.
+        //
+        // Fenêtre BORNÉE aux 200 bons les plus récents, comme `scan-bc` : un
+        // scan complet de l'historique à chaque création se dégraderait avec le
+        // temps. Comparaison faite APRÈS l'éclatement des groupes de parcelles,
+        // sur les items tels qu'ils seront persistés, et AVANT `getNextNumber` —
+        // un bon refusé ne doit pas consommer de numéro de séquence.
+        const bcRecentsSnap = await db_firestore.collection("consumption_vouchers")
+          .orderBy("created_at", "desc").limit(200).get();
+        const bcRecents = bcRecentsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        const bcVerdict = bcDoublons.detecterDoublon(
+          { scan_url: scan_url || null, date: bcDateValue, items: bcItems },
+          bcRecents
+        );
+        const bcForceDemande = bcDoublons.forcageDemande(req.body && req.body.force_doublon);
+        if (bcVerdict.doublon && !bcForceDemande) {
+          return res.status(409).json({
+            success: false,
+            error: bcVerdict.message,
+            doublon: {
+              motif: bcVerdict.motif,
+              bon_id: bcVerdict.bon_id,
+              bon_numero: bcVerdict.bon_numero,
+            },
+          });
+        }
+        // Trace du forçage : construite SERVEUR à partir du token
+        // (resolveCallerRole), JAMAIS d'une identité lue dans le body.
+        let bcForceTrace = null;
+        if (bcVerdict.doublon && bcForceDemande) {
+          const bcForceRole = await resolveCallerRole(authUser);
+          bcForceTrace = bcDoublons.construireTraceForcage({
+            verdict: bcVerdict,
+            by: {
+              uid: (authUser && authUser.uid) || "",
+              profileId: bcForceRole || "",
+              name: (authUser && (authUser.name || authUser.email)) || "",
+            },
+            at: Date.now(),
+          });
+        }
+
+        const numero = await getNextNumber("consumption_voucher", "BC");
         const bcData = {
           numero, type,
           parcelle: allParcelles.join(", "), culture: "", ferme: allFermes.join(", "),
-          date: date || new Date().toISOString().split("T")[0],
+          date: bcDateValue,
+          // motif : champ « Motif » du bon papier (ex. « Fertigation/Traitement »),
+          // lu par le scan et éditable côté front. Ajout PUREMENT ADDITIF et
+          // OPTIONNEL : aucune validation, absent du body -> "" (comportement
+          // strictement identique à avant pour tous les appelants existants).
+          motif: typeof req.body.motif === "string" ? req.body.motif.trim() : "",
           authorized_by: authorized_by || {},
           items: bcItems,
           cpc_categorie: type === "engrais" ? "Engrais" : "Pesticides",
           scan_url: scan_url || null,
           created_by: created_by || {},
           created_at: Date.now(),
+          // Trace du forçage d'un doublon détecté (null si aucun forçage) : qui,
+          // quand, quel bon était jugé doublon, et pour quel motif.
+          // Lignes dont l'unité de saisie diffère de l'unité de stock SANS
+          // conversion exploitable sur la fiche : déduites telles quelles, mais
+          // consignées ici pour rester repérables après coup (même esprit que
+          // les « articles non valorisés » de l'écran Campagne). Vide dans le
+          // cas normal.
+          lignes_non_convertibles: bcConversion.non_convertibles,
+          doublon_force: bcForceTrace,
+          history: bcForceTrace
+            ? [{ action: bcDoublons.HISTORY_ACTION_FORCAGE, by: bcForceTrace.by, at: bcForceTrace.at, motif: bcForceTrace.motif, bon_doublon_numero: bcForceTrace.bon_doublon_numero }]
+            : [],
         };
         const docRef = await db_firestore.collection("consumption_vouchers").add(bcData);
 
@@ -7859,13 +8293,26 @@ exports.stockManagement = functions
         }
         for (const [parcelle, parcItems] of Object.entries(itemsByParcelle)) {
           const bcsNumero = await getNextNumber("stock_consommation", "BCS");
+          // Le MOUVEMENT de stock (et donc le solde) est en unité de STOCK :
+          // c'est tout l'objet du ticket. Une ligne sans conversion exploitable
+          // garde sa quantité et son unité de saisie — comportement d'avant —
+          // et porte `conversion_manquante` pour rester repérable.
           const bcsItems = parcItems.map((it) => ({
-            article_ref: it.article || "", article_nom: it.article || "",
-            quantite: it.quantite || 0, unite: it.unite || "kg",
+            // IDENTITÉ = docId de fiche (résolu plus haut) ; le libellé saisi
+            // reste dans `article_nom`.
+            article_ref: bcFicheParArticle.get(it.article || "") || "",
+            article_nom: it.article || "",
+            quantite: it.conversion_appliquee ? it.quantite_stock : (it.quantite || 0),
+            unite: it.conversion_appliquee ? it.unite_stock : (it.unite || "kg"),
+            quantite_saisie: it.quantite || 0,
+            unite_saisie: it.unite || "kg",
+            conversion_facteur: it.conversion_facteur === undefined ? null : it.conversion_facteur,
+            conversion_appliquee: !!it.conversion_appliquee,
+            conversion_manquante: !!it.conversion_manquante,
           }));
           const movData = {
             numero: bcsNumero, type: "consommation",
-            date: date || new Date().toISOString().split("T")[0],
+            date: bcDateValue,
             lieu_source: lieuSource,
             lieu_destination: { type: "parcelle", id: parcelle },
             ferme: parcItems[0]?.ferme || "", items: bcsItems,
@@ -7886,7 +8333,153 @@ exports.stockManagement = functions
           await Promise.all(balPromises);
         }
 
-        return res.json({ success: true, id: docRef.id, numero });
+        // `lignes_non_convertibles` est renvoyé pour que l'écran de saisie le
+        // dise TOUT DE SUITE au magasinier, en nommant l'article et les deux
+        // unités : le bon est créé, mais la déduction s'est faite dans l'unité
+        // de saisie faute de conversion sur la fiche.
+        return res.json({
+          success: true, id: docRef.id, numero,
+          lignes_non_convertibles: bcConversion.non_convertibles,
+        });
+      }
+
+      // ========== MODIFICATION DE LA DATE D'UN BON DE CONSOMMATION ==========
+      // Périmètre volontairement étroit (ticket sb/bc-modifier-date) : LA DATE,
+      // et rien d'autre. Articles/quantités/parcelles restent immuables — les
+      // toucher obligerait à recalculer des soldes de stock déjà décrémentés.
+      //
+      // POINT CRITIQUE : un bon porte une date ET les `stock_movements` créés
+      // par `create-bc` (type consommation, BCS-…) en portent une COPIE. Ce sont
+      // ces mouvements que lisent les analyses par période. Les deux sont donc
+      // mis à jour dans la MÊME transaction — jamais l'un sans l'autre.
+      // Logique pure (validation, campagne, patch) : lib/stock/bcDate.js.
+      if (action === "update-bc-date" && req.method === "POST") {
+        // Rôle résolu SERVEUR (resolveCallerRole), jamais depuis le body.
+        const bcDateRole = await resolveCallerRole(authUser);
+        if (bcDateRole !== "magasinier" && bcDateRole !== "dg") {
+          return res.status(403).json({ success: false, error: "Réservé au profil magasinier (ou dg)" });
+        }
+
+        const bcDateId = req.body && req.body.bc_id;
+        const bcNewDate = req.body && req.body.date;
+        if (!bcDateId || typeof bcDateId !== "string") {
+          return res.status(400).json({ success: false, error: "bc_id requis" });
+        }
+        // Date du jour calculée SERVEUR (Africa/Casablanca) — jamais l'horloge client.
+        const bcDateCheck = bcDate.validateBcDate(bcNewDate, stockFilesRecord.todayInCasablanca());
+        if (!bcDateCheck.valid) {
+          return res.status(400).json({ success: false, error: bcDateCheck.error });
+        }
+
+        const bcDateActor = {
+          uid: authUser.uid || "",
+          profileId: bcDateRole || "",
+          name: authUser.name || authUser.email || "",
+        };
+        const bcDateRef = db_firestore.collection("consumption_vouchers").doc(bcDateId);
+        const bcDateMovQuery = db_firestore.collection("stock_movements").where("bc_id", "==", bcDateId);
+
+        const bcDateResult = await db_firestore.runTransaction(async (tx) => {
+          // Toutes les lectures AVANT toute écriture (contrainte Firestore).
+          const bcSnap = await tx.get(bcDateRef);
+          if (!bcSnap.exists) return { notFound: true };
+          const movSnap = await tx.get(bcDateMovQuery);
+
+          const before = bcSnap.data() || {};
+          const patch = bcDate.buildDateUpdate({
+            bc: before, date: bcNewDate, by: bcDateActor, at: Date.now(),
+          });
+          tx.update(bcDateRef, patch.bcUpdate);
+          movSnap.docs.forEach((d) => tx.update(d.ref, patch.movementUpdate));
+          return {
+            notFound: false,
+            date_avant: before.date || "",
+            movements_updated: movSnap.size,
+            campagne: bcDate.campagneChange(before.date, bcNewDate),
+          };
+        });
+
+        if (bcDateResult.notFound) {
+          return res.status(404).json({ success: false, error: "Bon de consommation introuvable" });
+        }
+        return res.json({
+          success: true,
+          date: bcNewDate,
+          date_avant: bcDateResult.date_avant,
+          movements_updated: bcDateResult.movements_updated,
+          campagne_changed: bcDateResult.campagne.changed,
+          campagne_avant: bcDateResult.campagne.from,
+          campagne_apres: bcDateResult.campagne.to,
+        });
+      }
+
+      // ========== SUPPRESSION D'UN BON DE CONSOMMATION ==========
+      // Il n'existait AUCUNE suppression de bon de consommation. Une suppression
+      // brute serait pire que rien : `create-bc` décrémente `stock_balances` au
+      // moment même de la création (mouvements BCS-…, type consommation, en
+      // `valide_mag`). Effacer le bon seul laisserait la consommation déduite
+      // pour toujours — le bon disparaît, le stock reste amputé.
+      //
+      // On suit donc la mécanique éprouvée de `delete-movement` : soft-delete
+      // (jamais de destruction) + `reverseStockImpact` sur les mouvements dont
+      // l'impact était matérialisé. Logique pure : lib/stock/bcSuppression.
+      if (action === "delete-bc" && req.method === "POST") {
+        // Rôle résolu SERVEUR (resolveCallerRole), jamais depuis le body.
+        // `achats`, `dg` ou `magasinier` (stockRoles) : celui qui saisit le bon
+        // est celui qui repère son doublon, il doit pouvoir le défaire.
+        // Le serveur ne valide QUE le rôle et le motif : la double confirmation
+        // du magasinier est une protection d'interface (MagBCTab.jsx), il n'y a
+        // volontairement AUCUN drapeau client à vérifier ici.
+        const bcDelRole = await resolveCallerRole(authUser);
+        const bcDelId = req.body && req.body.bc_id;
+        const bcDelRef = bcDelId && typeof bcDelId === "string"
+          ? db_firestore.collection("consumption_vouchers").doc(bcDelId) : null;
+        const bcDelSnap = bcDelRef ? await bcDelRef.get() : null;
+        const bcDelDoc = bcDelSnap && bcDelSnap.exists ? bcDelSnap.data() : null;
+
+        const bcDelCheck = bcSuppression.validerSuppression({
+          role: bcDelRole,
+          motif: req.body && req.body.motif,
+          bc: bcDelDoc,
+          exists: !!bcDelDoc,
+        });
+        if (!bcDelCheck.ok) {
+          return res.status(bcDelCheck.code).json({ success: false, error: bcDelCheck.error });
+        }
+
+        const bcDelActor = {
+          uid: (authUser && authUser.uid) || "",
+          profileId: bcDelRole || "",
+          name: (authUser && (authUser.name || authUser.email)) || "",
+        };
+        const bcDelMovSnap = await db_firestore.collection("stock_movements")
+          .where("bc_id", "==", bcDelId).get();
+        const bcDelMovs = bcDelMovSnap.docs.map((d) => ({ id: d.id, ref: d.ref, ...d.data() }));
+        const bcDelTri = bcSuppression.trierMouvements(bcDelMovs);
+        const bcDelPatch = bcSuppression.buildSuppressionUpdate({
+          bc: bcDelDoc, motif: bcDelCheck.motif, by: bcDelActor, at: Date.now(),
+        });
+
+        // 1) Annuler l'impact stock AVANT le soft-delete (le mouvement est encore
+        //    dans son état impactant ; reverseStockImpact applique l'inverse exact
+        //    de applyStockImpact). Un mouvement déjà supprimé est ignoré par
+        //    trierMouvements : le re-créditer serait un double comptage.
+        for (const mov of bcDelTri.aAnnuler) {
+          await reverseStockImpact(mov);
+        }
+        // 2) Puis marquer les mouvements, puis le bon.
+        for (const mov of bcDelTri.aMarquer) {
+          await mov.ref.update(bcDelPatch.movementUpdate);
+        }
+        await bcDelRef.update(bcDelPatch.bcUpdate);
+
+        return res.json({
+          success: true,
+          id: bcDelId,
+          numero: (bcDelDoc && bcDelDoc.numero) || "",
+          movements_deleted: bcDelTri.aMarquer.length,
+          movements_reversed: bcDelTri.aAnnuler.length,
+        });
       }
 
       // ========== STOCK DASHBOARD ==========
@@ -8289,14 +8882,31 @@ exports.stockManagement = functions
         let imported = 0, updated = 0;
         let batch = db_firestore.batch(), batchCount = 0;
 
+        // Index de résolution construit UNE SEULE FOIS avant la boucle.
+        // Remplace le get() par ligne qui était fait ici : 1 lecture de collection
+        // au lieu de N lectures unitaires (et c'est ce qui rend la résolution par
+        // nom possible sans dégrader l'import).
+        const sqlCatalogSnap = await db_firestore.collection("articles_catalog").get();
+        const sqlIndex = articleMerge.buildArticleIndex(
+          sqlCatalogSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+        );
+
         for (const row of rows) {
           const nom = (row.nom || "").trim();
           if (!nom) continue;
+          // FORMULE D'IDENTIFIANT INCHANGÉE (categorie brute) : la normaliser ici
+          // réétiquetterait toutes les fiches existantes et l'import suivant
+          // recréerait une vague de doublons. On corrige la RÉSOLUTION, pas l'id.
           const docId = Buffer.from(`${nom}|${row.categorie || ""}`).toString("base64").replace(/[^a-zA-Z0-9]/g, "").slice(0, 50);
-          const existSnap = await db_firestore.collection("articles_catalog").doc(docId).get();
+          const target = articleMerge.resolveArticleTarget(sqlIndex, docId, nom);
           const data = {
             nom,
-            categorie: (row.categorie || "autre").toLowerCase(),
+            // LIBELLÉ CANONIQUE à l'enregistrement (et NON la minuscule d'avant) :
+            // la source SQL renvoie `engrais`/`pesticides`, qui repeuplaient le
+            // catalogue de variantes à chaque réimport. La formule du docId,
+            // elle, reste sur la catégorie BRUTE (cf. ci-dessus) : le réimport
+            // retrouve donc la fiche et se contente de corriger son libellé.
+            categorie: articleCategories.categorieCanonique(row.categorie),
             sous_categorie: row.sous_categorie || "",
             unite: row.unite || "KG",
             prix_ref: row.prix_ref ? Math.round(row.prix_ref * 100) / 100 : null,
@@ -8305,9 +8915,22 @@ exports.stockManagement = functions
             active: true,
             updated_at: now,
           };
-          const docRef = db_firestore.collection("articles_catalog").doc(docId);
-          if (existSnap.exists) { batch.update(docRef, data); updated++; }
-          else { batch.set(docRef, { ...data, created_at: now }); imported++; }
+          const docRef = db_firestore.collection("articles_catalog").doc(target.id);
+          // Un document EXISTE déjà à cet identifiant sans être résolu ? C'est une
+          // fiche désactivée par `validate-delete-article` : ni active (donc hors
+          // de byId/byName), ni fusionnée (donc pas de redirection merged_into).
+          // Un `set()` la REMPLACERAIT — prix_pmp, nb_achats et created_at perdus,
+          // et la valorisation de l'article tomberait à zéro. On met à jour, comme
+          // le faisait le code d'origine sur `existSnap.exists`.
+          const sqlReactivation = target.isNew && sqlIndex.allIds.has(target.id);
+          if (!target.isNew || sqlReactivation) { batch.update(docRef, data); updated++; }
+          else {
+            batch.set(docRef, { ...data, created_at: now });
+            imported++;
+          }
+          // La fiche écrite entre dans l'index : deux lignes du MÊME import ne
+          // différant que par la casse de la catégorie convergent sur elle.
+          if (target.isNew) articleMerge.rememberArticle(sqlIndex, target.id, nom);
           batchCount++;
           if (batchCount >= 400) { await batch.commit(); batch = db_firestore.batch(); batchCount = 0; }
         }
@@ -8325,19 +8948,28 @@ exports.stockManagement = functions
         const existingSnap = await db_firestore.collection("articles_catalog").get();
         const existingMap = {};
         existingSnap.docs.forEach(d => { existingMap[d.id] = d.data(); });
+        // Même index de résolution que l'import SQL : une fiche active de même
+        // nom normalisé est MISE À JOUR, jamais dupliquée.
+        const xlsIndex = articleMerge.buildArticleIndex(
+          existingSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+        );
 
         let batch = db_firestore.batch(), batchCount = 0;
         for (const art of articles) {
           const nom = (art.nom || "").trim();
           if (!nom) { skipped++; continue; }
           const ref = (art.reference || "").trim();
+          // FORMULE D'IDENTIFIANT INCHANGÉE — cf. import-articles-sql.
           const docId = ref
             ? ref.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 50)
             : Buffer.from(`${nom}|${art.categorie || ""}`).toString("base64").replace(/[^a-zA-Z0-9]/g, "").slice(0, 50);
+          const target = articleMerge.resolveArticleTarget(xlsIndex, docId, nom);
           const data = {
             nom, reference: ref,
             reference_technique: (art.reference_technique || "").trim(),
-            categorie: (art.categorie || "autre").trim(),
+            // LIBELLÉ CANONIQUE — cf. import-articles-sql. C'est ce chemin qui a
+            // posé `IMMOBILISATIONS` (11 fiches) et `PHYTO-SANITAIRE` (2).
+            categorie: articleCategories.categorieCanonique(art.categorie),
             sous_categorie: (art.sous_categorie || "").trim(),
             unite: (art.unite || "U").trim(),
             prix_ht: art.prix_ht || 0, taux_tva: art.taux_tva || 0, prix_ttc: art.prix_ttc || 0,
@@ -8346,17 +8978,31 @@ exports.stockManagement = functions
             invisible: art.invisible || 0, multi_ferme: art.multi_ferme || 0,
             source: "excel_import", active: true, updated_at: now,
           };
-          const docRef = db_firestore.collection("articles_catalog").doc(docId);
-          const existing = existingMap[docId];
-          if (existing) {
-            if (data.prix_ht > 0 || !existing.prix_ref) data.prix_ref = data.prix_ht || existing.prix_ref;
-            data.nb_achats = existing.nb_achats || 0;
+          // ⚠️ NE PAS écrire `reference` sur une fiche résolue par NOM (ou par
+          // redirection) : son docId est celui d'une AUTRE fiche — souvent un
+          // base64 issu de l'import SQL — et y poser la référence de la ligne
+          // Excel fabriquerait un document où `docId !== reference`. Or
+          // `suggest-article-duplicates` renvoie `data.reference || d.id` alors
+          // que `merge-articles` résout par `doc(master_ref)` : la fusion depuis
+          // l'écran Catalogue partirait en 404. C'est exactement l'invariant que
+          // 5 fiches cassent déjà en prod (ex. AZO PRO : ENG0149 / « ENG 0149 »)
+          // et que ce lot ne doit surtout pas propager.
+          if (target.matchedBy === "nom" || target.matchedBy === "merged_into") delete data.reference;
+          const docRef = db_firestore.collection("articles_catalog").doc(target.id);
+          const existing = existingMap[target.id];
+          // Même garde de résurrection que l'import SQL : un `set()` sur une fiche
+          // désactivée la remplacerait (prix_ref, nb_achats, created_at perdus).
+          const xlsReactivation = target.isNew && xlsIndex.allIds.has(target.id);
+          if (!target.isNew || xlsReactivation) {
+            if (data.prix_ht > 0 || !(existing && existing.prix_ref)) data.prix_ref = data.prix_ht || (existing && existing.prix_ref) || null;
+            data.nb_achats = (existing && existing.nb_achats) || 0;
             batch.update(docRef, data);
             updated++;
           } else {
             batch.set(docRef, { ...data, nb_achats: 0, created_at: now });
             imported++;
           }
+          if (target.isNew) articleMerge.rememberArticle(xlsIndex, target.id, nom);
           batchCount++;
           if (batchCount >= 450) { await batch.commit(); batch = db_firestore.batch(); batchCount = 0; }
         }
@@ -8408,6 +9054,8 @@ exports.stockManagement = functions
             success: true,
             role: perim.role,
             perimetre_ferme: perim.perimetre_ferme,
+            perimetre_culture: perim.culture_filtre || null,
+            parcelles_ferme_indeterminee: [],
             since: DEFAULT_SINCE,
             campagne: "2025/2026",
             dateExtraction: new Date().toLocaleDateString("fr-FR"),
@@ -8421,33 +9069,99 @@ exports.stockManagement = functions
         // 1) Filtres période + culture (paramètres optionnels).
         const since = (req.query.since && /^\d{4}-\d{2}-\d{2}$/.test(req.query.since)) ? req.query.since : DEFAULT_SINCE;
         const culture = req.query.culture && String(req.query.culture).trim() ? String(req.query.culture).trim() : undefined;
-        const consoFilters = { weekStart: since };
-        if (culture) consoFilters.culture = culture;
-        // NOTE: on N'INJECTE PAS perim.ferme_filtre dans getConsommationRows.
-        // Le champ Ferme du mirror vaut « BERRY GOOD Farms » sur 100% des lignes
-        // (inexploitable) : la vraie ferme est encodée dans Parcelle_Culturale.
-        // Le cloisonnement chef se fait ci-dessous par dérivation en mémoire.
+        // NOTE: on ne filtre PAS sur un champ Ferme de la source.
+        // Dans le mirror BEE ONE il valait « BERRY GOOD Farms » sur 100 % des
+        // lignes ; dans les bons Smart Berry, `item.ferme` porte cette même
+        // valeur fourre-tout sur 212 items /500 (mesuré en prod). Inexploitable
+        // dans les deux cas : la vraie ferme est encodée dans le libellé de
+        // parcelle. Le cloisonnement chef se fait ci-dessous par dérivation
+        // en mémoire, fail-closed — inchangé.
 
-        // 2) Lignes de conso depuis le mirror (sans filtre Ferme).
-        let consoRows = await getConsommationRows(consoFilters);
+        // 2) Lignes de conso depuis les BONS SMART BERRY (`consumption_vouchers`).
+        //    Bascule décidée par Omar (ticket sb/conso-campagne-bons) : la source
+        //    BEE ONE `sql_mirror_consommation` est TARIE (dernières lignes en
+        //    avril 2026), la consommation réelle est saisie dans les bons par le
+        //    magasinier. Bons UNIQUEMENT : pas d'union avec BEE ONE, pas de
+        //    bascule à une date. Conséquence ASSUMÉE : la période antérieure aux
+        //    premiers bons s'affiche vide. Rien n'est supprimé côté BEE ONE, et
+        //    `getConsommationRows` reste utilisé par les autres écrans
+        //    (fertigation, phytosanitaire, produits, parcelles, dashboard,
+        //    agroSummary, exports campagne).
+        //    L'adaptateur produit exactement la forme de ligne mirror consommée
+        //    par `aggregateConsoValorisee` — aucun changement en aval.
+        const [bonsConso, refParcelles, catalogueDocs] = await Promise.all([
+          consoBons.fetchBonsConsommation(db_firestore),
+          consoBons.fetchReferentielParcelles(db_firestore),
+          // UNE SEULE lecture d'`articles_catalog`, pour DEUX usages : le PMP
+          // (§3 ci-dessous) et la catégorie par article. Cette lecture existait
+          // déjà plus bas ; elle est simplement remontée ici. Ne pas la
+          // dédoubler en appelant `consoBons.fetchArticleCategories`.
+          db_firestore.collection("articles_catalog").get().then((snap) => {
+            const out = [];
+            snap.forEach((doc) => out.push(doc.data() || {}));
+            return out;
+          }),
+        ]);
+        // Index « nom d'article → catégorie ». La catégorie était jusqu'ici
+        // JETÉE à la construction de la map PMP, et `Article_Categorie` valait
+        // la catégorie du BON ENTIER — d'où BENEVIA compté en engrais.
+        const catByArticle = consoBons.buildArticleCategoryIndex(catalogueDocs);
+        let consoRows = consoBons.adaptBonsToConsoRows(bonsConso, {
+          since,
+          haByLabel: refParcelles.haByLabel,
+          sbMap: refParcelles.sbMap,
+          catByArticle,
+        });
+        // Filtre culture optionnel (param client), à l'identique de l'ancien
+        // filtre `getConsommationRows({culture})` — mais sur la culture RÉSOLUE
+        // (référentiel SB puis repli), et non sur le champ brut du bon, vide ou
+        // sale sur la majorité des items.
+        if (culture) {
+          consoRows = consoRows.filter((r) => r.Culture === culture);
+        }
+
+        // Libellés dont la ferme est indéterminable — capturés AVANT tout filtre
+        // de périmètre : après filtrage ils ont justement disparu, et la liste
+        // serait systématiquement vide pour le seul profil que ça concerne.
+        const fermeIndeterminee = consoBons.resolveFermeInconnue(
+          consoRows.map((r) => r.Parcelle_Culturale)
+        );
 
         // 2bis) Cloisonnement ferme FAIL-CLOSED pour un périmètre chef.
         //   perimetre_ferme === 'all' (DG/Finance/admin) → aucune restriction,
         //   y compris les parcelles non dérivables. Sinon (chef), on ne garde
         //   QUE les lignes dont la ferme dérivée du libellé == son périmètre.
         //   Une parcelle dérivée à null est EXCLUE (jamais montrée à un chef).
+        //   Dérivation = `consoBons.fermeDeParcelle`, RÈGLE UNIQUE partagée avec
+        //   l'écran Campagne. Elle compose `deriveFermeFromParcelle` (utilisée
+        //   ici jusqu'ici) et le repli SECTEUR : sans ce repli, `chef_f5`
+        //   perdait ses 2 parcelles S8 (BREEZE/CASCADE MYRTILLE, 40 lignes),
+        //   dérivées à null par la seule règle valorisation.
         if (perim.perimetre_ferme !== 'all') {
           const cible = perim.perimetre_ferme;
           consoRows = consoRows.filter(
-            (r) => deriveFermeFromParcelle(r.Parcelle_Culturale) === cible
+            (r) => consoBons.fermeDeParcelle(r.Parcelle_Culturale) === cible
           );
         }
-        // 3) Map de PMP par canon(nom) depuis articles_catalog (active).
+        // 2ter) Cloisonnement CULTURE FAIL-CLOSED — barrière IMPOSÉE serveur.
+        //   Sans elle, `chef_f1` (perimetre_ferme 'all' + culture_filtre
+        //   'Framboise') échappait à TOUT filtrage : le bloc 2bis est sauté pour
+        //   un périmètre 'all', et la culture n'était appliquée nulle part.
+        //   Mesuré avant correction : `chef_f1` recevait les 500 lignes, dont 78
+        //   d'Avocatier et 125 de F5-Myrtille. `chef_f5` voyait en plus les
+        //   parcelles F5-Framboise. Le filtre porte sur la culture RÉSOLUE par
+        //   l'adaptateur (référentiel `culture_sb` puis repli), jamais sur le
+        //   champ brut du bon. C'est le pendant exact du filtre appliqué dans
+        //   `aggregateConsoParcelle` pour l'écran Campagne.
+        //   ⚠️ Distinct du `?culture=` client ci-dessus : celui-ci est un confort
+        //   d'affichage, celui-là n'est pas négociable.
+        if (perim.culture_filtre) {
+          consoRows = consoRows.filter((r) => r.Culture === perim.culture_filtre);
+        }
+        // 3) Map de PMP par canon(nom) depuis articles_catalog, déjà lu ci-dessus.
         const canon = consoValorisationLib.canon;
-        const catSnap = await db_firestore.collection("articles_catalog").get();
         const pmpMap = {};
-        catSnap.forEach((doc) => {
-          const a = doc.data() || {};
+        catalogueDocs.forEach((a) => {
           if (!a.nom) return;
           const p = parseFloat(a.prix_pmp);
           if (!isFinite(p)) return;
@@ -8474,10 +9188,19 @@ exports.stockManagement = functions
           success: true,
           role: perim.role,
           perimetre_ferme: perim.perimetre_ferme,
+          // Périmètre cultural IMPOSÉ (chef_f1 → Framboise, chef_f5 → Myrtille).
+          // Additif : rend le cloisonnement lisible côté client au lieu de le
+          // laisser deviner à partir d'un tableau incomplet.
+          perimetre_culture: perim.culture_filtre || null,
           since,
           culture: culture || null,
           campagne: "2025/2026",
           dateExtraction: new Date().toLocaleDateString("fr-FR"),
+          // Libellés dont la ferme est indéterminable : ils sont EXCLUS du
+          // périmètre d'un chef (fail-closed). Remontés pour que l'écran puisse
+          // le dire, plutôt que d'afficher un tableau vide sans explication.
+          // Vide sur les 19 libellés réels d'aujourd'hui.
+          parcelles_ferme_indeterminee: fermeIndeterminee,
           articles_non_valorises,
           ...agg,
         });
@@ -8485,33 +9208,238 @@ exports.stockManagement = functions
 
       if (action === "update-article" && req.method === "POST") {
         const { id, updates, updated_by } = req.body;
+        // Rôle résolu SERVEUR (jamais depuis le body) — sans cette garde,
+        // n'importe quel utilisateur authentifié réécrivait n'importe quelle
+        // fiche du catalogue.
+        //
+        // Périmètre INCHANGÉ : `achats` ou `dg`, accès complet pour les deux.
+        // La condition n'a fait que sortir du monolithe vers le module pur
+        // `lib/stockRoles` (testable) ; elle n'a été ni élargie ni restreinte.
+        // Le message de refus, lui, est corrigé : il disait « Réservé au
+        // responsable achats » alors que le DG passait.
+        //
+        // AJOUT 2026-08-29 (ticket sb/unite-conversion) : le MAGASINIER entre
+        // dans cette action, mais sur DEUX CHAMPS SEULEMENT —
+        // `unite_consommation` et `stock_par_unite_consommation`. C'est lui qui
+        // sait qu'un fût d'acide nitrique de 25 L pèse 33 kg, et c'est lui que
+        // la ligne non convertible bloque au quotidien ; il n'a en revanche
+        // aucun accès à l'écran Stock › Articles.
+        // ⚠️ La décision se prend sur le CONTENU RÉEL de `updates`, jamais sur
+        // une déclaration du client : un magasinier qui joindrait `prix_ht` est
+        // refusé en bloc. `achats`/`dg` ne sont PAS bridés par champ (cf. le
+        // pavé d'en-tête de lib/stockRoles/articlePermissions.js : ce bridage a
+        // déjà été tenté et retiré).
+        const updateArticleRole = await resolveCallerRole(authUser);
+        const updateArticlePerm = stockRoles.peutModifierChampsArticle(updateArticleRole, updates);
+        if (!updateArticlePerm.ok) {
+          return res.status(403).json({ success: false, error: updateArticlePerm.raison });
+        }
         if (!id) return res.status(400).json({ success: false, error: "ID requis" });
-        const allowed = ["nom", "reference", "reference_technique", "unite", "prix_ht", "taux_tva", "prix_ttc", "categorie", "sous_categorie", "type", "multi_ferme"];
+        // `unite_consommation` / `stock_par_unite_consommation` : conversion
+        // « unité de consommation → unité de stock » (lib/uniteConso). Le
+        // facteur se lit « 1 <unite_consommation> = X <unite> ».
+        const allowed = ["nom", "reference", "reference_technique", "unite", "prix_ht", "taux_tva", "prix_ttc", "categorie", "sous_categorie", "type", "multi_ferme", "unite_consommation", "stock_par_unite_consommation"];
         const clean = {};
         for (const k of allowed) { if (updates && updates[k] !== undefined) clean[k] = updates[k]; }
+        // La conversion est NORMALISÉE ici, à l'écriture, et une seule fois :
+        // un facteur illisible (« abc », 0, négatif) est écrit `null` plutôt
+        // que stocké tel quel. Une fiche ne doit jamais porter un facteur que
+        // le module de conversion refusera silencieusement à la lecture — sinon
+        // l'écran affiche une conversion et le stock en applique une autre.
+        if (clean.unite_consommation !== undefined) {
+          clean.unite_consommation = clean.unite_consommation === null ? null : String(clean.unite_consommation).trim();
+        }
+        if (clean.stock_par_unite_consommation !== undefined) {
+          clean.stock_par_unite_consommation = uniteConso.lireFacteur(clean.stock_par_unite_consommation);
+        }
         clean.updated_at = Date.now();
-        clean.updated_by = updated_by || {};
+        // TRAÇABILITÉ : l'identité vient du TOKEN, pas du body. Le client peut
+        // enrichir (nom affiché), mais ni se renommer ni s'effacer : sans ces
+        // trois champs imposés, un `updated_by: {}` rendait la modification
+        // anonyme — y compris un changement de catégorie fait par le DG.
+        clean.updated_by = Object.assign({}, updated_by || {}, {
+          uid: (authUser && authUser.uid) || null,
+          email: (authUser && authUser.email) || null,
+          profileId: updateArticleRole || null,
+        });
         await db_firestore.collection("articles_catalog").doc(id).update(clean);
+        // Une catégorie modifiée change ce que renvoie `campagne-conso-parcelle`
+        // (catégorie résolue à la LECTURE) : son cache 30 min doit tomber.
+        if (clean.categorie !== undefined) {
+          await invalidateApiCachePrefix(consoBons.CONSO_PARCELLE_CACHE_PREFIX);
+        }
         return res.json({ success: true });
+      }
+
+      // ------ CLASSER-ARTICLE : classer un article PAR SON NOM (bandeau Campagne) ------
+      // Le bandeau « articles à classer » de Campagne › Campagne analytique ne
+      // connaît que des NOMS d'articles (ceux lus sur les bons), jamais un
+      // identifiant de fiche. D'où une action dédiée plutôt qu'un
+      // `update-article` tordu : `update-article` écrit UNE fiche désignée par
+      // son id, ce qui ne peut pas marcher ici.
+      //
+      // ⚠️ TOUTES les fiches actives de même nom normalisé sont mises à jour.
+      // Le catalogue porte ~105 paires de doublons ; n'en reclasser qu'une rend
+      // la clé AMBIGUË pour `lookupArticleCategorie` (fail-closed) et l'article
+      // RESTE « à classer » — la correction paraîtrait sans effet.
+      if (action === "classer-article" && req.method === "POST") {
+        const { article, categorie, updated_by } = req.body || {};
+        // MÊME règle de rôle qu'`update-article`, sur le même module pur
+        // (`achats` ou `dg`) : classer un article, c'est écrire au catalogue,
+        // il n'y a aucune raison que ce soit ouvert plus largement.
+        const classerRole = await resolveCallerRole(authUser);
+        const classerPerm = stockRoles.peutModifierArticle(classerRole);
+        if (!classerPerm.ok) {
+          return res.status(403).json({ success: false, error: classerPerm.raison });
+        }
+        const classerNom = article == null ? "" : String(article).trim();
+        if (!classerNom) return res.status(400).json({ success: false, error: "Nom d'article requis" });
+        // LIBELLÉ CANONIQUE — la même règle que create-article et les imports.
+        // Le bandeau envoie `engrais` / `pesticide` : écrits tels quels, ils
+        // fabriquaient une orthographe de plus à chaque classement (`pesticide`
+        // au singulier n'existe nulle part ailleurs au catalogue).
+        const classerCat = articleCategories.categorieCanonique(categorie);
+        // Le classement n'ouvre PAS l'écriture d'une catégorie quelconque : la
+        // porte du DG est « ranger dans l'une des deux familles de l'écran ».
+        if (consoValorisationLib.familleBucket(classerCat) === "autre") {
+          return res.status(400).json({
+            success: false,
+            error: "Catégorie invalide : seuls « engrais » et « pesticide » sont acceptés ici.",
+          });
+        }
+        const classerSnap = await db_firestore.collection("articles_catalog").get();
+        const classerCibles = stockRoles.referencesAClasserParNom(
+          classerSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
+          classerNom
+        );
+        if (classerCibles.length === 0) {
+          // Aucune création implicite : deux articles des bons (GENAKTIS,
+          // Maspilan) n'ont pas de fiche, et leur orthographe est à vérifier sur
+          // le bon papier avant d'en créer une.
+          return res.status(404).json({
+            success: false,
+            fiches_mises_a_jour: 0,
+            error: "Aucune fiche active « " + classerNom + " » au catalogue. "
+              + "Créez d'abord l'article dans Stock › Articles (vérifiez l'orthographe du bon).",
+          });
+        }
+        const classerNow = Date.now();
+        // Identité imposée par le TOKEN (cf. update-article).
+        const classerBy = Object.assign({}, updated_by || {}, {
+          uid: (authUser && authUser.uid) || null,
+          email: (authUser && authUser.email) || null,
+          profileId: classerRole || null,
+        });
+        // Chunks de 400 (limite Firestore 500/batch, marge de 100).
+        for (let i = 0; i < classerCibles.length; i += 400) {
+          const classerBatch = db_firestore.batch();
+          classerCibles.slice(i, i + 400).forEach((refId) => {
+            classerBatch.update(db_firestore.collection("articles_catalog").doc(refId), {
+              categorie: classerCat,
+              updated_at: classerNow,
+              updated_by: classerBy,
+            });
+          });
+          await classerBatch.commit();
+        }
+        // ⚠️ SANS CETTE PURGE, LA FONCTIONNALITÉ PARAÎT CASSÉE : la réponse de
+        // `campagne-conso-parcelle` est cachée 30 min et la catégorie y est
+        // résolue à la LECTURE. On classe, on recharge, rien ne bouge.
+        // Purge par PRÉFIXE : une entrée existe par périmètre (`_all`, `_f1`,
+        // `_f1_framboise`…), les énumérer serait un fail-open.
+        const classerPurged = await invalidateApiCachePrefix(consoBons.CONSO_PARCELLE_CACHE_PREFIX);
+        return res.json({
+          success: true,
+          article: classerNom,
+          categorie: classerCat,
+          fiches_mises_a_jour: classerCibles.length,
+          references: classerCibles,
+          cache_entrees_purgees: classerPurged,
+        });
       }
 
       if (action === "create-article" && req.method === "POST") {
         const { reference, nom, unite, prix_ht, taux_tva, prix_ttc, categorie, sous_categorie, type, reference_technique, multi_ferme, created_by } = req.body;
-        // Seul le profil achats peut créer des articles
-        if (created_by?.profileId && created_by.profileId !== "achats" && created_by.profileId !== "dg") {
+        // Rôle résolu SERVEUR : il était lu depuis le body de la requête, donc
+        // usurpable (et contournable en omettant simplement le champ).
+        const createArticleRole = await resolveCallerRole(authUser);
+        if (createArticleRole !== "achats" && createArticleRole !== "dg") {
           return res.status(403).json({ success: false, error: "Seul le responsable achats peut créer des articles" });
         }
         if (!nom || !reference) return res.status(400).json({ success: false, error: "Nom et référence requis" });
         const existing = await db_firestore.collection("articles_catalog").doc(reference).get();
         if (existing.exists && existing.data().active !== false) return res.status(400).json({ success: false, error: "Un article avec cette référence existe déjà" });
         const now = Date.now();
-        await db_firestore.collection("articles_catalog").doc(reference).set({
+        const createData = {
           reference, nom, unite: unite || "U", prix_ht: prix_ht || 0, taux_tva: taux_tva || 20,
-          prix_ttc: prix_ttc || 0, categorie: categorie || "", sous_categorie: sous_categorie || "",
+          prix_ttc: prix_ttc || 0, categorie: articleCategories.categorieCanonique(categorie), sous_categorie: sous_categorie || "",
           type: type || "", reference_technique: reference_technique || "", multi_ferme: multi_ferme || false,
-          active: true, invisible: false, created_at: now, updated_at: now, created_by: created_by || {}
-        });
-        return res.json({ success: true, id: reference });
+          active: true, invisible: false, updated_at: now, created_by: created_by || {}
+        };
+        // Résolution par NOM NORMALISÉ avant création : une fiche active portant
+        // déjà ce nom est MISE À JOUR. Sans cela, créer « Engrais NPK » alors que
+        // « ENGRAIS  NPK » existe déjà pose un second docId — le doublon exact
+        // que ce ticket ferme. La formule d'identifiant, elle, reste intacte.
+        const createCatalogSnap = await db_firestore.collection("articles_catalog").get();
+        const createIndex = articleMerge.buildArticleIndex(
+          createCatalogSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+        );
+        const createTarget = articleMerge.resolveArticleTarget(createIndex, reference, nom);
+        // Repli limité au match par NOM. La redirection `merged_into` est
+        // légitime pour un IMPORT (même article, ancien identifiant) mais PAS
+        // pour une saisie libre : une référence tapée qui tombe sur le docId
+        // d'un doublon déjà fusionné enverrait l'update sur le MASTER de la
+        // fusion et écraserait son nom par celui saisi ici.
+        if (createTarget.matchedBy === "nom") {
+          // On met à jour une fiche EXISTANTE : ni `nom` ni `reference` ne sont
+          // touchés. Les écrire renommerait un autre article et casserait
+          // l'invariant docId == reference (cf. import Excel ci-dessus) — le
+          // tout sous l'apparence d'une création réussie.
+          const createPatch = { ...createData };
+          delete createPatch.nom;
+          delete createPatch.reference;
+          await db_firestore.collection("articles_catalog").doc(createTarget.id).update(createPatch);
+          return res.json({
+            success: true,
+            id: createTarget.id,
+            existing_article: true,
+            updated_existing: true,
+            matched_by: "nom",
+            message: "Un article portant ce nom existait déjà : sa fiche a été mise à jour, aucune nouvelle fiche n'a été créée.",
+          });
+        }
+        // La référence saisie est celle d'un doublon ABSORBÉ par une fusion. On
+        // refuse plutôt que d'écrire : un `set()` remplacerait la pierre tombale
+        // (`active:false` + `merged_into`), donc (a) le pointeur qui redirige les
+        // imports futurs vers le master serait perdu, et (b) le doublon
+        // RÉAPPARAÎTRAIT ACTIF au catalogue — une fusion annulée en silence.
+        // NB : le rollback, lui, ne dépend PAS de cette tombe. Il vit dans le
+        // document `article_merges` (master_ref, doublon_refs,
+        // doublon_balances_snapshot, reassigned_*_ids) et survit à l'écrasement.
+        //
+        // La garde s'indexe sur `createIndex.mergedInto`, PAS sur
+        // `createTarget.matchedBy` : `resolveArticleTarget` n'émet
+        // `matchedBy: 'merged_into'` que si le master est ENCORE ACTIF. Si le
+        // master a été désactivé depuis (validate-delete-article), la résolution
+        // retombe en 'none' — ni repli par nom, ni refus — et on écrasait la
+        // tombe. L'index, lui, est indépendant de l'état du master.
+        if (createIndex.mergedInto.has(reference)) {
+          return res.status(400).json({ success: false, error: "Cette référence est celle d'un article fusionné dans un autre. Choisir une autre référence." });
+        }
+        await db_firestore.collection("articles_catalog").doc(reference).set({ ...createData, created_at: now });
+        // Purge de l'index d'identité : depuis le refus fail-closed, un index
+        // périmé refuserait pendant 5 minutes un bon portant l'article qu'on
+        // vient précisément de créer pour pouvoir le saisir. C'est la sortie
+        // « Créer cet article au catalogue » — elle doit être immédiate.
+        invalidateIdentiteArticleIndex();
+        // ── LA VALIDATION DU DG, C'EST LA CRÉATION ELLE-MÊME ────────────────
+        // Il n'y a pas de bouton « valider la demande » à cliquer : le DG crée
+        // l'article sur l'écran Catalogue qu'il a déjà, et la demande se ferme
+        // d'elle-même. La correspondance passe par `canon`, la MÊME règle que
+        // l'identité — pas une comparaison de noms réécrite pour l'occasion.
+        const demandesClosesCreate = await cloturerDemandesCreationSatisfaites(db_firestore)
+          .catch((e) => { console.error("clôture demandes création:", e.message); return 0; });
+        return res.json({ success: true, id: reference, demandes_closes: demandesClosesCreate });
       }
 
       if (action === "request-delete-article" && req.method === "POST") {
@@ -8527,6 +9455,20 @@ exports.stockManagement = functions
 
       if (action === "validate-delete-article" && req.method === "POST") {
         const { request_id, approved, validated_by } = req.body;
+        // Rôle résolu SERVEUR : cette action écrit `active:false` sur une fiche
+        // catalogue. Sans garde, n'importe quel utilisateur authentifié pouvait
+        // désactiver n'importe quel article.
+        // PÉRIMÈTRE = l'EXPOSITION RÉELLE de l'écran « Suppr. Articles »
+        // (`fin_delete_articles`, NAV_ITEMS_FINANCE) : dg | finance | audit_interne.
+        // La garde passe de « tout utilisateur authentifié » à « les profils qui
+        // ont légitimement l'écran », rien de plus. Restreindre davantage — par
+        // exemple retirer `audit_interne`, profil de lecture — retirerait une
+        // capacité existante : c'est une décision PRODUIT, distincte de la
+        // fermeture de cette faille, et elle ne se prend pas ici.
+        const deleteArticleRole = await resolveCallerRole(authUser);
+        if (deleteArticleRole !== "dg" && deleteArticleRole !== "finance" && deleteArticleRole !== "audit_interne") {
+          return res.status(403).json({ success: false, error: "Réservé au DG, à la Finance ou à l'audit interne" });
+        }
         if (!request_id) return res.status(400).json({ success: false, error: "request_id requis" });
         const docRef = db_firestore.collection("article_delete_requests").doc(request_id);
         const snap = await docRef.get();
@@ -8535,6 +9477,10 @@ exports.stockManagement = functions
         const now = Date.now();
         if (approved) {
           await db_firestore.collection("articles_catalog").doc(data.article_id).update({ active: false, updated_at: now });
+          // La fiche n'est plus une identité valide : l'index doit le voir tout
+          // de suite, sinon la saisie continuerait 5 min à écrire du stock sous
+          // un article supprimé.
+          invalidateIdentiteArticleIndex();
           await docRef.update({ status: "approved", validated_by: validated_by || {}, validated_at: now });
         } else {
           await docRef.update({ status: "rejected", validated_by: validated_by || {}, validated_at: now });
@@ -8552,18 +9498,117 @@ exports.stockManagement = functions
         return res.json({ success: true, requests });
       }
 
+      // ========== DEMANDES DE CRÉATION D'ARTICLE (magasinier → DG) ==========
+      //
+      // Bâti sur le patron d'`article_delete_requests`, MAIS SANS SES DEUX
+      // DÉFAUTS : ses actions `request-*` / `list-*` n'ont AUCUNE garde de rôle
+      // (n'importe quel utilisateur authentifié pouvait demander la suppression
+      // de n'importe quel article, et lire toutes les demandes), et elle
+      // n'envoie AUCUNE notification — ni au valideur, ni au demandeur. Une
+      // demande que personne ne voit n'est pas une demande.
+
+      // --- DEMANDER la création d'un article (saisie explicite) ---
+      if (action === "request-article-creation" && req.method === "POST") {
+        // Rôle résolu SERVEUR, jamais depuis le body. Périmètre = les profils
+        // qui saisissent réellement des bons de stock, plus ceux qui créent
+        // l'article au bout de la chaîne.
+        const demandeRole = await resolveCallerRole(authUser);
+        const DEMANDE_ROLES = ["magasinier", "achats", "dg", "chef_f1", "chef_f5", "chef_avo"];
+        if (!DEMANDE_ROLES.includes(demandeRole)) {
+          return res.status(403).json({ success: false, error: "Profil non autorisé à demander la création d'un article" });
+        }
+        const libelleDemande = String((req.body && req.body.libelle) || "").trim();
+        if (!libelleDemande) return res.status(400).json({ success: false, error: "libelle requis" });
+        // Un article qui EXISTE déjà ne se demande pas : on le dit, plutôt que
+        // d'ouvrir une demande que le DG refermerait aussitôt.
+        const demandeIndex = await getIdentiteArticleIndex(db_firestore, { force: true });
+        const dejaLa = identiteArticle.resoudreIdentite(libelleDemande, demandeIndex);
+        if (dejaLa.issue === identiteArticle.ISSUE_RESOLU) {
+          return res.json({
+            success: true, deja_au_catalogue: true, article_id: dejaLa.ficheId,
+            message: "L'article « " + dejaLa.nom + " » existe déjà au catalogue.",
+          });
+        }
+        const demandesFaites = await enregistrerDemandesCreation(
+          db_firestore,
+          [{ issue: identiteArticle.ISSUE_INTROUVABLE, libelle: libelleDemande }],
+          { uid: authUser.uid, profileId: demandeRole, name: (authUser && (authUser.name || authUser.email)) || "" },
+          { origine: "request-article-creation", type: (req.body && req.body.origine) || "", numero: (req.body && req.body.numero) || "" }
+        );
+        return res.json({
+          success: true,
+          demandes_creation: demandesFaites,
+          message: "Demande de création envoyée au DG pour « " + libelleDemande + " ».",
+        });
+      }
+
+      // --- LISTER les demandes (écran DG / suivi) ---
+      if (action === "list-article-creation-requests") {
+        // Garde de rôle : lecture d'un flux de travail interne.
+        const listeRole = await resolveCallerRole(authUser);
+        const LISTE_ROLES = ["dg", "achats", "finance", "audit_interne", "magasinier"];
+        if (!LISTE_ROLES.includes(listeRole)) {
+          return res.status(403).json({ success: false, error: "Profil non autorisé" });
+        }
+        // Balayage de clôture AVANT de lister : sans lui, une demande satisfaite
+        // par un autre chemin que `create-article` (import CANEVA, fusion)
+        // resterait affichée indéfiniment.
+        const closes = await cloturerDemandesCreationSatisfaites(db_firestore)
+          .catch((e) => { console.error("clôture demandes création:", e.message); return 0; });
+        let demandeQuery = db_firestore.collection(demandeCreationArticle.COLLECTION);
+        if (req.query && req.query.statut) demandeQuery = demandeQuery.where("statut", "==", req.query.statut);
+        const demandeSnap = await demandeQuery.get();
+        const demandes = demandeSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        demandes.sort((a, b) => (b.derniere_demande_at || 0) - (a.derniere_demande_at || 0));
+        return res.json({ success: true, demandes, demandes_closes: closes });
+      }
+
+      // --- CLÔTURER les demandes satisfaites (idempotent, sans effet de bord) ---
+      if (action === "close-article-creation-requests" && req.method === "POST") {
+        const clotureRole = await resolveCallerRole(authUser);
+        if (clotureRole !== "dg" && clotureRole !== "achats") {
+          return res.status(403).json({ success: false, error: "Réservé au DG et aux achats" });
+        }
+        const closes = await cloturerDemandesCreationSatisfaites(db_firestore);
+        return res.json({ success: true, demandes_closes: closes });
+      }
+
       // ========== FUSION D'ARTICLES EN DOUBLON ==========
 
       // --- SUGGEST DUPLICATES (groupes par nom normalisé, active=true, >=2) ---
       if (action === "suggest-article-duplicates") {
+        // Rôle résolu SERVEUR (jamais depuis le body), règle PURE partagée avec
+        // `merge-articles` : `achats` OU `dg`. La garde était en dur sur
+        // `achats`, un profil qu'aucun humain n'utilise — la fusion des ~105
+        // paires de doublons n'a donc jamais pu être lancée en production.
         const callerRole = await resolveCallerRole(authUser);
-        if (callerRole !== "achats") {
-          return res.status(403).json({ success: false, error: "Réservé au responsable achats" });
+        const suggestDupPerm = stockRoles.peutFusionnerArticles(callerRole);
+        if (!suggestDupPerm.ok) {
+          return res.status(403).json({ success: false, error: suggestDupPerm.raison });
         }
         const snap = await db_firestore.collection("articles_catalog").where("active", "==", true).get();
+        // `prix_pmp`, `prix_ht` et `nb_achats` sont les DONNÉES DE DÉCISION :
+        // `merge-articles` ne les transfère PAS du doublon vers le maître, donc
+        // retenir la fiche sans prix laisse un article actif non valorisable.
+        // Sans elles dans la projection, l'écran ne peut ni les afficher ni
+        // suggérer un maître (cf. lib/stockMerge/masterSuggestion.js).
         const articles = snap.docs.map(d => {
           const data = d.data();
-          return { reference: data.reference || d.id, nom: data.nom || "", categorie: data.categorie || "", unite: data.unite || "" };
+          return {
+            // `id` = docId : SEULE clé acceptée par `merge-articles`, qui
+            // résout par `.doc(<clé>)`. Le champ `reference` diverge du docId
+            // sur 92 fiches (« ENG 0149 » vs « ENG0149 ») et 5 documents
+            // fantômes existent aux références espacées : l'envoyer comme
+            // master_ref ferait fusionner vers un document sans nom.
+            id: d.id,
+            reference: data.reference || d.id,
+            nom: data.nom || "",
+            categorie: data.categorie || "",
+            unite: data.unite || "",
+            prix_pmp: data.prix_pmp === undefined ? null : data.prix_pmp,
+            prix_ht: data.prix_ht === undefined ? null : data.prix_ht,
+            nb_achats: data.nb_achats === undefined ? null : data.nb_achats,
+          };
         });
         const groups = articleMerge.groupDuplicates(articles);
         return res.json({ success: true, groups });
@@ -8572,10 +9617,14 @@ exports.stockManagement = functions
       // --- MERGE ARTICLES (preview | execute) ---
       if (action === "merge-articles" && req.method === "POST") {
         const { master_ref, doublon_refs, mode, by } = req.body || {};
-        // Rôle : responsable achats seulement — résolu depuis le token Firebase (anti-spoof body)
+        // Rôle : `achats` OU `dg` — résolu depuis le token Firebase (anti-spoof
+        // body), via la MÊME règle pure que `suggest-article-duplicates`. Le
+        // message disait « Seul le responsable achats » alors que la fusion est
+        // une écriture au catalogue, ouverte au DG comme update-article.
         const callerRole = await resolveCallerRole(authUser);
-        if (callerRole !== "achats") {
-          return res.status(403).json({ success: false, error: "Seul le responsable achats peut fusionner des articles" });
+        const mergeArticlesPerm = stockRoles.peutFusionnerArticles(callerRole);
+        if (!mergeArticlesPerm.ok) {
+          return res.status(403).json({ success: false, error: mergeArticlesPerm.raison });
         }
         if (!master_ref || !Array.isArray(doublon_refs) || doublon_refs.length === 0) {
           return res.status(400).json({ success: false, error: "master_ref et doublon_refs[] requis" });
@@ -8586,15 +9635,22 @@ exports.stockManagement = functions
           return res.status(400).json({ success: false, error: "Le master ne peut pas être dans les doublons" });
         }
 
-        // Validation existence + active du master
+        // Validation existence + INTÉGRITÉ du master.
+        // La garde ne testait que `active === false` : un document sans champ
+        // `active` passait (`undefined !== false`). Il existe en production 5
+        // documents FANTÔMES sans `nom` ni `active` (références espacées dont
+        // le docId ne l'est pas) — fusionner vers l'un d'eux réécrit les
+        // libellés de mouvements et de BDC avec une chaîne vide. Règle pure
+        // partagée avec la validation des doublons ci-dessous.
         const masterSnap = await db_firestore.collection("articles_catalog").doc(master_ref).get();
         if (!masterSnap.exists) {
           return res.status(404).json({ success: false, error: "Article master introuvable: " + master_ref });
         }
-        if (masterSnap.data().active === false) {
-          return res.status(400).json({ success: false, error: "L'article master est inactif" });
-        }
         const masterData = masterSnap.data();
+        const masterIntegrite = articleMerge.verifierIntegriteFiche(masterData, master_ref, "master");
+        if (!masterIntegrite.ok) {
+          return res.status(400).json({ success: false, error: masterIntegrite.erreur });
+        }
         const masterNom = masterData.nom || "";
         const masterUnite = masterData.unite || "kg";
 
@@ -8606,7 +9662,15 @@ exports.stockManagement = functions
           if (!doublonDocs[i].exists) {
             return res.status(404).json({ success: false, error: "Article doublon introuvable: " + doublonRefs[i] });
           }
-          doublonNoms[doublonRefs[i]] = doublonDocs[i].data().nom || "";
+          const doublonData = doublonDocs[i].data();
+          // MÊME garde que le master : un doublon fantôme se ferait désactiver
+          // à la place de la vraie fiche — « fusion effectuée » à l'écran, et
+          // le doublon toujours là au rechargement (cas réel « ksc 7 perla »).
+          const doublonIntegrite = articleMerge.verifierIntegriteFiche(doublonData, doublonRefs[i], "doublon");
+          if (!doublonIntegrite.ok) {
+            return res.status(400).json({ success: false, error: doublonIntegrite.erreur });
+          }
+          doublonNoms[doublonRefs[i]] = doublonData.nom || "";
         }
         // Ensembles de valeurs identifiant un doublon dans les docs opérationnels :
         // - stock_movements.items[].article_ref peut contenir la référence OU le nom (legacy)
@@ -8861,6 +9925,10 @@ exports.stockManagement = functions
           await batch.commit();
         }
 
+        // Une fusion pose `merged_into` et désactive des fiches : l'index
+        // d'identité change, la résolution doit le voir tout de suite (sans
+        // quoi une saisie continuerait 5 min à viser la fiche absorbée).
+        invalidateIdentiteArticleIndex();
         return res.json({ success: true, counts, audit_id: auditRef.id });
       }
 
@@ -10069,6 +11137,402 @@ IMPORTANT:
         return res.json({ success: true, scan_url, analysis });
       }
 
+      // ========== SCAN BON DE CONSOMMATION INTERNE (matrice piles x articles) ==========
+      // Toute la logique métier vit dans functions/lib/stock/bcScan.js (module PUR,
+      // couvert par tests/unit/bcScan.test.js). Ici : upload + appel vision +
+      // rapprochement catalogue/parcelles. AUCUNE écriture métier : le BC n'est
+      // créé qu'ensuite, par l'action `create-bc` inchangée.
+
+      if (action === "scan-bc" && req.method === "POST") {
+        // Rôle résolu SERVEUR (resolveCallerRole), jamais depuis le body — même
+        // garde que save-bc-scan-alias. Sans elle, n'importe quel profil
+        // authentifié (chef, RH, ouvrier) pourrait déclencher un appel Opus et
+        // un upload Storage, alors que le bouton n'est exposé qu'au magasinier.
+        const scanBcRole = await resolveCallerRole(authUser);
+        if (scanBcRole !== "magasinier" && scanBcRole !== "dg") {
+          return res.status(403).json({ success: false, error: "Réservé au profil magasinier (ou dg)" });
+        }
+
+        const { scan_base64, filename, type } = req.body || {};
+        if (!scan_base64) return res.status(400).json({ success: false, error: "scan_base64 requis" });
+
+        const apiKey = process.env.ANTHROPIC_API_KEY;
+        if (!apiKey) return res.status(400).json({ success: false, error: "Clé API Anthropic non configurée" });
+
+        // 1) Type MIME RÉEL du scan — déduit du préfixe data-url, PAS de
+        //    l'extension du filename : le client ré-encode toujours en JPEG
+        //    (public/lib/imageDownscale.js), donc « bon.png » porte des octets
+        //    JPEG. Cf. bcScan.resolveScanMedia (module pur, testé). Le même
+        //    mediaType sert à l'appel vision ET au contentType Storage.
+        const rawName = String(filename || "scan.jpg");
+        const media = bcScan.resolveScanMedia(scan_base64, rawName);
+        if (!media.ok) return res.status(400).json({ success: false, error: media.error });
+        const mediaType = media.mediaType;
+
+        // Taille bornée pour ne pas saturer la mémoire de la function.
+        const cleanBase64 = scan_base64.replace(/^data:[a-z0-9.+-]+\/[a-z0-9.+-]+\s*;\s*base64,/i, "");
+        const buffer = Buffer.from(cleanBase64, "base64");
+        const BC_SCAN_MAX_BYTES = 8 * 1024 * 1024;
+        if (buffer.length > BC_SCAN_MAX_BYTES) {
+          const mo = (buffer.length / (1024 * 1024)).toFixed(1);
+          return res.status(400).json({ success: false, error: `Image trop lourde (${mo} Mo) : maximum 8 Mo` });
+        }
+
+        // 2) Upload du scan (trace + pièce jointe du futur BC).
+        const ts = Date.now();
+        const storagePath = `scans/bons_consommation/${ts}_${rawName}`;
+        const file = bucket.file(storagePath);
+        await file.save(buffer, { metadata: { contentType: mediaType } });
+        const scan_url = `https://storage.googleapis.com/${bucket.name}/${storagePath}`;
+
+        // 3) Référentiels — lus AVANT l'appel vision, car ils alimentent
+        //    désormais le VOCABULAIRE injecté dans le prompt (et non plus
+        //    seulement le rapprochement d'après-coup).
+        //    `consumption_vouchers` est borné aux 200 bons les plus récents :
+        //    on ne cherche qu'à savoir ce que le magasinier consomme vraiment,
+        //    pas à parcourir l'historique complet à chaque photo.
+        const [artSnapBc, aliasSnapBc, bonsSnapBc] = await Promise.all([
+          db_firestore.collection("articles_catalog").where("active", "==", true).get(),
+          db_firestore.collection("bc_scan_aliases").get(),
+          db_firestore.collection("consumption_vouchers").orderBy("date", "desc").limit(200).get()
+            .catch(() => null),
+        ]);
+        const catalogueBc = artSnapBc.docs
+          .map(d => ({ nom: (d.data() || {}).nom || "", categorie: (d.data() || {}).categorie || "" }))
+          .filter(a => a.nom);
+        // Noms d'articles vus dans les bons récents. Panne de lecture (index
+        // manquant sur `date`) -> liste vide : le vocabulaire retombe sur le
+        // seul filtre de catégorie, jamais d'erreur remontée au magasinier.
+        const consommesBc = [];
+        if (bonsSnapBc) {
+          bonsSnapBc.forEach((d) => {
+            const items = (d.data() || {}).items;
+            if (!Array.isArray(items)) return;
+            items.forEach((it) => { if (it && it.article) consommesBc.push(String(it.article)); });
+          });
+        }
+
+        // 4) Appel vision. `today` est INJECTÉ dans le prompt : aucune année en
+        //    dur (défaut du prompt scan-bon-apport, figé sur 2026).
+        const today = new Date().toISOString().split("T")[0];
+        const Anthropic = require("@anthropic-ai/sdk");
+        const bcClient = new Anthropic({ apiKey });
+        // VOCABULAIRE injecté dans le prompt (lot B) : ARTICLES UNIQUEMENT.
+        //
+        // ⚠️ L'absence de vocabulaire de PARCELLES est un RETRAIT MESURÉ, pas un
+        // oubli — ne pas le « rétablir » en croyant corriger une omission. Le
+        // paramètre `parcelles` de buildBcScanPrompt existe toujours et reste
+        // testé : seule l'alimentation depuis cette action a été retirée.
+        // Mesuré sur les 7 bons de référence, 4 passages : 29/73 parcelles
+        // pré-remplies AVEC la liste, 29/73 SANS. Aucun bénéfice, ~200 tokens
+        // par image, et une surface de risque de forçage en plus sur la donnée
+        // la plus coûteuse à se tromper (une consommation imputée à la mauvaise
+        // parcelle est invisible). Le rapprochement des parcelles se fait côté
+        // front (§5) et leur apprentissage par les alias du lot A.
+        const bcPrompt = bcScan.buildBcScanPrompt({
+          today,
+          articles: bcScan.selectVocabArticles(catalogueBc, type || "", consommesBc),
+        });
+        // Ordre VOLONTAIRE : texte (stable au sein d'un lot) d'abord avec le
+        // point de cache, image (variable) ensuite. Inversé, le préfixe ne
+        // serait plus cachable. `cache_control` n'engage la mise en cache qu'au
+        // delà du minimum de tokens du modèle ; en-dessous, l'appel se comporte
+        // exactement comme avant (aucune erreur, aucun surcoût).
+        const bcMessageContent = [
+          { type: "text", text: bcPrompt, cache_control: { type: "ephemeral" } },
+          { type: "image", source: { type: "base64", media_type: mediaType, data: cleanBase64 } },
+        ];
+        // Modèles — choix issu de la skill `claude-api` (source de vérité des ids
+        // de modèles ; à reconsulter AVANT toute modification de cette liste).
+        // - claude-opus-5 = modèle par défaut actuel (vision incluse) ;
+        //   claude-opus-4-8 = repli d'une génération.
+        // - Les ids sont COMPLETS tels quels : ne JAMAIS y ajouter un suffixe de
+        //   date. Ne pas régresser vers les snapshots figés de mai 2025 encore
+        //   utilisés par les autres actions scan-*.
+        // - `budget_tokens` et le prefill de message assistant sont bien rejetés
+        //   en 400 sur cette génération. En revanche le sujet du raisonnement
+        //   n'est PAS clos : sur claude-opus-5 le raisonnement adaptatif est
+        //   ACTIF PAR DÉFAUT (contrairement à opus-4-8), et sa profondeur se
+        //   pilote par `output_config.effort` — GA, sans en-tête beta, et
+        //   uniquement DANS `output_config`, jamais à la racine du corps.
+        // - On demande `effort: "low"` : lire un bon est une TRANSCRIPTION
+        //   structurée, pas un problème de raisonnement. Mesuré sur les 7 bons
+        //   de référence, 2 balayages entrelacés low/medium/high :
+        //   fidélité IDENTIQUE aux trois niveaux (48/73 articles), mais 7,2 s
+        //   par bon en `low` contre 11,2 s sans vocabulaire et ~15 s en `high`,
+        //   et 460 tokens de sortie contre ~1000. `low` est aussi le SEUL
+        //   niveau dont les sommes de quantités sont conformes au papier sur
+        //   les 7 bons, aux deux passages.
+        //   ⚠️ `output_config` n'est envoyé qu'à claude-opus-5, et la raison
+        //   n'est PAS que le repli le refuserait : vérifié par sonde,
+        //   claude-opus-4-8 l'accepte sans erreur. La raison est qu'on n'a
+        //   mesuré l'effet de `effort` que sur opus-5 (le repli n'a pas de
+        //   raisonnement actif par défaut, l'effet y est au mieux nul). Le
+        //   repli est le chemin d'urgence : on n'y ajoute pas un paramètre
+        //   dont on n'a pas mesuré le comportement.
+        const BC_SCAN_MODELS = ["claude-opus-5", "claude-opus-4-8"];
+        const BC_SCAN_EFFORT_MODELS = { "claude-opus-5": "low" };
+        let bcResponse = null;
+        let bcLastError = null;
+        for (const modelId of BC_SCAN_MODELS) {
+          try {
+            const bcBody = {
+              model: modelId,
+              max_tokens: 3000,
+              messages: [{ role: "user", content: bcMessageContent }],
+            };
+            if (BC_SCAN_EFFORT_MODELS[modelId]) {
+              bcBody.output_config = { effort: BC_SCAN_EFFORT_MODELS[modelId] };
+            }
+            bcResponse = await bcClient.messages.create(bcBody);
+            break;
+          } catch (e) {
+            bcLastError = e;
+            console.error("Erreur modèle scan-bc", modelId, e.message);
+          }
+        }
+        if (!bcResponse) {
+          return res.json({ success: false, scan_url, error: `Appel IA impossible : ${bcLastError ? bcLastError.message : "erreur inconnue"}` });
+        }
+
+        const bcAiText = (bcResponse.content || []).filter(b => b.type === "text").map(b => b.text).join("\n");
+        const analysis = bcScan.parseAiJson(bcAiText);
+        if (!analysis) {
+          return res.json({ success: false, scan_url, error: "Analyse IA impossible - réponse non structurée", raw: bcAiText });
+        }
+
+        // 5) Rapprochement — ARTICLES UNIQUEMENT (catalogue actif + alias mémorisés).
+        //
+        // Les PARCELLES ne sont volontairement PAS rapprochées côté serveur : le
+        // backend ne peut pas savoir quelle liste le front affiche au magasinier
+        // (mode `useConsoSelector` -> `refForCampagne`, sinon `/api/parcelles`,
+        // plus les groupes). Et le seul référentiel disponible ici,
+        // `sb_parcelle_referentiel` (15 entrées), est bien un SOUS-ENSEMBLE des
+        // 43 labels de `sql_mirror_pointage_meta/br_parcelle_sup` qui alimentent
+        // `parcelles-campagne-list`, donc le <select> — ses 15 labels y figurent
+        // tous, les deux listes ne sont PAS disjointes. Mais c'est un
+        // sous-ensemble PARTIEL (15/43) et NON FILTRÉ PAR CAMPAGNE : rapprocher
+        // contre lui, c'est (a) ne jamais pouvoir proposer les 28 autres
+        // parcelles — dont « S3 - MARAVILLA MOTTE F1 », la plus utilisée des
+        // bons — et (b) pouvoir proposer une parcelle hors campagne courante,
+        // absente du select, donc rejetée. On renvoie donc `parcelle_lue` brut
+        // et un statut `unmatched` franc ; le rapprochement se fait côté front,
+        // là où la liste affichée est connue, via bcScan.matchParcelle.
+        const flatItems = bcScan.flattenBcScan(analysis);
+        // catalogueBc / aliasSnapBc sont déjà lus au §3 (ils servent aussi au
+        // vocabulaire du prompt) — pas de seconde lecture Firestore ici.
+        // Forme objet {article_nom, count} : le compteur d'usage est remonté au
+        // front (article_alias_count) pour distinguer un alias confirmé N fois
+        // d'un alias posé une seule fois par un magasinier — un alias reste une
+        // saisie humaine, jamais une certitude.
+        const aliasesBc = {};
+        aliasSnapBc.forEach((d) => {
+          const data = d.data() || {};
+          if (data.article_nom) {
+            aliasesBc[d.id] = { article_nom: data.article_nom, count: parseInt(data.count, 10) || 0 };
+          }
+        });
+        const items = flatItems.map((it) => {
+          const am = bcScan.matchArticle(it.article_lu, catalogueBc, aliasesBc);
+          return {
+            article_lu: it.article_lu,
+            article: am.article,
+            article_status: am.status,
+            article_score: am.score,
+            article_alias_count: am.aliasCount,
+            // parcelle_lue = texte brut de l'en-tête manuscrit, indispensable au
+            // rapprochement front. Les 3 champs suivants gardent la forme du
+            // contrat (le front les consomme déjà) mais ne sont plus renseignés
+            // ici : c'est le front qui rapproche, avec la liste qu'il affiche.
+            parcelle_lue: it.parcelle_lue,
+            parcelle: "",
+            parcelle_status: "unmatched",
+            parcelle_candidats: [],
+            quantite: it.quantite,
+            unite: it.unite_lue,
+            pile: it.pile,
+            // barre : la ligne est rayée sur le papier. Elle n'est PLUS filtrée
+            // (dernier chemin de perte silencieuse) — le front la grise et
+            // laisse l'utilisateur trancher, la détection de rature pouvant
+            // se tromper. Champ additif, toujours booléen.
+            barre: it.barre === true,
+          };
+        });
+
+        return res.json({ success: true, scan_url, type: type || null, analysis, items });
+      }
+
+      if (action === "list-bc-scan-aliases") {
+        const snap = await db_firestore.collection("bc_scan_aliases").get();
+        const aliases = {};
+        snap.forEach((d) => {
+          const data = d.data() || {};
+          if (data.article_nom) aliases[d.id] = data.article_nom;
+        });
+        return res.json({ success: true, aliases });
+      }
+
+      if (action === "save-bc-scan-alias" && req.method === "POST") {
+        // Rôle résolu SERVEUR (resolveCallerRole), jamais depuis le body.
+        const aliasRole = await resolveCallerRole(authUser);
+        if (aliasRole !== "magasinier" && aliasRole !== "dg") {
+          return res.status(403).json({ success: false, error: "Réservé au profil magasinier (ou dg)" });
+        }
+        const { libelle_lu, article_nom, created_by } = req.body || {};
+        if (!libelle_lu || !article_nom) {
+          return res.status(400).json({ success: false, error: "Champs requis: libelle_lu, article_nom" });
+        }
+        const aliasId = bcScan.normalizeLabel(libelle_lu);
+        if (!aliasId) return res.status(400).json({ success: false, error: "libelle_lu invalide" });
+
+        const aliasRef = db_firestore.collection("bc_scan_aliases").doc(aliasId);
+        const count = await db_firestore.runTransaction(async (tx) => {
+          const snap = await tx.get(aliasRef);
+          const prev = snap.exists ? (snap.data() || {}) : {};
+          const nextCount = (parseInt(prev.count, 10) || 0) + 1;
+          tx.set(aliasRef, {
+            libelle_lu: String(libelle_lu),
+            article_nom: String(article_nom),
+            count: nextCount,
+            created_by: prev.created_by || created_by || {},
+            updated_at: Date.now(),
+          }, { merge: true });
+          return nextCount;
+        });
+        return res.json({ success: true, id: aliasId, count });
+      }
+
+      // ---- Alias de PARCELLE (en-tête de pile manuscrit -> libellé BEE ONE) ----
+      // Symétrique des alias d'article, avec UNE différence structurante : la
+      // CAMPAGNE fait partie de la clé. Le secteur 9 portait « S9 - REYNA F5 »
+      // (3 ha) en 2025-2026 et porte « F5- MYA S9 » + « F5 YAZMIN MT » en
+      // 2026-2027 : un alias appris l'an dernier imputerait la consommation à une
+      // parcelle qui n'existe plus. Cf. docs/spec-scan-apprentissage.md, risque R1.
+      //
+      // La valeur mémorisée est le LIBELLÉ BEE ONE, jamais le nom Smart Berry :
+      // ce dernier n'est qu'un habillage d'affichage, et un renommage
+      // invaliderait silencieusement tous les alias appris.
+
+      if (action === "list-bc-scan-parcelle-aliases") {
+        // Rôle résolu SERVEUR, comme save-bc-scan-parcelle-alias : ces alias
+        // n'ont d'usage que dans la modale de scan, réservée au magasinier.
+        const listParcAliasRole = await resolveCallerRole(authUser);
+        if (listParcAliasRole !== "magasinier" && listParcAliasRole !== "dg") {
+          return res.status(403).json({ success: false, error: "Réservé au profil magasinier (ou dg)" });
+        }
+        const campagneAsked = String((req.query || {}).campagne || "").trim();
+        // Sans campagne explicite, on ne renvoie RIEN : renvoyer « tous les alias »
+        // reviendrait à laisser le front appliquer une correspondance d'une autre
+        // campagne — exactement ce que la clé cherche à empêcher.
+        if (!/^\d{4}-\d{4}$/.test(campagneAsked)) {
+          return res.json({ success: true, campagne: "", aliases: {} });
+        }
+        const parcAliasSnap = await db_firestore.collection("bc_scan_parcelle_aliases")
+          .where("campagne", "==", campagneAsked).get();
+        const parcelleAliases = {};
+        parcAliasSnap.forEach((d) => {
+          const data = d.data() || {};
+          if (data.normalise && data.parcelle) {
+            parcelleAliases[data.normalise] = {
+              parcelle: data.parcelle,
+              count: parseInt(data.count, 10) || 0,
+              campagne: data.campagne || campagneAsked,
+            };
+          }
+        });
+        return res.json({ success: true, campagne: campagneAsked, aliases: parcelleAliases });
+      }
+
+      if (action === "save-bc-scan-parcelle-alias" && req.method === "POST") {
+        // Rôle résolu SERVEUR (resolveCallerRole), jamais depuis le body.
+        const parcAliasRole = await resolveCallerRole(authUser);
+        if (parcAliasRole !== "magasinier" && parcAliasRole !== "dg") {
+          return res.status(403).json({ success: false, error: "Réservé au profil magasinier (ou dg)" });
+        }
+        const { entete_lu, parcelle, campagne, created_by } = req.body || {};
+        // En-tête illisible -> rien à apprendre (risque R6 : clé vide polluante).
+        if (!entete_lu || !parcelle || !campagne) {
+          return res.status(400).json({ success: false, error: "Champs requis: entete_lu, parcelle, campagne" });
+        }
+        const parcAliasId = bcScan.parcelleAliasDocId(campagne, entete_lu);
+        if (!parcAliasId) {
+          return res.status(400).json({ success: false, error: "entete_lu ou campagne invalide" });
+        }
+        const normalise = bcScan.normalizeLabel(entete_lu);
+
+        const parcAliasRef = db_firestore.collection("bc_scan_parcelle_aliases").doc(parcAliasId);
+        const parcCount = await db_firestore.runTransaction(async (tx) => {
+          const snap = await tx.get(parcAliasRef);
+          const prev = snap.exists ? (snap.data() || {}) : {};
+          // La DERNIÈRE décision humaine fait foi : si le magasinier choisit une
+          // AUTRE parcelle pour le même en-tête, on écrase et le compteur repart
+          // à 1 (module pur bcScan.nextParcelleAliasCount, testé unitairement).
+          const memeParcelle = String(prev.parcelle || "") === String(parcelle);
+          const nextCount = bcScan.nextParcelleAliasCount(prev, parcelle);
+          tx.set(parcAliasRef, {
+            entete_lu: String(entete_lu),
+            normalise,
+            campagne: String(campagne),
+            parcelle: String(parcelle),
+            count: nextCount,
+            created_by: memeParcelle ? (prev.created_by || created_by || {}) : (created_by || {}),
+            updated_by: created_by || {},
+            updated_at: Date.now(),
+          }, { merge: true });
+          return nextCount;
+        });
+        return res.json({ success: true, id: parcAliasId, count: parcCount });
+      }
+
+      // ---- JOURNAL DE PRÉCISION DU SCAN (spec §4.4, lot C) --------------------
+      // Un document par ligne ENREGISTRÉE — pas seulement par ligne corrigée.
+      // Une proposition conservée est une CONFIRMATION : c'est le dénominateur,
+      // sans lui aucun taux n'est calculable. Le journal sert à régler les
+      // seuils (SIMILARITY_THRESHOLD / INCLUSION_THRESHOLD) sur des faits, et
+      // surtout à faire apparaître les faux positifs avérés : une proposition
+      // sortie en `exact` puis corrigée par le magasinier.
+      //
+      // ⚠️ Cette action est de l'OBSERVATION, jamais du métier. Le front
+      // l'appelle APRÈS un `create-bc` réussi, en best effort : un échec ici ne
+      // doit jamais faire échouer l'enregistrement du bon. Le contrat de
+      // `create-bc` reste inchangé (purement additif).
+      if (action === "save-bc-scan-journal" && req.method === "POST") {
+        // Rôle résolu SERVEUR, jamais depuis le body — même garde que les alias.
+        const journalRole = await resolveCallerRole(authUser);
+        if (journalRole !== "magasinier" && journalRole !== "dg") {
+          return res.status(403).json({ success: false, error: "Réservé au profil magasinier (ou dg)" });
+        }
+        const { date: journalDate, bon_numero: journalBon, lignes: journalLignes } = req.body || {};
+        // `corrige_par` est résolu SERVEUR (token + profil), jamais repris du
+        // body : c'est une donnée d'audit, elle ne se déclare pas.
+        const journalBuilt = bcScanJournal.buildJournalDocs({
+          date: journalDate,
+          bon_numero: journalBon,
+          lignes: journalLignes,
+          corrige_par: {
+            uid: (authUser && authUser.uid) || "",
+            profileId: journalRole,
+            name: (authUser && (authUser.name || authUser.email)) || "",
+          },
+        });
+        if (!journalBuilt.ok) {
+          return res.status(400).json({ success: false, error: journalBuilt.error });
+        }
+        // Un bon fait une quinzaine de lignes : un seul batch suffit très
+        // largement (plafond du module = 200, limite Firestore = 500).
+        const journalBatch = db_firestore.batch();
+        journalBuilt.docs.forEach((doc) => {
+          journalBatch.set(db_firestore.collection("bc_scan_corrections").doc(), doc);
+        });
+        await journalBatch.commit();
+        return res.json({
+          success: true,
+          campagne: journalBuilt.campagne,
+          enregistrees: journalBuilt.docs.length,
+          ignorees: journalBuilt.ignorees,
+        });
+      }
+
       // ========== SCAN FICHE IRRIGATION (AI-powered irrigation sheet scanning) ==========
 
       if (action === "scan-irrigation-sheet" && req.method === "POST") {
@@ -10242,8 +11706,17 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
       // ========== STOCK MOVEMENTS (Gestion de stock) ==========
 
       // --- Helper: update stock_balances atomically ---
-      async function updateStockBalance(lieuType, lieuId, articleRef, articleNom, unite, delta) {
-        const balanceId = `${lieuType}_${lieuId}_${articleRef}`.replace(/\s+/g, '_');
+      //
+      // ⚠️ `ficheId` DOIT être une identité DÉJÀ RÉSOLUE (docId d'une fiche
+      // active du catalogue), jamais un libellé. C'est la règle que ce lot
+      // installe : l'identifiant du document de solde est
+      // `${lieu_type}_${lieu_id}_${docId de fiche}`. Passer un libellé ici
+      // recrée exactement le défaut d'origine — deux documents de solde pour le
+      // même article au même lieu, 47 cas mesurés le 2026-08-31.
+      // La résolution se fait chez l'appelant (`resoudreLignesStock`), qui peut
+      // REFUSER le bon ; ce helper, lui, ne sait pas refuser : il écrit.
+      async function updateStockBalance(lieuType, lieuId, ficheId, articleNom, unite, delta) {
+        const balanceId = identiteArticle.identifiantSoldeCanonique(lieuType, lieuId, ficheId);
         const balRef = db_firestore.collection("stock_balances").doc(balanceId);
         await db_firestore.runTransaction(async (t) => {
           const snap = await t.get(balRef);
@@ -10251,7 +11724,9 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
           const newBalance = Math.round((current + delta) * 100) / 100;
           t.set(balRef, {
             lieu_type: lieuType, lieu_id: lieuId,
-            article_ref: articleRef, article_nom: articleNom,
+            // `article_ref` porte l'IDENTITÉ (docId de fiche) ; `article_nom`
+            // garde le libellé saisi, qui reste ce que le magasinier lit.
+            article_ref: ficheId, article_nom: articleNom,
             unite: unite || "kg", balance: newBalance,
             updated_at: Date.now()
           }, { merge: true });
@@ -10259,10 +11734,29 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
       }
 
       // --- Helper: apply stock impact for a validated movement ---
+      //
+      // Le repli `item.article_ref || item.article` A DISPARU : il prenait un
+      // LIBELLÉ pour une identité, et c'est lui qui rangeait le solde dans un
+      // second document à côté de celui de la fiche. La règle est désormais
+      // `identiteArticle.identiteImpact`, module PUR et testé.
+      //
+      // ⚠️ CE QUE CETTE SYMÉTRIE GARANTIT — ET CE QU'ELLE NE GARANTIT PAS.
+      // `apply` et `reverse` partagent la MÊME fonction : pour un mouvement
+      // donné, ils calculent forcément la même clé. Mais cela ne vaut que si
+      // les deux passent par ce code. Ce n'est PAS le cas des 4 355 mouvements
+      // ANTÉRIEURS à ce lot : leur aller a débité la clé BRUTE (le libellé),
+      // et leur annulation, elle, visera la clé RÉSOLUE. Le retour tombe donc
+      // dans un autre document que l'aller (vérifié sur BCG-5620).
+      // Ce n'est pas une perte — la SOMME des deux fragments reste juste, et la
+      // re-clé des soldes prévue au déploiement les réunit. Mais tant que cette
+      // re-clé n'a pas eu lieu, ne pas lire ce helper comme « l'annulation vise
+      // exactement le document que l'application a touché » : c'est vrai des
+      // mouvements créés APRÈS ce lot, faux des précédents.
       async function applyStockImpact(movement) {
         const promises = [];
+        const identiteIndex = await getIdentiteArticleIndex(db_firestore);
         for (const item of (movement.items || [])) {
-          const ref = item.article_ref || item.article || "";
+          const ref = identiteArticle.identiteImpact(item, identiteIndex);
           const nom = item.article_nom || item.article || "";
           const qty = parseFloat(item.quantite) || 0;
           const unite = item.unite || "kg";
@@ -10285,8 +11779,12 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
       // matérialisé (status === valide_chef), sinon double-comptage.
       async function reverseStockImpact(movement) {
         const promises = [];
+        // MÊME résolution que applyStockImpact, par la MÊME fonction pure —
+        // avec la réserve documentée là-bas sur les mouvements antérieurs au
+        // lot, dont l'aller avait débité la clé brute.
+        const identiteIndex = await getIdentiteArticleIndex(db_firestore);
         for (const item of (movement.items || [])) {
-          const ref = item.article_ref || item.article || "";
+          const ref = identiteArticle.identiteImpact(item, identiteIndex);
           const nom = item.article_nom || item.article || "";
           const qty = parseFloat(item.quantite) || 0;
           const unite = item.unite || "kg";
@@ -10311,12 +11809,11 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
         return null;
       }
 
-      // --- Helper: check if movement needs multi-level validation ---
-      // Seules les réceptions restent en attente (valorisation + validation Achats avant impact).
-      // Sorties, transferts et consommations sont auto-validés (impact stock immédiat à la création).
-      function movementNeedsMultiValidation(type) {
-        return type === "reception";
-      }
+      // `movementNeedsMultiValidation(type)` vivait ici. Supprimée : elle
+      // n'était appelée nulle part, et affirmait que les réceptions restent en
+      // attente de validation Achats — exactement l'inverse de ce que fait
+      // désormais le code. Un helper mort qui contredit le comportement réel est
+      // pire qu'absent : il se lit comme une règle.
 
       // --- UPLOAD SCAN for stock movements ---
       if (action === "upload-scan" && req.method === "POST") {
@@ -10400,14 +11897,24 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
         }
         // Rebuild ALL stock_balances from inventory baseline + full movement ledger
         async function rebuildBalances(balancesInit) {
-          const bal = new Map(); // balanceId -> {fields, balance}
-          const keyOf = (lt, li, ref) => `${lt}_${li}_${ref}`.replace(/\s+/g, "_");
+          // ⚠️ GÉNÉRATION ET PURGE PARTAGENT LA MÊME RÈGLE DE CLÉ.
+          // Ce helper portait sa PROPRE copie de la formule (`keyOf`) et
+          // rangeait les soldes sous le LIBELLÉ des mouvements, tandis que la
+          // purge supprimait « tout ce qui n'a pas été régénéré ». Un import
+          // effaçait donc les soldes rangés sous la référence de la fiche, que
+          // la saisie courante recréait aussitôt à côté : c'est l'aggravant qui
+          // faisait remonter le compte de fragments après chaque import.
+          // Désormais la clé vient d'`identifiantSoldeCanonique`, alimentée par
+          // l'identité RÉSOLUE, et la purge est dérivée des clés réellement
+          // générées (`docsAPurger`) — la divergence n'est plus exprimable.
+          //
+          // Les 4 516 mouvements gardent leur libellé (décision d'Omar) : c'est
+          // ici, à la lecture, qu'il devient une identité.
+          const identiteIndex = await getIdentiteArticleIndex(db_firestore, { force: true });
+          /** @type {Array<Object>} */
+          const deltas = [];
           const add = (lt, li, ref, nom, unite, delta) => {
-            const k = keyOf(lt, li, ref);
-            const cur = bal.get(k) || { lieu_type: lt, lieu_id: li, article_ref: ref, article_nom: nom, unite: unite || "kg", balance: 0 };
-            cur.balance = Math.round((cur.balance + delta) * 100) / 100;
-            if (nom) cur.article_nom = nom;
-            bal.set(k, cur);
+            deltas.push({ lieu_type: lt, lieu_id: li, article_ref: ref, article_nom: nom, unite, delta });
           };
           for (const b of balancesInit) add(b.lieu_type, b.lieu_id, b.article_ref, b.article_nom, b.unite, b.balance);
           const allMovSnap = await db_firestore.collection("stock_movements").get();
@@ -10420,16 +11927,26 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
             if (!isImpactApplied(mData)) continue;
             for (const d of stockCaneva.movementDelta(mData)) add(d.lieu_type, d.lieu_id, d.article_ref, d.article_nom, d.unite, d.delta);
           }
+          // Une SEULE agrégation, une SEULE règle de clé (identité résolue).
+          const { soldes, non_resolus } = identiteArticle.agregerSoldes(deltas, identiteIndex);
+          if (non_resolus.length) {
+            // Repli assumé (cf. identiteArticle.agregerSoldes) : un libellé
+            // historique orphelin garde sa clé brute et survit donc à la purge.
+            // Tracé, parce qu'un solde qu'aucune fiche ne réclame est du stock
+            // que plus personne ne voit.
+            console.warn("rebuildBalances : libellés sans fiche au catalogue —", non_resolus.join(", "));
+          }
           // Write computed balances; delete stale ones absent from the rebuild
           const existingBalSnap = await db_firestore.collection("stock_balances").get();
           const ops = [];
-          const seen = new Set();
-          for (const [k, v] of bal) {
-            seen.add(k);
+          for (const [k, v] of soldes) {
             ops.push({ type: "set", ref: db_firestore.collection("stock_balances").doc(k), data: { ...v, updated_at: Date.now() } });
           }
+          // La purge est DÉRIVÉE des clés générées, jamais recalculée : un
+          // import ne peut plus supprimer un solde qu'il sait régénérer.
+          const aPurger = new Set(identiteArticle.docsAPurger(soldes, existingBalSnap.docs.map((d) => d.id)));
           for (const doc of existingBalSnap.docs) {
-            if (!seen.has(doc.id)) ops.push({ type: "delete", ref: doc.ref });
+            if (aPurger.has(doc.id)) ops.push({ type: "delete", ref: doc.ref });
           }
           await commitOps(ops);
         }
@@ -10613,7 +12130,7 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
       // --- CREATE MOVEMENT ---
       if (action === "create-movement" && req.method === "POST") {
         const { type, date, lieu_source, lieu_destination, ferme, items, ref_bl_fournisseur,
-          bdc_id, bl_id, reception_libre, reception_libre_motif, ref_bon_physique,
+          bdc_id, bl_id, ref_bon_physique,
           sortie_type, scan_url, fournisseur_nom, beneficiaire, created_by,
           motif_rebut, justificatif_url } = req.body;
 
@@ -10627,8 +12144,22 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
         if (type === "sortie" && !["retour_fournisseur", "pret", "rebut"].includes(sortie_type)) {
           return res.status(400).json({ success: false, error: "sortie_type requis: retour_fournisseur, pret, rebut" });
         }
-        if (type === "reception" && reception_libre && !reception_libre_motif) {
-          return res.status(400).json({ success: false, error: "Motif obligatoire pour réception libre" });
+        // La réception libre est SUPPRIMÉE : toute réception doit être rattachée à
+        // un bon de commande, comme create-bl l'exige déjà. Sans BDC il n'existe
+        // aucune source de prix, donc aucune valorisation possible — la
+        // marchandise entrait en stock sans jamais compter dans les coûts.
+        //
+        // Mesure production avant fermeture : 2 réceptions sans bdc_id créées dans
+        // l'application (BR-2026-0003 et BR-2026-0006, du 6 au 11 juin 2026),
+        // aucune depuis, contre 64 via bon de commande jusqu'au 24 août.
+        //
+        // Message actionnable, pas un 400 sec : l'écran vers lequel aller est nommé.
+        if (type === "reception" && !bdc_id) {
+          return res.status(400).json({
+            success: false,
+            error: "Une réception doit être rattachée à un bon de commande. Utilisez l'onglet « BDC à réceptionner » pour saisir la livraison à partir du BDC concerné.",
+            code: "bdc_requis",
+          });
         }
 
         // Identité créateur : on force userId = uid du TOKEN (anti-spoof), en
@@ -10647,12 +12178,55 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
         // Une évolution Réception/Sortie qui enverrait une parcelle par item se
         // croirait fonctionnelle en silence : la propager explicitement ici
         // AVANT de s'appuyer dessus en aval.
-        const movItems = items.map((it) => ({
+        const movItemsSaisis = items.map((it) => ({
           article_ref: it.article_ref || it.article || "",
           article_nom: it.article_nom || it.article || "",
           quantite: parseFloat(it.quantite) || 0,
-          unite: it.unite || "kg",
+          // Aucune unité fabriquée — MÊME règle que create-bl. Inventer "kg" ici
+          // faisait pire qu'une absence : le module comparait alors deux unités
+          // CONNUES et différentes (BDC en L contre "kg" inventé) et refusait le
+          // prix pour divergence. Les deux chemins de création d'une réception
+          // rendaient des résultats différents pour la MÊME livraison — la
+          // divergence silencieuse que ce lot existe pour rendre impossible.
+          unite: it.unite || "",
         }));
+
+        // --- IDENTITÉ D'ARTICLE (lib/stock/identiteArticle) ----------------
+        // Le front envoie un LIBELLÉ dans `article_ref` (transfert et sortie le
+        // remplissent explicitement avec le nom : le champ « référence » existe
+        // et il est faux). On le RÉSOUT ici, une fois, vers le docId de la
+        // fiche active — avant la garde de stock, avant la valorisation, avant
+        // toute écriture.
+        //
+        // FAIL-CLOSED (décision d'Omar) : un article inconnu ou ambigu fait
+        // échouer le bon, en le nommant. Rien n'entre en stock sous une
+        // identité inventée.
+        const movResolution = await resoudreLignesStock(db_firestore, movItemsSaisis);
+        if (!movResolution.ok) {
+          // DÉCISION D'OMAR : « on demande au magasinier de demander la
+          // création de l'article et de la soumettre au DG ». Le refus n'est
+          // donc pas une impasse — il OUVRE la demande lui-même. Ces écrans
+          // (transfert, sortie) n'ont pas le bouton « Créer cet article », et
+          // `public/app.jsx` est gelé : la sortie ne peut être que serveur.
+          const movDemandes = await enregistrerDemandesCreation(
+            db_firestore,
+            movResolution.refus.details,
+            { uid: authUser.uid, profileId: (created_by || {}).profileId || "", name: (created_by || {}).name || "" },
+            { origine: "create-movement", type, numero: "" }
+          );
+          return res.status(400).json({
+            success: false,
+            // Le message part tel quel dans l'`alert()` existant du front :
+            // aucune modification de `public/app.jsx` n'est nécessaire.
+            error: demandeCreationArticle.messageRefus(movResolution.refus.details, movDemandes),
+            code: movResolution.refus.code,
+            demandes_creation: movDemandes,
+          });
+        }
+        // `article_nom` conserve le libellé saisi : la valorisation
+        // (prixLigne.valoriserLignes) le lit en priorité, elle voit donc
+        // toujours le même article qu'avant ce lot.
+        const movItems = movResolution.lignes;
 
         if (type === "reception") {
           const negativeItem = movItems.find((it) => it.quantite < 0);
@@ -10671,17 +12245,22 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
         // pour ces types ET quand un lieu de départ est défini.
         const STOCK_GUARDED_TYPES = ["sortie", "transfert"];
         if (STOCK_GUARDED_TYPES.includes(type) && lieu_source && lieu_source.id) {
-          const refs = [...new Set(movItems.map((it) => it.article_ref).filter(Boolean))];
+          //
+          // ⚠️ POINT LE PLUS VICIEUX DU CHANTIER. Cette garde reconstruisait
+          // l'identifiant du solde AVEC SA PROPRE COPIE de la formule, à partir
+          // du libellé. Si elle lit sous une clé que l'écriture n'emploie plus,
+          // elle interroge un seau VIDE : elle laisse alors sortir du stock qui
+          // n'existe pas, sans la moindre erreur. La clé de LECTURE est donc
+          // dérivée de la MÊME fonction que la clé d'ÉCRITURE
+          // (`identifiantSoldeCanonique`), à partir des lignes DÉJÀ RÉSOLUES.
+          const gardeCles = identiteArticle.identifiantsGardeStock(lieu_source, movItems);
           const availableByRef = {};
           const balSnaps = await Promise.all(
-            refs.map((ref) => {
-              const balanceId = `${lieu_source.type}_${lieu_source.id}_${ref}`.replace(/\s+/g, "_");
-              return db_firestore.collection("stock_balances").doc(balanceId).get();
-            })
+            gardeCles.map((c) => db_firestore.collection("stock_balances").doc(c.balanceId).get())
           );
-          refs.forEach((ref, idx) => {
+          gardeCles.forEach((c, idx) => {
             const snap = balSnaps[idx];
-            availableByRef[ref] = snap.exists ? (snap.data().balance || 0) : 0;
+            availableByRef[c.ficheId] = snap.exists ? (snap.data().balance || 0) : 0;
           });
           const guardResult = checkStockAvailability({ type, items: movItems }, availableByRef);
           if (!guardResult.allowed) {
@@ -10690,12 +12269,35 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
         }
 
         const singleValidation = !!req.body.single_validation;
-        // Réception : TOUJOURS en attente de valorisation + validation Achats (aucun impact à la création),
-        //   y compris la réception libre (le raccourci single_validation ne s'applique plus aux réceptions).
-        // Sortie / transfert / consommation : auto-validés, impact stock immédiat à la création.
+        // TOUS les types sont auto-validés, impact stock immédiat à la création.
+        //
+        // Les réceptions le sont depuis la suppression de l'étape Achats : ce
+        // chemin les créait en `en_attente_achats`, c'est-à-dire hors stock tant
+        // qu'un profil Achats ne les validait pas — ce que plus personne ne
+        // faisait. C'était la même impasse que create-bl, par une autre porte.
         const isReception = type === "reception";
-        const needsMulti = isReception;
-        const initialStatus = isReception ? "en_attente_achats" : "valide_chef";
+
+        // Valorisation : MÊME décision que create-bl, même module pur. Une seule
+        // règle de prix dans le dépôt, aucune divergence silencieuse possible
+        // entre les deux chemins de création d'une réception.
+        let receptionItems = movItems;
+        let receptionValorisation = null;
+        if (isReception) {
+          // Source de prix = le BDC lié, s'il y en a un. Une réception sans BDC
+          // n'a aucune source : ses lignes entrent en stock NON valorisées, avec
+          // leur motif. Jamais un zéro par défaut.
+          let bdcSource = null;
+          if (bdc_id) {
+            const bdcSnapForPrix = await db_firestore.collection("purchase_orders").doc(bdc_id).get();
+            if (bdcSnapForPrix.exists) bdcSource = bdcSnapForPrix.data();
+          }
+          const valoMov = receptionBdc.valoriserItemsReception(movItems, bdcSource);
+          receptionItems = valoMov.items;
+          receptionValorisation = valoMov.resume;
+        }
+        // Statut de création d'une réception : la constante testée du module,
+        // jamais une chaîne en dur ici.
+        const initialStatus = isReception ? receptionBdc.STATUT_RECEPTION_A_LA_CREATION : "valide_chef";
 
         const movData = {
           numero, type,
@@ -10703,12 +12305,13 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
           lieu_source: lieu_source || null,
           lieu_destination: lieu_destination || null,
           ferme: ferme || "",
-          items: movItems,
+          items: receptionItems,
           ref_bl_fournisseur: ref_bl_fournisseur || "",
           bdc_id: bdc_id || null,
           bl_id: bl_id || null,
-          reception_libre: !!reception_libre,
-          reception_libre_motif: reception_libre_motif || "",
+          // `reception_libre` / `reception_libre_motif` ne sont plus écrits : la
+          // réception libre est supprimée. Les documents existants les conservent
+          // (les effacer serait une migration de données, et ils n'encombrent personne).
           single_validation: singleValidation,
           ref_bon_physique: ref_bon_physique || "",
           sortie_type: sortie_type || null,
@@ -10721,6 +12324,8 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
           validations: {
             magasinier: { by: movCreatedBy.userId || "", name: movCreatedBy.name || "", at: Date.now() }
           },
+          // Traçabilité de la valorisation automatique (réceptions uniquement).
+          valorisation: receptionValorisation,
           rejection: null,
           created_by: movCreatedBy,
           created_at: Date.now(),
@@ -10729,12 +12334,17 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
 
         const docRef = await db_firestore.collection("stock_movements").add(movData);
 
-        // For single-validation types (transfert, consommation), apply stock impact immediately
-        if (!needsMulti) {
+        // L'impact est appliqué EXACTEMENT quand `isImpactApplied` affirme qu'il
+        // l'est — la même fonction pure dont rebuildBalances se sert pour
+        // recompter les soldes. Écrire un mouvement que cette fonction déclare
+        // impactant sans appliquer l'impact (ou l'inverse) ferait diverger les
+        // soldes du grand livre en silence. Ici la question ne se pose plus : le
+        // code applique ce que le prédicat dit, il ne le redevine pas.
+        if (isImpactApplied(movData)) {
           await applyStockImpact(movData);
         }
 
-        return res.json({ success: true, id: docRef.id, numero, status: initialStatus });
+        return res.json({ success: true, id: docRef.id, numero, status: initialStatus, valorisation: receptionValorisation });
       }
 
       // --- LIST MOVEMENTS ---
@@ -10786,7 +12396,19 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
           return res.status(400).json({ success: false, error: "Mouvement rejeté, impossible de valider" });
         }
 
-        // --- Réception en attente : validation + valorisation par Achats (1 étape) ---
+        // --- CHEMIN DE REPRISE — NE PAS SUPPRIMER ---
+        //
+        // Plus aucune réception n'est CRÉÉE en `en_attente_achats` (create-bl les
+        // crée désormais en `valide_chef`, valorisées, stock appliqué). Mais 59
+        // réceptions sont restées dans ce statut en production — 62 au
+        // 27/08/2026, depuis le 5 juin, avec leurs 90 lignes TOUTES déjà
+        // valorisées et leur marchandise jamais entrée en stock. Le compte
+        // continue de monter jusqu'au déploiement : ne pas le lire comme figé.
+        //
+        // Retirer ce bloc les enfermerait dans un statut mort : plus aucune action
+        // ne pourrait les faire entrer en stock, et leur reprise (partie D du
+        // spec, GATED car elle modifie le stock réel) deviendrait impossible.
+        // À supprimer seulement quand il n'en restera aucune.
         if (mov.status === "en_attente_achats") {
           if (mov.type !== "reception") {
             return res.status(400).json({ success: false, error: "Statut en_attente_achats réservé aux réceptions" });
@@ -10938,7 +12560,9 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
         // Champs éditables uniquement (whitelist) — pas de status / created_by / import_source / impact.
         const EDITABLE = [
           "date", "lieu_source", "lieu_destination", "ferme", "ref_bl_fournisseur",
-          "fournisseur_nom", "reception_libre_motif", "ref_bon_physique", "beneficiaire",
+          // `reception_libre_motif` retiré : plus aucun chemin n'écrit ce champ.
+          // Les 2 documents historiques qui le portent le gardent tel quel.
+          "fournisseur_nom", "ref_bon_physique", "beneficiaire",
           "sortie_type", "motif_rebut", "justificatif_url", "scan_url",
         ];
         const update = { updated_at: Date.now() };
@@ -14408,6 +16032,20 @@ exports.notifications = functions
               if (snap.size > 0) categories.validations.push({ key: "factures_dg", label: "Factures à valider", count: snap.size, icon: "fa-file-invoice-dollar", color: "#e74c3c", tab: "dg_validations" });
             })
         );
+        // Articles réclamés par les magasiniers, que seul le DG peut créer.
+        // Sans ce compteur, la demande n'existerait que dans une collection que
+        // personne n'ouvre : un refus fail-closed sans destinataire visible
+        // n'est pas un flux de travail, c'est une impasse.
+        // `tab` pointe vers l'écran Catalogue EXISTANT — celui qui porte déjà
+        // le bouton « Nouvel article » (canCreateArticle = achats | dg). Rien à
+        // ajouter côté front : l'agrégateur est générique.
+        promises.push(
+          db_firestore.collection(demandeCreationArticle.COLLECTION)
+            .where("statut", "==", demandeCreationArticle.STATUT_EN_ATTENTE).get()
+            .then(snap => {
+              if (snap.size > 0) categories.validations.push({ key: "articles_a_creer", label: "Articles à créer (demandes magasinier)", count: snap.size, icon: "fa-box-open", color: "#e67e22", tab: "achats_catalogue" });
+            })
+        );
       }
 
       // Finance: factures + virements
@@ -14790,9 +16428,33 @@ exports.caisseManagement = functions
         const caissesSnap = await db_firestore.collection("caisse_definitions").where("active", "==", true).get();
         const caisses = caissesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-        // Pending validations count
-        const pendingSnap = await db_firestore.collection("caisse_transactions").where("status", "==", "soumis").get();
-        const pendingCount = pendingSnap.size;
+        // Bons engagés mais pas encore validés. Une seule requête sert deux
+        // besoins : le compteur « en attente de validation » (soumis seulement,
+        // c'est la file de la DG) et le SOLDE EN CAISSE, qui doit aussi tenir
+        // compte des bons « à revoir » — l'argent est sorti dans les deux cas.
+        const enAttenteSnap = await db_firestore.collection("caisse_transactions")
+          .where("status", "in", caisseSoldeProvisoire.STATUTS_EN_ATTENTE).get();
+        const enAttenteTx = enAttenteSnap.docs.map(d => d.data());
+        const pendingCount = enAttenteTx.filter(t => t.status === "soumis").length;
+
+        // Solde en caisse = solde validé + bons engagés. AFFICHAGE uniquement :
+        // solde_actuel reste le solde comptable, seul utilisé par le
+        // rapprochement mensuel (cf. functions/lib/caisse/soldeProvisoire.js).
+        // Rattachement caisse → entité, pour que le dashboard puisse présenter
+        // une entité à la fois sans deviner à partir des noms.
+        const paramDoc = await db_firestore.collection("caisse_parametres").doc("default").get();
+        const parametresCaisse = caisseParametres.withDefaults(paramDoc.exists ? paramDoc.data() : null);
+
+        const soldesProvisoires = caisseSoldeProvisoire.computeSoldesProvisoires(caisses, enAttenteTx);
+        const soldesParCaisse = {};
+        soldesProvisoires.forEach(s => { soldesParCaisse[s.caisse_id] = s; });
+        caisses.forEach(c => {
+          const s = soldesParCaisse[c.id];
+          if (!s) return;
+          c.solde_provisoire = s.solde_provisoire;
+          c.en_attente_montant = s.en_attente_montant;
+          c.en_attente_count = s.en_attente_count;
+        });
 
         // This week totals (Saturday to Friday)
         const now = new Date();
@@ -14832,7 +16494,12 @@ exports.caisseManagement = functions
           console.warn("[dashboard] recent query failed:", e.message);
         }
 
-        return res.json({ success: true, caisses, pendingCount, weekAlimentations, weekDepenses, recentTx, weeklyDegraded });
+        return res.json({
+          success: true, caisses, pendingCount, weekAlimentations, weekDepenses, recentTx, weeklyDegraded,
+          // Seul le rattachement aux entités intéresse le dashboard ; inutile de
+          // lui renvoyer les parcelles figées, qui peuvent être volumineuses.
+          parametres: { entites: parametresCaisse.entites },
+        });
       }
 
       // ========== LIST CAISSES ==========
@@ -14895,8 +16562,16 @@ exports.caisseManagement = functions
       if (action === "create-transaction" && req.method === "POST") {
         if (!isSaisie && !isAdmin) return res.status(403).json({ success: false, error: "Seul le service Achats peut saisir des transactions" });
         const { caisse_id, type, montant, reference, description, code_analytique, date, files, submit,
-          matricule, beneficiaire_nom } = req.body;
+          matricule, beneficiaire_nom, ferme, culture, parcelle } = req.body;
         if (!caisse_id || !type || !montant || !date) return res.status(400).json({ success: false, error: "caisse_id, type, montant et date sont requis" });
+        // Axes analytiques (facultatifs) : ferme / campagne / culture / parcelle.
+        // La campagne n'est jamais reçue du client : elle est DÉRIVÉE de la date,
+        // pour qu'un bon dont on corrige la date change de campagne tout seul.
+        // Fermes autorisées = celles configurées dans Paramètres de la caisse.
+                const _paramsDoc = await db_firestore.collection("caisse_parametres").doc("default").get();
+                const _params = caisseParametres.withDefaults(_paramsDoc.exists ? _paramsDoc.data() : null);
+                const axesErr = caisseAxes.validateAxes({ ferme, culture }, { fermes: _params.fermes });
+        if (axesErr) return res.status(400).json({ success: false, error: axesErr });
         if (!["alimentation", "depense", "sortie", "paie", "transport"].includes(type)) return res.status(400).json({ success: false, error: "Type invalide" });
         if (montant <= 0) return res.status(400).json({ success: false, error: "Le montant doit être positif" });
 
@@ -14913,6 +16588,8 @@ exports.caisseManagement = functions
           caisse_id, type, montant: parseFloat(montant), reference: refNum,
           description: description || "", code_analytique: code_analytique || "",
           matricule: matricule || "", beneficiaire_nom: beneficiaire_nom || "",
+          ferme: ferme || "", culture: culture || "", parcelle: parcelle || "",
+          campagne: caisseAxes.campagneOf(date),
           date, status, files: (files || []).slice(0, 3), // Max 3 files
           saisie_by: userInfo, created_at: now, updated_at: now,
           history: [{ action: "creation", by: userInfo, at: Date.now() }],
@@ -15054,32 +16731,160 @@ exports.caisseManagement = functions
       }
 
       // ========== UPDATE TRANSACTION ==========
+      // Modification d'un bon APRÈS création — jusqu'au statut 'valide' inclus.
+      // Spec : docs/spec-modification-bon-caisse.md
+      //
+      // Règles clés :
+      //  - modifier un bon 'valide' le DÉVALIDE (retour 'soumis') et annule son
+      //    delta d'origine sur solde_actuel ; le nouveau delta sera appliqué à la
+      //    re-validation par validate-transaction (pas de duplication de formule) ;
+      //  - refus si le rapprochement du mois source OU cible est clôturé ;
+      //  - 'reference' est GELÉE (identifiant métier du bon papier) ;
+      //  - transferts et mouvements de compte client non modifiables ici.
       if (action === "update-transaction" && req.method === "POST") {
-        if (!isSaisie && !isAdmin) return res.status(403).json({ success: false, error: "Seul le service Achats peut modifier des transactions" });
-        const { id, caisse_id, type, montant, reference, description, code_analytique, date, files } = req.body;
+        if (!isSaisie && !isControle && !isAdmin) return res.status(403).json({ success: false, error: "Accès non autorisé à la modification de transactions" });
+        const { id, caisse_id, type, montant, description, code_analytique, date, files,
+          matricule, beneficiaire_nom, ferme, culture, parcelle } = req.body;
         if (!id) return res.status(400).json({ success: false, error: "ID requis" });
+        // Fermes autorisées = celles configurées dans Paramètres de la caisse.
+                const _paramsDoc = await db_firestore.collection("caisse_parametres").doc("default").get();
+                const _params = caisseParametres.withDefaults(_paramsDoc.exists ? _paramsDoc.data() : null);
+                const axesErr = caisseAxes.validateAxes({ ferme, culture }, { fermes: _params.fermes });
+        if (axesErr) return res.status(400).json({ success: false, error: axesErr });
 
-        const doc = await db_firestore.collection("caisse_transactions").doc(id).get();
+        const txRef = db_firestore.collection("caisse_transactions").doc(id);
+        const doc = await txRef.get();
         if (!doc.exists) return res.status(404).json({ success: false, error: "Transaction introuvable" });
         const current = doc.data();
 
-        // Can only edit own brouillon or rejete
-        if (!["brouillon", "rejete"].includes(current.status)) return res.status(400).json({ success: false, error: "Seul un brouillon ou une transaction rejetée peut être modifié" });
-        if (current.saisie_by?.uid !== authUser.uid && !isAdmin) return res.status(403).json({ success: false, error: "Vous ne pouvez modifier que vos propres transactions" });
+        // --- Gardes de statut / type / propriété ---
+        const STATUTS_EDITABLES = ["brouillon", "soumis", "a_revoir", "rejete", "valide"];
+        if (!STATUTS_EDITABLES.includes(current.status)) {
+          return res.status(400).json({ success: false, error: `Une transaction au statut « ${current.status} » ne peut pas être modifiée` });
+        }
+        if (!isTypeEditable(current.type)) {
+          return res.status(400).json({ success: false, error: "Un transfert ou un mouvement de compte client ne se modifie pas ici" });
+        }
+        // Achats (sans rôle de contrôle) : ses propres saisies uniquement.
+        if (!isControle && !isAdmin && current.saisie_by?.uid !== authUser.uid) {
+          return res.status(403).json({ success: false, error: "Vous ne pouvez modifier que vos propres transactions" });
+        }
 
-        const updates = { updated_at: admin.firestore.FieldValue.serverTimestamp() };
-        if (caisse_id) updates.caisse_id = caisse_id;
-        if (type) updates.type = type;
-        if (montant) updates.montant = parseFloat(montant);
-        if (reference) updates.reference = reference;
-        if (description !== undefined) updates.description = description;
-        if (code_analytique !== undefined) updates.code_analytique = code_analytique;
-        if (date) updates.date = date;
-        if (files) updates.files = files.slice(0, 3);
-        updates.history = [...(current.history || []), { action: "modification", by: userInfo, at: Date.now() }];
+        // --- Validation des champs entrants (alignée sur create-transaction) ---
+        if (type !== undefined && !isTypeEditable(type)) {
+          return res.status(400).json({ success: false, error: "Type invalide" });
+        }
+        let montantNum;
+        if (montant !== undefined) {
+          montantNum = parseFloat(montant);
+          if (!Number.isFinite(montantNum) || montantNum <= 0) {
+            return res.status(400).json({ success: false, error: "Le montant doit être un nombre positif" });
+          }
+        }
+        if (date !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(String(date))) {
+          return res.status(400).json({ success: false, error: "Date invalide (format attendu AAAA-MM-JJ)" });
+        }
+        if (caisse_id !== undefined && caisse_id !== current.caisse_id) {
+          const caisseDoc = await db_firestore.collection("caisse_definitions").doc(caisse_id).get();
+          if (!caisseDoc.exists || !caisseDoc.data().active) {
+            return res.status(404).json({ success: false, error: "Caisse introuvable ou inactive" });
+          }
+        }
 
-        await db_firestore.collection("caisse_transactions").doc(id).update(updates);
-        return res.json({ success: true });
+        // --- Patch effectif (seuls les champs fournis) ---
+        const patch = {};
+        if (caisse_id !== undefined) patch.caisse_id = caisse_id;
+        if (type !== undefined) patch.type = type;
+        if (montantNum !== undefined) patch.montant = montantNum;
+        if (description !== undefined) patch.description = description;
+        if (code_analytique !== undefined) patch.code_analytique = code_analytique;
+        if (date !== undefined) patch.date = date;
+        if (matricule !== undefined) patch.matricule = matricule;
+        if (beneficiaire_nom !== undefined) patch.beneficiaire_nom = beneficiaire_nom;
+        if (files !== undefined) patch.files = (files || []).slice(0, 3);
+        if (ferme !== undefined) patch.ferme = ferme;
+        if (culture !== undefined) patch.culture = culture;
+        if (parcelle !== undefined) patch.parcelle = parcelle;
+        // Campagne DÉRIVÉE de la date, jamais saisie : corriger la date d'un bon
+        // le fait changer de campagne automatiquement. Recalculée aussi quand la
+        // date ne bouge pas, pour rattraper les bons créés avant ce champ.
+        if (patch.date !== undefined || !current.campagne) {
+          patch.campagne = caisseAxes.campagneOf(patch.date !== undefined ? patch.date : current.date);
+        }
+
+        const changes = computeChanges(current, patch);
+        if (changes.length === 0) {
+          return res.json({ success: true, status: current.status, devalidated: false, changes: [] });
+        }
+
+        // --- Verrou rapprochement (période source ET cible) ---
+        // Appliqué si le bon pèse sur le solde théorique (validé) ou s'il change
+        // de position (date / caisse) — pour ne pas le déplacer vers un mois clos.
+        const positionChange = changes.some((c) => c.field === "date" || c.field === "caisse_id");
+        if (current.status === "valide" || positionChange) {
+          const periodes = periodesAVerifier(
+            { caisse_id: current.caisse_id, date: current.date },
+            { caisse_id: patch.caisse_id !== undefined ? patch.caisse_id : current.caisse_id,
+              date: patch.date !== undefined ? patch.date : current.date }
+          );
+          const rapDocs = await Promise.all(
+            periodes.map((p) => db_firestore.collection("caisse_rapprochements").doc(p.docId).get())
+          );
+          for (let i = 0; i < rapDocs.length; i++) {
+            if (rapDocs[i].exists && rapDocs[i].data().statut === "cloture") {
+              return res.status(400).json({
+                success: false,
+                error: `Modification impossible : le rapprochement de ${periodes[i].label} est clôturé.`,
+              });
+            }
+          }
+        }
+
+        const now = admin.firestore.FieldValue.serverTimestamp();
+        const devalidated = current.status === "valide";
+
+        if (!devalidated) {
+          // Aucun solde en jeu : write simple.
+          await txRef.update({
+            ...patch,
+            updated_at: now,
+            history: [...(current.history || []), { action: "modification", by: userInfo, at: Date.now(), changes }],
+          });
+          return res.json({ success: true, status: current.status, devalidated: false, changes });
+        }
+
+        // --- Cas validé : dévalidation + annulation atomique du delta d'origine ---
+        await db_firestore.runTransaction(async (t) => {
+          const txDoc = await t.get(txRef);
+          if (!txDoc.exists) throw new Error("Transaction introuvable");
+          const txData = txDoc.data();
+          // Relecture DANS la transaction : une validation/dévalidation concurrente
+          // a pu changer le statut entre-temps.
+          if (txData.status !== "valide") throw new Error("La transaction n'est plus validée — rechargez la liste");
+
+          const caisseRef = db_firestore.collection("caisse_definitions").doc(txData.caisse_id);
+          const caisseDoc = await t.get(caisseRef);
+          if (!caisseDoc.exists) throw new Error("Caisse introuvable");
+
+          // Delta calculé sur les valeurs D'AVANT modification, imputé sur la
+          // caisse D'AVANT modification. Le nouveau delta viendra de la re-validation.
+          const deltaOrigine = computeSoldeDelta({ type: txData.type, montant: txData.montant });
+          const newSolde = Math.round(((caisseDoc.data().solde_actuel || 0) - deltaOrigine) * 100) / 100;
+
+          t.update(txRef, {
+            ...patch,
+            status: "soumis",
+            soumis_par: userInfo,
+            soumis_at: now,
+            valide_par: admin.firestore.FieldValue.delete(),
+            valide_at: admin.firestore.FieldValue.delete(),
+            updated_at: now,
+            history: [...(txData.history || []), { action: "modification", by: userInfo, at: Date.now(), changes, devalidated: true }],
+          });
+          t.update(caisseRef, { solde_actuel: newSolde, updated_at: now });
+        });
+
+        return res.json({ success: true, status: "soumis", devalidated: true, changes });
       }
 
       // ========== SUBMIT TRANSACTION ==========
@@ -15121,13 +16926,11 @@ exports.caisseManagement = functions
           const caisseDoc = await t.get(caisseRef);
           if (!caisseDoc.exists) throw new Error("Caisse introuvable");
 
-          // Calculate balance change
-          const montant = txData.montant || 0;
-          let delta = 0;
-          if (txData.type === "alimentation" || txData.type === "transfer_in") delta = montant;
-          else if (["depense", "sortie", "transfer_out", "paie", "transport"].includes(txData.type)) delta = -montant;
+          // Calculate balance change — formule partagée avec update-transaction
+          // (dévalidation), cf. functions/lib/caisse/soldeDelta.js
+          const delta = computeSoldeDelta({ type: txData.type, montant: txData.montant });
 
-          const newSolde = (caisseDoc.data().solde_actuel || 0) + delta;
+          const newSolde = Math.round(((caisseDoc.data().solde_actuel || 0) + delta) * 100) / 100;
 
           t.update(txRef, {
             status: "valide", valide_par: userInfo, valide_at: admin.firestore.FieldValue.serverTimestamp(),
@@ -15426,6 +17229,148 @@ exports.caisseManagement = functions
         });
       }
 
+      // ========== PARAMÈTRES DE LA CAISSE (fermes + codes analytiques) ==========
+      // Doc unique caisse_parametres/default. Alimente les listes déroulantes
+      // Ferme et Code analytique du bon de caisse : ce qui est configuré ici est
+      // exactement ce qui est proposé à la saisie.
+      //
+      // Lecture ouverte à tout profil ayant accès à la caisse (le formulaire de
+      // saisie en a besoin) ; écriture réservée à DG/Finance.
+      if (action === "caisse-parametres-get") {
+        const doc = await db_firestore.collection("caisse_parametres").doc("default").get();
+        const params = caisseParametres.withDefaults(doc.exists ? doc.data() : null);
+        // `seeded: false` = aucun doc en base, les valeurs renvoyées sont les
+        // défauts. On n'écrit PAS ici : une lecture ne doit rien créer, et le
+        // premier enregistrement depuis l'écran Paramètres fera foi.
+        return res.json({ success: true, ...params, seeded: doc.exists });
+      }
+
+      if (action === "caisse-parametres-save" && req.method === "POST") {
+        if (!isControle && !isAdmin) return res.status(403).json({ success: false, error: "Seul DG/Finance peut modifier les paramètres de la caisse" });
+        const fermes = caisseParametres.normalizeListe(req.body.fermes);
+        const codes = caisseParametres.normalizeListe(req.body.codes_analytiques);
+        const errFermes = caisseParametres.validateListe("fermes", fermes);
+        if (errFermes) return res.status(400).json({ success: false, error: errFermes });
+        const errCodes = caisseParametres.validateListe("codes analytiques", codes);
+        if (errCodes) return res.status(400).json({ success: false, error: errCodes });
+
+        const now = admin.firestore.FieldValue.serverTimestamp();
+        const payload = { fermes, codes_analytiques: codes, updated_at: now, updated_by: userInfo };
+
+        // Parcelles FIGÉES : envoyées uniquement par le bouton « Rafraîchir » de
+        // l'écran Paramètres. Absentes du corps = on ne touche pas à l'existant
+        // (un simple enregistrement des fermes ne doit pas les effacer).
+        // Rattachement caisse → entité. Absent du corps = inchangé.
+        if (req.body.entites !== undefined) {
+          payload.entites = caisseEntites.normalizeEntites(req.body.entites);
+        }
+
+        if (req.body.parcelles !== undefined) {
+          const parcelles = caisseParametres.normalizeParcelles(req.body.parcelles);
+          if (parcelles.length === 0) return res.status(400).json({ success: false, error: "Aucune parcelle exploitable reçue — rafraîchissement annulé." });
+          payload.parcelles = parcelles;
+          payload.parcelles_maj_at = Date.now();
+        }
+
+        await db_firestore.collection("caisse_parametres").doc("default").set(payload, { merge: true });
+        const doc = await db_firestore.collection("caisse_parametres").doc("default").get();
+        return res.json({ success: true, ...caisseParametres.withDefaults(doc.data()) });
+      }
+
+      // ========== CLIENTS MARCHÉ LOCAL (activation pour la campagne) ==========
+      // Un client est « suivi » quand son document caisse_definitions
+      // compte_client_<id> existe ET porte active === true : c'est déjà le
+      // référentiel que consulte apply-encaissements. On expose ici de quoi le
+      // gérer, au lieu de devoir passer par la console Firestore.
+      if (action === "caisse-clients-list") {
+        // Le RÉFÉRENTIEL des clients est `clients_marche_local`, alimenté depuis
+        // l'écran Bons d'Apport — c'est là que le service Achats crée un client.
+        // La caisse ne fait que décider LESQUELS sont suivis, via l'existence
+        // d'un compte_client_<slug> actif dans caisse_definitions.
+        const [refSnap, caissesSnap] = await Promise.all([
+          db_firestore.collection("clients_marche_local").get(),
+          db_firestore.collection("caisse_definitions").get(),
+        ]);
+
+        // Comptes de suivi existants, indexés par slug.
+        const comptes = {};
+        caissesSnap.docs.forEach(d => {
+          if (d.id.indexOf(caisseEntites.COMPTE_CLIENT_PREFIX) !== 0) return;
+          comptes[caisseEntites.clientIdDepuisCaisse(d.id)] = d.data();
+        });
+
+        // Référentiel : on écarte les archivés, et on déduplique par slug — un
+        // même nom a parfois deux documents (doublon historique).
+        const parSlug = {};
+        refSnap.docs.forEach(d => {
+          const data = d.data() || {};
+          if (data.archived === true) return;
+          const nom = String(data.nom || "").trim();
+          if (!nom) return;
+          const slug = caisseEntites.slugifyClient(nom);
+          if (!slug || parSlug[slug]) return;
+          parSlug[slug] = nom;
+        });
+
+        // Un compte de suivi dont le client a disparu du référentiel reste
+        // listé : sinon on ne pourrait plus le désactiver.
+        Object.keys(comptes).forEach(slug => {
+          if (!parSlug[slug]) parSlug[slug] = (comptes[slug].nom && String(comptes[slug].nom).trim())
+            || caisseEntites.nomClientDepuisId(caisseEntites.COMPTE_CLIENT_PREFIX + slug);
+        });
+
+        const clients = Object.keys(parSlug).map(slug => {
+          const compte = comptes[slug];
+          return {
+            id: caisseEntites.COMPTE_CLIENT_PREFIX + slug,
+            client_id: slug,
+            nom: parSlug[slug],
+            actif: !!compte && compte.active !== false,
+            suivi: !!compte,
+            solde_actuel: compte ? (Number(compte.solde_actuel) || 0) : 0,
+          };
+        }).sort((a, b) => a.nom.localeCompare(b.nom, "fr"));
+
+        return res.json({ success: true, clients });
+      }
+
+      if (action === "caisse-client-save" && req.method === "POST") {
+        if (!isControle && !isAdmin) return res.status(403).json({ success: false, error: "Seul DG/Finance peut gérer les clients du marché local" });
+        const nomBrut = String(req.body.nom || "").trim();
+        let clientId = String(req.body.client_id || "").trim();
+        if (!clientId) {
+          // Dérive l'identifiant du nom, comme le fait le canevas d'encaissements.
+          clientId = nomBrut.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+        }
+        if (!clientId) return res.status(400).json({ success: false, error: "Nom de client requis" });
+        if (nomBrut.length > 80) return res.status(400).json({ success: false, error: "Nom de client trop long (max 80 caractères)" });
+
+        const docId = caisseEntites.COMPTE_CLIENT_PREFIX + clientId;
+        const ref = db_firestore.collection("caisse_definitions").doc(docId);
+        const existing = await ref.get();
+        const now = admin.firestore.FieldValue.serverTimestamp();
+        const actif = req.body.actif !== false;
+
+        if (!existing.exists) {
+          // Création : solde à 0. On NE crée jamais un client désactivé — ça
+          // n'aurait aucun effet utile et polluerait le référentiel.
+          if (!actif) return res.status(400).json({ success: false, error: "Un nouveau client est créé actif" });
+          await ref.set({
+            nom: nomBrut || caisseEntites.nomClientDepuisId(docId),
+            description: "Compte client Marché Local",
+            devise: "MAD", active: true, is_default: false,
+            solde_initial: 0, solde_actuel: 0,
+            kind: "compte_client_marche_local",
+            created_by: userInfo, created_at: now, updated_at: now,
+          });
+        } else {
+          const maj = { active: actif, updated_at: now, updated_by: userInfo };
+          if (nomBrut) maj.nom = nomBrut;
+          await ref.update(maj);
+        }
+        return res.json({ success: true, id: docId, client_id: clientId, actif });
+      }
+
       // ========== SEED DEFAULT CAISSES ==========
       if (action === "seed-defaults" && req.method === "POST") {
         if (!isControle && !isAdmin) return res.status(403).json({ success: false, error: "Accès refusé" });
@@ -15491,19 +17436,100 @@ exports.caisseManagement = functions
 
       // ----- validate-transactions-batch -----
       // status → 'valide', valide_par, valide_at, history. DG/Finance only.
+      //
+      // Cette action DOIT mouvementer solde_actuel exactement comme la validation
+      // unitaire (validate-transaction). Historiquement elle ne le faisait pas :
+      // les bons passaient à 'valide' sans que la caisse bouge, le solde système
+      // ne correspondait donc plus au solde physique, et une dévalidation
+      // ultérieure (update-transaction) soustrayait un delta jamais ajouté.
+      //
+      // Chaque chunk est traité dans UNE transaction Firestore : les bons et les
+      // soldes de caisse bougent ensemble, ou pas du tout.
       if (action === "validate-transactions-batch" && req.method === "POST") {
         if (!isControle && !isAdmin) return res.status(403).json({ success: false, error: "Seul DG/Finance peut valider" });
         const ids = Array.isArray(req.body.ids) ? req.body.ids : null;
         if (!ids || ids.length === 0) return res.status(400).json({ success: false, error: "ids[] requis" });
-        const now = Date.now();
-        const result = await _applyBatchUpdate(ids, (data) => ({
-          status: "valide",
-          valide_par: userInfo,
-          valide_at: admin.firestore.FieldValue.serverTimestamp(),
-          updated_at: admin.firestore.FieldValue.serverTimestamp(),
-          history: [...(data.history || []), { action: "batch_validate", by: userInfo, at: now }],
-        }));
-        return res.json({ success: true, count: result.updated, ...result });
+
+        let updated = 0, skipped = 0;
+        const errors = [];
+        /** @type {Object<string, number>} solde par caisse après validation */
+        const soldes = {};
+
+        // Chunks de 300 : la transaction écrit 1 doc par bon + 1 par caisse
+        // touchée, et Firestore plafonne à 500 écritures par transaction.
+        const chunks = [];
+        for (let i = 0; i < ids.length; i += 300) chunks.push(ids.slice(i, i + 300));
+
+        for (const chunkIds of chunks) {
+          // Compteurs LOCAUX à la tentative : une transaction Firestore peut être
+          // rejouée, les accumuler globalement compterait deux fois.
+          let chunkUpdated = 0, chunkSkipped = 0;
+          let chunkErrors = [];
+          let chunkSoldes = {};
+
+          await db_firestore.runTransaction(async (t) => {
+            chunkUpdated = 0; chunkSkipped = 0; chunkErrors = []; chunkSoldes = {};
+            const now = Date.now();
+            const txRefs = chunkIds.map(id => db_firestore.collection("caisse_transactions").doc(id));
+            const txSnaps = await t.getAll(...txRefs);
+
+            // 1. Qui est validable, et de combien chaque caisse bouge.
+            //    Logique pure et testée : functions/lib/caisse/batchValidation.js
+            const byId = {};
+            const plan = planBatchValidation(txSnaps.map((snap, i) => {
+              const data = snap.exists ? snap.data() : null;
+              if (data) byId[chunkIds[i]] = { ref: txRefs[i], data };
+              return { id: chunkIds[i], data };
+            }));
+            chunkSkipped += plan.errors.length;
+            chunkErrors.push(...plan.errors);
+
+            const eligibles = plan.eligibles.map(id => ({ id, ref: byId[id].ref, data: byId[id].data }));
+            const deltaParCaisse = plan.deltaParCaisse;
+            if (eligibles.length === 0) return;
+
+            // 2. Lire les caisses concernées (TOUTES les lectures avant les écritures).
+            const caisseIds = Object.keys(deltaParCaisse);
+            const caisseRefs = caisseIds.map(id => db_firestore.collection("caisse_definitions").doc(id));
+            const caisseSnaps = await t.getAll(...caisseRefs);
+            const caissesOk = {};
+            caisseSnaps.forEach((snap, i) => { if (snap.exists) caissesOk[caisseIds[i]] = snap.data(); });
+
+            const nowTs = admin.firestore.FieldValue.serverTimestamp();
+
+            // 3. Écritures — un bon dont la caisse n'existe pas n'est PAS validé.
+            for (const e of eligibles) {
+              if (!caissesOk[e.data.caisse_id]) {
+                chunkSkipped++;
+                chunkErrors.push({ id: e.id, reason: "caisse_introuvable" });
+                continue;
+              }
+              t.update(e.ref, {
+                status: "valide",
+                valide_par: userInfo,
+                valide_at: nowTs,
+                updated_at: nowTs,
+                history: [...(e.data.history || []), { action: "batch_validate", by: userInfo, at: now }],
+              });
+              chunkUpdated++;
+            }
+
+            for (const caisseId of caisseIds) {
+              const caisse = caissesOk[caisseId];
+              if (!caisse) continue;
+              const newSolde = applyDelta(caisse.solde_actuel, deltaParCaisse[caisseId]);
+              t.update(db_firestore.collection("caisse_definitions").doc(caisseId), { solde_actuel: newSolde, updated_at: nowTs });
+              chunkSoldes[caisseId] = newSolde;
+            }
+          });
+
+          updated += chunkUpdated;
+          skipped += chunkSkipped;
+          errors.push(...chunkErrors);
+          Object.assign(soldes, chunkSoldes);
+        }
+
+        return res.json({ success: true, count: updated, updated, skipped, errors, soldes });
       }
 
       // ----- mark-revoir-batch -----

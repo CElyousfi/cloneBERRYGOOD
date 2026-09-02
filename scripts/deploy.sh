@@ -97,6 +97,14 @@ fi
 echo "[deploy] ✓ garde-fous OK : branche main · tree propre · main == $REMOTE/main"
 echo "[deploy] branche : $(git -C "$ROOT" rev-parse --abbrev-ref HEAD) @ $(git -C "$ROOT" rev-parse --short HEAD)"
 
+# === TRANSPARENCE — qu'est-ce qui est déjà en prod, et qu'est-ce qu'on y ajoute ? ===
+# Purement informatif : aucun garde-fou n'en dépend, aucune décision de deploy n'est
+# prise ici. Le `|| true` est délibéré — une panne réseau, un `gh` absent ou un ADC
+# expiré ne doit JAMAIS empêcher un deploy (le script affiche alors « information
+# indisponible »). Détail de la collecte : scripts/deploy-context.js.
+node "$ROOT/scripts/deploy-context.js" "$ONLY" || true
+echo ""
+
 # ============================================================================
 # CHEMIN FUNCTIONS — déclenchement du workflow GitHub (Workload Identity Federation)
 # ============================================================================
@@ -182,6 +190,14 @@ if [ -z "${FIREBASE_TOKEN:-}" ]; then
 fi
 
 echo "[deploy] cible : --only $ONLY  projet : $PROJECT  (via CI token)  args : ${*:-aucun}"
+# Message de release Hosting = « <sha> <sujet du commit> ». C'est la SEULE trace
+# consultable d'un deploy frontend : firebase-tools n'expose pas les releases du canal
+# live, on les relit via l'API Hosting (cf. scripts/deploy-context.js). Sans ce message,
+# il faut deviner ce qui est en ligne en comparant des numéros de cache-bust.
+RELEASE_MESSAGE="$(node "$ROOT/scripts/deploy-context.js" hosting --release-message 2>/dev/null || true)"
+if [ -n "$RELEASE_MESSAGE" ]; then
+  set -- -m "$RELEASE_MESSAGE" "$@"
+fi
 # --config scope explicitement la commande sur $ROOT (même raison que preview.sh) : sans ça,
 # firebase résout firebase.json/public/functions depuis le cwd du shell appelant, pas depuis
 # ce script — risque de déployer le contenu d'un autre dossier que le checkout main vérifié

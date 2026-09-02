@@ -62,6 +62,13 @@ const DESCRIPTION_MIN_LENGTH = 5;
 /** Code analytique value considered "non précisé". */
 const ANALYTIQUE_PLACEHOLDER = 'BGF - BGF';
 
+/**
+ * Valeur réservée d'un filtre d'axe : « champ non renseigné ».
+ * Impossible à confondre avec une vraie valeur (ni ferme, ni culture, ni
+ * parcelle, ni code analytique ne peut valoir cette chaîne).
+ */
+const AXE_NON_RENSEIGNE = '__VIDE__';
+
 /** Sprint 2 — multiplier above the analytique-mean (90-day window) flagging MONTANT_ATYPIQUE. */
 const MONTANT_ATYPIQUE_FACTOR = 3;
 
@@ -293,6 +300,11 @@ function searchTransactions(transactions, query) {
       tx.code_analytique,
       tx.fournisseur,
       tx.saisie_by && tx.saisie_by.name,
+      // Axes analytiques — cherchables au même titre que le code analytique.
+      tx.ferme,
+      tx.campagne,
+      tx.culture,
+      tx.parcelle,
       ...montantParts,
     ].map(_normalize).join(' | '); // separator unlikely to appear in data
     return tokens.every((tok) => haystack.indexOf(tok) !== -1);
@@ -319,6 +331,63 @@ function filterByQuickType(transactions, quickType) {
   if (quickType === 'recettes')   return transactions.filter((tx) => tx && OP_INCOME_TYPES.indexOf(tx.type) !== -1);
   if (quickType === 'transferts') return transactions.filter((tx) => tx && TRANSFER_TYPES.indexOf(tx.type) !== -1);
   return transactions.slice();
+}
+
+
+/**
+ * Filtre par axes analytiques : ferme, culture, parcelle, code analytique.
+ *
+ * Chaque critère est indépendant et se cumule (ET logique). Un critère vide,
+ * absent ou `null` ne filtre pas. La comparaison est stricte sur la valeur
+ * stockée, après trim — ce sont des valeurs choisies dans des listes, pas de
+ * la saisie libre (la recherche plein-texte, elle, reste approximative).
+ *
+ * Valeur réservée `__VIDE__` : ne garde que les bons dont le champ N'EST PAS
+ * renseigné. C'est ce qui permet au caissier de retrouver les bons non affectés
+ * — le cas le plus utile en pratique, et impossible à exprimer autrement.
+ *
+ * @param {Array<Object>} transactions
+ * @param {Object} [filtres] `{ ferme, culture, parcelle, code_analytique }`
+ * @returns {Array<Object>} Nouveau tableau (jamais l'entrée elle-même).
+ */
+function filterByAxes(transactions, filtres) {
+  if (!Array.isArray(transactions)) return [];
+  const f = filtres || {};
+  const champs = ['ferme', 'culture', 'parcelle', 'code_analytique'];
+  const actifs = champs.filter((c) => f[c] !== undefined && f[c] !== null && String(f[c]) !== '');
+  if (actifs.length === 0) return transactions.slice();
+
+  return transactions.filter((tx) => {
+    if (!tx) return false;
+    for (const champ of actifs) {
+      const attendu = String(f[champ]).trim();
+      const valeur = (tx[champ] === undefined || tx[champ] === null) ? '' : String(tx[champ]).trim();
+      if (attendu === AXE_NON_RENSEIGNE) { if (valeur !== '') return false; }
+      else if (valeur !== attendu) return false;
+    }
+    return true;
+  });
+}
+
+
+/**
+ * Valeurs distinctes d'un axe présentes dans une liste de bons, triées.
+ * Sert à peupler les listes déroulantes de filtre : on ne propose que ce qui
+ * existe réellement, plutôt qu'un référentiel dont l'essentiel serait vide.
+ *
+ * @param {Array<Object>} transactions
+ * @param {string} champ `ferme` | `culture` | `parcelle` | `code_analytique`
+ * @returns {string[]}
+ */
+function distinctAxeValues(transactions, champ) {
+  if (!Array.isArray(transactions) || !champ) return [];
+  const set = new Set();
+  for (const tx of transactions) {
+    if (!tx) continue;
+    const v = (tx[champ] === undefined || tx[champ] === null) ? '' : String(tx[champ]).trim();
+    if (v) set.add(v);
+  }
+  return Array.from(set).sort((a, b) => a.localeCompare(b, 'fr'));
 }
 
 
@@ -828,6 +897,9 @@ const __api = {
   // functions — Sprint 1
   detectCaisseAnomalies, computeTotals, quickPeriodToDateRange,
   searchTransactions, filterByQuickType,
+  // constants + functions — filtres par axes analytiques
+  AXE_NON_RENSEIGNE,
+  filterByAxes, distinctAxeValues,
   // functions — Sprint 2
   detectAnomaliesBatch,
   // functions — Sprint 3
