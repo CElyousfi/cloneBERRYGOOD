@@ -4,7 +4,7 @@
     "healthScore": {
       "subScores": {
         "classification": {
-          "detail": "240/387 fichiers classifiés",
+          "detail": "241/388 fichiers classifiés",
           "max": 40,
           "score": 25
         },
@@ -14,7 +14,7 @@
           "score": 27
         },
         "testCoverage": {
-          "detail": "75/176 modules avec ≥1 test",
+          "detail": "76/177 modules avec ≥1 test",
           "max": 30,
           "score": 13
         }
@@ -23,7 +23,7 @@
     },
     "heatmap": [
       {
-        "commits": 47,
+        "commits": 46,
         "file": "public/app.jsx"
       },
       {
@@ -59,12 +59,12 @@
         "file": "functions/lib/paie/coutOuvrierCampagne.js"
       },
       {
-        "commits": 13,
-        "file": "functions/lib/paie/__tests__/coutOuvrierCampagne.test.js"
+        "commits": 14,
+        "file": "public/components/MagBCTab.jsx"
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:a785dd30e2369b35",
+    "sourceFingerprint": "sha256:cd8de34ee6e9c2f6",
     "stats": {
       "backendModules": 99,
       "cloudFunctions": 91,
@@ -72,11 +72,11 @@
       "domains": 10,
       "extractedComponents": 32,
       "firestoreCollections": 61,
-      "libHelpers": 45,
+      "libHelpers": 46,
       "monolithSymbols": 120,
       "tabFunctions": 120,
       "unclassifiedFiles": 147,
-      "unitTestFiles": 47
+      "unitTestFiles": 48
     }
   },
   "domains": {
@@ -1127,7 +1127,7 @@
         ]
       },
       "confidence": "medium",
-      "coverageScore": 67,
+      "coverageScore": 69,
       "firestore": {
         "collections": [
           "security_mouvements",
@@ -1145,6 +1145,7 @@
         ],
         "libs": [
           "public/lib/articleCategories.js",
+          "public/lib/articleSelect.js",
           "public/lib/inventaireUtils.js",
           "public/lib/stockDestinations.js",
           "public/lib/stockMovementGuard.js",
@@ -1207,6 +1208,7 @@
         ],
         "unit": [
           "tests/unit/articleCategories.test.js",
+          "tests/unit/articleSelect.test.js",
           "tests/unit/inventaireUtils.test.js",
           "tests/unit/stockDestinations.test.js",
           "tests/unit/stockMovementGuard.test.js",
@@ -2589,6 +2591,10 @@
       "domain": "referentiel"
     },
     "public/lib/articleCategories.js": {
+      "confidence": "high",
+      "domain": "stock"
+    },
+    "public/lib/articleSelect.js": {
       "confidence": "high",
       "domain": "stock"
     },

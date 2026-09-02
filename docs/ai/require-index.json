@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:1670a53162affe3e",
+    "sourceFingerprint": "sha256:0db32f6fc32109ed",
     "stats": {
-      "targetFiles": 293,
-      "targetFilesWithDirectTests": 176,
-      "targetFilesWithTransitiveTests": 198,
-      "testFilesScanned": 273
+      "targetFiles": 294,
+      "targetFilesWithDirectTests": 177,
+      "targetFilesWithTransitiveTests": 199,
+      "testFilesScanned": 275
     }
   },
   "index": {
@@ -1273,6 +1273,7 @@
       "directTests": [
         "tests/unit/articleHistoryKeyReconciliation.test.js",
         "tests/unit/articleKey.test.js",
+        "tests/unit/articleSelect.test.js",
         "tests/unit/ficheStockArticleListDedup.test.js"
       ],
       "transitiveTests": [
@@ -1286,6 +1287,7 @@
         "tests/unit/articleHistoryIndex.test.js",
         "tests/unit/articleHistoryKeyReconciliation.test.js",
         "tests/unit/articleKey.test.js",
+        "tests/unit/articleSelect.test.js",
         "tests/unit/ficheStockArticleListDedup.test.js",
         "tests/unit/pmpDetail.test.js"
       ]
@@ -2046,6 +2048,18 @@
         "tests/unit/articleCategorieCanonique.test.js"
       ]
     },
+    "public/lib/articleSelect.js": {
+      "directTests": [
+        "tests/unit/articleSelect.test.js",
+        "tests/unit/magBCArticleFerme.test.js",
+        "tests/unit/magBCUniteConversion.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/articleSelect.test.js",
+        "tests/unit/magBCArticleFerme.test.js",
+        "tests/unit/magBCUniteConversion.test.js"
+      ]
+    },
     "public/lib/authResilience.js": {
       "directTests": [
         "tests/unit/authResilience.test.js"
@@ -2138,6 +2152,7 @@
         "tests/unit/campagnePeriodes.test.js",
         "tests/unit/campagneUtils.test.js",
         "tests/unit/campagneUtilsBackend.test.js",
+        "tests/unit/magBCArticleFerme.test.js",
         "tests/unit/magBCSuppressionDoubleConfirm.test.js",
         "tests/unit/magBCTabDateSaisie.test.js",
         "tests/unit/magBCTabEditDate.test.js",
@@ -2148,6 +2163,7 @@
         "tests/unit/campagnePeriodes.test.js",
         "tests/unit/campagneUtils.test.js",
         "tests/unit/campagneUtilsBackend.test.js",
+        "tests/unit/magBCArticleFerme.test.js",
         "tests/unit/magBCSuppressionDoubleConfirm.test.js",
         "tests/unit/magBCTabDateSaisie.test.js",
         "tests/unit/magBCTabEditDate.test.js",
@@ -2364,10 +2380,12 @@
     },
     "public/lib/uniteConsoUtils.js": {
       "directTests": [
+        "tests/unit/magBCArticleFerme.test.js",
         "tests/unit/magBCUniteConversion.test.js",
         "tests/unit/uniteConsoUtils.test.js"
       ],
       "transitiveTests": [
+        "tests/unit/magBCArticleFerme.test.js",
         "tests/unit/magBCUniteConversion.test.js",
         "tests/unit/uniteConsoUtils.test.js"
       ]

@@ -33,6 +33,177 @@
   var useState = _r.useState;
   var useEffect = _r.useEffect;
 
+  /**
+   * ArticleCombo — le champ « Article » du bon de consommation, en
+   * SÉLECTION FERMÉE (demande d'Omar : « liste déroulante avec champ de
+   * sélection en tapant le nom »).
+   *
+   * L'ancien `<input list>` + `<datalist>` RESSEMBLAIT à une liste
+   * déroulante et acceptait n'importe quoi : toute faute de frappe entrait
+   * dans le système comme un article.
+   *
+   * ⚠️ POURQUOI LA FRAPPE LIBRE RESTE POSSIBLE. On tape pour FILTRER, et
+   * c'est aussi la seule façon de nommer un article ABSENT du catalogue
+   * pour en demander la création. Interdire la frappe libre enfermerait le
+   * magasinier devant une marchandise qu'il a physiquement en main. Ce qui
+   * est fermé, c'est la VALIDATION : tant que la saisie ne désigne pas une
+   * fiche unique, la ligne est marquée en rouge et `handleCreate` refuse
+   * d'envoyer le bon (cf. ArticleSelect.lignesInvalides).
+   *
+   * Toutes les décisions vivent dans public/lib/articleSelect.js (pur,
+   * testé). Ce composant n'est que le rendu — il ne compare aucun libellé
+   * lui-même.
+   */
+  function ArticleCombo({
+    valeur,
+    index,
+    onChoisir,
+    onSaisir,
+    getStock,
+    placeholder
+  }) {
+    const AS = window.ArticleSelect;
+    const [ouvert, setOuvert] = useState(false);
+    // Fermeture DIFFÉRÉE au blur : sur mobile comme sur desktop, le clic
+    // sur une option déclenche le blur de l'input AVANT le clic. Fermer
+    // tout de suite ferait disparaître l'option sous le doigt.
+    const fermerPlusTard = () => window.setTimeout(() => setOuvert(false), 150);
+    // Lib non chargée, OU catalogue inconnu (`list-articles` en échec /
+    // pas encore revenu) : on rend un champ simple, sans liste et sans
+    // verdict. Filtrer sur un catalogue qu'on n'a pas lu ferait refuser
+    // des articles qui existent — cf. le pavé de `catalogueConnu`.
+    // Le serveur reste la garde qui fait foi.
+    if (!AS || !index || !index.entrees.length) {
+      return /*#__PURE__*/React.createElement("input", {
+        value: valeur || '',
+        onChange: e => onSaisir(e.target.value),
+        placeholder: placeholder,
+        style: {
+          width: '100%',
+          padding: '4px 8px',
+          borderRadius: 6,
+          border: '1px solid #ddd',
+          fontSize: 12
+        }
+      });
+    }
+    const verdict = AS.verdictChoix(index, valeur);
+    const options = ouvert ? AS.filtrerEntrees(index, valeur, 40) : [];
+    // ⚠️ `en_cours` (frappe partielle QUI A des correspondances) n'est
+    // NI rouge, NI une erreur : le magasinier est en train de taper.
+    // Le peindre en rouge à chaque lettre d'une saisie normale était
+    // l'autre moitié du défaut remonté par Omar sur `sulfate`.
+    const invalide = verdict.issue === AS.ISSUE_INCONNU || verdict.issue === AS.ISSUE_AMBIGU;
+    // Rappel DISCRET, et seulement une fois la liste refermée : tant
+    // qu'elle est ouverte, les options parlent d'elles-mêmes.
+    const enCours = !ouvert && verdict.issue === AS.ISSUE_EN_COURS;
+    return /*#__PURE__*/React.createElement("div", {
+      style: {
+        position: 'relative'
+      }
+    }, /*#__PURE__*/React.createElement("input", {
+      value: valeur || '',
+      onChange: e => {
+        onSaisir(e.target.value);
+        setOuvert(true);
+      },
+      onFocus: () => setOuvert(true),
+      onBlur: fermerPlusTard,
+      placeholder: placeholder || 'Taper pour chercher…',
+      autoComplete: "off",
+      style: {
+        width: '100%',
+        padding: '4px 8px',
+        borderRadius: 6,
+        fontSize: 12,
+        border: invalide ? '2px solid #e74c3c' : '1px solid #ddd'
+      }
+    }), ouvert && /*#__PURE__*/React.createElement("div", {
+      style: {
+        position: 'absolute',
+        zIndex: 30,
+        left: 0,
+        right: 0,
+        top: '100%',
+        marginTop: 2,
+        maxHeight: 220,
+        overflowY: 'auto',
+        background: '#fff',
+        border: '1px solid #ddd',
+        borderRadius: 6,
+        boxShadow: '0 4px 14px rgba(0,0,0,.14)'
+      }
+    }, options.length === 0 ? /*#__PURE__*/React.createElement("div", {
+      style: {
+        padding: '6px 8px',
+        fontSize: 11,
+        color: '#888'
+      }
+    }, "Aucun article du catalogue ne correspond.") : options.map(e =>
+    /*#__PURE__*/
+    // onMouseDown, PAS onClick : le blur de l'input part
+    // avant le click et refermerait la liste sans jamais
+    // déclencher le choix.
+    React.createElement("div", {
+      key: e.cle,
+      onMouseDown: ev => {
+        ev.preventDefault();
+        onChoisir(e);
+        setOuvert(false);
+      },
+      style: {
+        padding: '6px 8px',
+        fontSize: 12,
+        cursor: 'pointer',
+        borderBottom: '1px solid #f4f4f4',
+        background: e.ambigu ? '#fff6f5' : '#fff'
+      }
+    }, e.nom, e.ambigu ? /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: '#a01d10',
+        fontSize: 10,
+        marginLeft: 6,
+        fontWeight: 600
+      }
+    }, /*#__PURE__*/React.createElement("i", {
+      className: "fa-solid fa-triangle-exclamation",
+      style: {
+        marginRight: 3
+      }
+    }), e.fiches.length, " fiches \u2014 \xE0 fusionner") : /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: '#888',
+        fontSize: 10,
+        marginLeft: 6
+      }
+    }, "stock : ", getStock ? getStock(e.nom) : '—')))), invalide && /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 10,
+        color: '#a01d10',
+        marginTop: 3,
+        fontWeight: 600,
+        lineHeight: 1.3
+      }
+    }, /*#__PURE__*/React.createElement("i", {
+      className: "fa-solid fa-triangle-exclamation",
+      style: {
+        marginRight: 3
+      }
+    }), verdict.message), enCours && /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 10,
+        color: '#888',
+        marginTop: 3,
+        lineHeight: 1.3
+      }
+    }, /*#__PURE__*/React.createElement("i", {
+      className: "fa-solid fa-list",
+      style: {
+        marginRight: 3
+      }
+    }), verdict.message));
+  }
+
   // ===================== MAGASINIER: BONS CONSOMMATION ENGRAIS TAB =====================
   function MagBCEngraisTab({
     currentProfile,
@@ -338,6 +509,37 @@
         return true;
       });
     })();
+    // --- SÉLECTION FERMÉE DE L'ARTICLE (lib/articleSelect) -------------
+    // Index bâti sur le catalogue COMPLET, jamais sur
+    // `catalogueArticlesAffichage` : ce dédoublonnage-là se fait sur le
+    // nom BRUT et masquerait les fiches jumelles, donc l'ambiguïté que la
+    // liste doit précisément montrer. `indexerCatalogue` dédoublonne, lui,
+    // sur la clé d'IDENTITÉ — la même que le serveur.
+    const AS = window.ArticleSelect;
+    const articleIndex = AS ? AS.indexerCatalogue(catalogueArticles) : null;
+    /**
+     * Le catalogue est-il RÉELLEMENT connu ?
+     *
+     * ⚠️ SANS CETTE GARDE, LE LOT ENFERME LE MAGASINIER SUR LE TERRAIN.
+     * `list-articles` (1 019 fiches) est chargé en `useEffect` avec un
+     * `.catch(()=>{})` : sur une 3G qui saute, l'appel part en timeout,
+     * l'échec est avalé, et `catalogueArticles` reste vide. L'index est
+     * alors vide, TOUT devient `inconnu`, et un article qui EXISTE se
+     * voit refuser — avec un message invitant à demander sa création.
+     * Le magasinier envoie une demande pour un article déjà au
+     * catalogue, et son bon, qui passait la veille, ne passe plus.
+     *
+     * Catalogue inconnu ⇒ ON NE FILTRE PAS. Le serveur refuse déjà en
+     * fail-closed (`identiteArticle`, #362, en production) : ce filtre
+     * rend le refus rare, il ne le remplace pas — et il ne doit surtout
+     * pas en inventer un que le serveur n'aurait pas prononcé.
+     *
+     * Un catalogue VRAIMENT vide donnerait le même résultat, et c'est
+     * sans conséquence : il n'y aurait alors aucun article à saisir.
+     */
+    const catalogueConnu = !!(articleIndex && articleIndex.entrees.length);
+    /** Verdict de la ligne : `choisi` | `en_cours` | `inconnu` | `ambigu` | `vide`. */
+    const verdictArticle = nom => AS && catalogueConnu ? AS.verdictChoix(articleIndex, nom) : null;
     // --- CONVERSION D'UNITÉ (lib/uniteConsoUtils) ----------------------
     // Un article peut être stocké au KG et dosé au L (acide nitrique :
     // 1 L = 1,32 KG). L'unité n'est donc plus un choix libre, et la
@@ -777,6 +979,26 @@
       if (!validItems.length) {
         alert('Ajoutez au moins un article');
         return;
+      }
+      // --- SÉLECTION FERMÉE : on ne valide QUE des articles du catalogue.
+      // La décision vient du module pur, jamais d'une comparaison de
+      // libellés écrite ici — elle divergerait du serveur, et le
+      // magasinier verrait un bon accepté à l'écran puis rejeté.
+      //
+      // ⚠️ CE N'EST PAS LA GARDE QUI FAIT FOI. Le scan de bon
+      // (MagBCScanModal) et les appels directs à l'API n'empruntent pas
+      // ce champ : `create-bc` refuse toujours de son côté
+      // (identiteArticle + uniteFigee). Ce filtre rend le refus rare,
+      // il ne le remplace pas.
+      // `catalogueConnu` : un catalogue non chargé (3G qui saute) ne
+      // doit JAMAIS faire refuser un article qui existe. Cf. le pavé
+      // de `catalogueConnu` plus haut.
+      if (AS && catalogueConnu) {
+        const fautives = AS.lignesInvalides(validItems, articleIndex);
+        if (fautives.length) {
+          alert('Ce bon ne peut pas être enregistré :\n\n' + fautives.map(f => '• ' + f.message).join('\n\n') + '\n\nChoisissez chaque article dans la liste déroulante.');
+          return;
+        }
       }
       for (const it of validItems) {
         if (!it.parcelle) {
@@ -1608,7 +1830,30 @@
         fontSize: 13,
         marginBottom: 8
       }
-    }, "Articles a consommer"), /*#__PURE__*/React.createElement("table", {
+    }, "Articles a consommer"), !catalogueConnu &&
+    /*#__PURE__*/
+    // Le `.catch(()=>{})` du chargement rend la panne INVISIBLE : un
+    // catalogue vide est indiscernable d'un catalogue réellement vide.
+    // Sans ce bandeau, le magasinier voit un champ qui ne propose rien
+    // et n'a aucun moyen de savoir pourquoi. On ne le bloque pas — le
+    // serveur garde la main — mais on lui dit ce qui se passe.
+    React.createElement("div", {
+      style: {
+        fontSize: 11,
+        color: '#8a6d1f',
+        background: '#fdf6e3',
+        border: '1px solid #f0dCa0',
+        borderRadius: 6,
+        padding: '6px 10px',
+        marginBottom: 8,
+        lineHeight: 1.4
+      }
+    }, /*#__PURE__*/React.createElement("i", {
+      className: "fa-solid fa-triangle-exclamation",
+      style: {
+        marginRight: 5
+      }
+    }), /*#__PURE__*/React.createElement("strong", null, "Liste des articles indisponible"), " \u2014 la recherche ne peut pas s'afficher. Saisissez le nom exact ; le contr\xF4le se fera \xE0 l'enregistrement. Rechargez la page si le probl\xE8me persiste."), /*#__PURE__*/React.createElement("table", {
       style: {
         width: '100%',
         borderCollapse: 'collapse',
@@ -1653,41 +1898,49 @@
       const insuffisant = it.article && it.quantite && parseFloat(it.quantite) > dispo;
       return /*#__PURE__*/React.createElement("tr", {
         key: idx
-      }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("input", {
-        list: 'stock-list-' + type,
-        value: it.article,
-        onChange: e => {
-          const val = e.target.value;
+      }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(ArticleCombo, {
+        valeur: it.article,
+        index: articleIndex,
+        getStock: getStock,
+        placeholder: "Article",
+        onSaisir: val => {
+          const items = [...form.items];
+          items[idx] = {
+            ...items[idx],
+            article: val
+          };
+          setForm({
+            ...form,
+            items
+          });
+        },
+        onChoisir: e => {
           const items = [...form.items];
           const next = {
             ...items[idx],
-            article: val
+            article: e.nom
           }; /* L'unité par défaut est celle du STOCK, écrite comme sur la fiche (« KG », pas « kg ») : c'est la valeur des options du sélecteur juste à côté. */
-          const permises = unitesPourArticle(val);
-          const u = permises.length ? permises[0] : catalogUnit(val);
+          const permises = unitesPourArticle(e.nom);
+          const u = permises.length ? permises[0] : catalogUnit(e.nom);
           if (u) next.unite = u;
           items[idx] = next;
           setForm({
             ...form,
             items
           });
-        },
-        placeholder: "Article",
-        style: {
-          width: '100%',
-          padding: '4px 8px',
-          borderRadius: 6,
-          border: '1px solid #ddd',
-          fontSize: 12
         }
-      }), /*#__PURE__*/React.createElement("datalist", {
-        id: 'stock-list-' + type
-      }, catalogueArticlesAffichage.map(a => /*#__PURE__*/React.createElement("option", {
-        key: a.id,
-        value: a.nom
-      }, a.nom, " (stock: ", getStock(a.nom), ")"))), (() => {
+      }), (() => {
         const v = (it.article || '').trim();
-        if (!v || catalogueArticles.some(a => a.nom.toLowerCase() === v.toLowerCase())) return null;
+        // L'issue offerte au magasinier quand ce qu'il tape n'est
+        // PAS au catalogue. Sans elle, la sélection fermée
+        // l'enfermerait devant une marchandise qu'il a en main.
+        //
+        // ⚠️ SEUL le cas `inconnu` l'ouvre. Un libellé AMBIGU
+        // désigne DEUX fiches actives : le remède est une FUSION,
+        // et en créer une troisième aggraverait le catalogue
+        // (même arbitrage que `demandeCreationArticle.libellesADemander`).
+        const verdict = verdictArticle(v);
+        if (!v || !verdict || verdict.issue !== AS.ISSUE_INCONNU) return null;
         // Achats/DG créent la fiche eux-mêmes ; le magasinier la DEMANDE.
         if (canCreateArticle) return /*#__PURE__*/React.createElement("button", {
           type: "button",

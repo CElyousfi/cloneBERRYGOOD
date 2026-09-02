@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:ba276a8430a3fd2f -->
-# Code Map — Composants frontend (359)
+<!-- sourceFingerprint: sha256:43934cf47fcccb49 -->
+# Code Map — Composants frontend (360)
 
 Chaque composant React de public/app.jsx et public/components/, avec son emplacement exact et le tab qui le monte — à consulter AVANT toute recherche dans app.jsx.
 
@@ -39,6 +39,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | Alerte | public/components/RapprochementPaiePopup.jsx:96 | — |
 | AnalysesFoliairesAlertDashboard | public/app.jsx:3631 | — |
 | App | public/app.jsx:67863 | — |
+| ArticleCombo | public/components/MagBCTab.jsx:57 | — |
 | ArticleConversionFields | public/components/ArticleConversionFields.jsx:46 | — |
 | AuthenticatedApp | public/app.jsx:68333 | — |
 | BackupManagementPanel | public/app.jsx:63812 | — |
@@ -227,10 +228,10 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | JoursFeriesConfigPanel | public/app.jsx:27869 | — |
 | KPICard | public/app.jsx:2894 | — |
 | LoginScreen | public/app.jsx:63292 | — |
-| MagBCEngraisTab | public/components/MagBCTab.jsx:37 | — |
-| MagBCPhytoTab | public/components/MagBCTab.jsx:42 | — |
+| MagBCEngraisTab | public/components/MagBCTab.jsx:134 | — |
+| MagBCPhytoTab | public/components/MagBCTab.jsx:139 | — |
 | MagBCScanModal | public/components/MagBCScanModal.jsx:112 | — |
-| MagBCTab | public/components/MagBCTab.jsx:47 | mag_bc |
+| MagBCTab | public/components/MagBCTab.jsx:144 | mag_bc |
 | MagBdcReceptionTab | public/components/MagBdcReceptionTab.jsx:37 | mag_bdc_reception |
 | MagBonsCommandeTab | public/components/MagBonsCommandeTab.jsx:77 | mag_bdc_liste |
 | MagDashboardStockTab | public/app.jsx:33833 | mag_dashboard |

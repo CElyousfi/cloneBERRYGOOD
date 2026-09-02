@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:746e4e4b7d68f547 -->
-# Code Map — Modules lib (226)
+<!-- sourceFingerprint: sha256:ecbc0a42e4cdb45c -->
+# Code Map — Modules lib (227)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
 
@@ -189,6 +189,7 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/valorisation/fermeParcelle.js | — | deriveFermeFromParcelle |
 | public/lib/analytiqueUtils.js | AnalytiqueUtils | opLabel, opKey, buildAnalytiquePivot, resolveGroupeFamille, resolveGbCode, buildAnalytiquePivotByFamille, GB_GROUPE_MAP, GROUPE_ORDER, GB_ORDER |
 | public/lib/articleCategories.js | ArticleCategories | CATEGORIES_ARTICLE, LABEL_VIDE, SUFFIXE_HORS_LISTE, optionsCategorie, estCanonique |
+| public/lib/articleSelect.js | ArticleSelect | cleIdentite, cleRecherche, ficheChoisissable, indexerCatalogue, filtrerEntrees, verdictChoix, lignesInvalides, ISSUE_CHOISI, ISSUE_EN_COURS, ISSUE_INCONNU, ISSUE_AMBIGU, ISSUE_VIDE |
 | public/lib/authResilience.js | AuthResilience | action, reason, profile, 5000, 10000, 20000, decideAuthState, isNewAppVersion, retryDelayMs |
 | public/lib/bcScanMatch.js | BcScanMatch | VARIETY_ALIASES, CULTURE_TOKENS, normalizeLabel, extractSecteurs, extractVariete, extractCulture, et, aliasMatch, matchParcelle |
 | public/lib/bdcReceptionUtils.js | BdcReceptionUtils | computeDeliveryData, resolveDeliveryDataOrError, filterReceptionsForBdc, computeReceptionRowsWithReliquat, computeReceptionEcart, clampReceivedQty, buildReceptionCreatedMessage |

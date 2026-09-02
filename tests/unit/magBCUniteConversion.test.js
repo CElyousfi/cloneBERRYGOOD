@@ -45,6 +45,10 @@ const SRC_CONV = babelise('public/components/ArticleConversionFields.jsx');
 
 const CampagneUtils = require('../../public/lib/campagneUtils.js');
 const UniteConsoUtils = require('../../public/lib/uniteConsoUtils.js');
+// Sélection FERMÉE de l'article (ticket sb/figer-unites). Sans elle dans le
+// faux `window`, MagBCTab retomberait sur son champ de repli et ces tests
+// vérifieraient le chemin dégradé au lieu du vrai.
+const ArticleSelect = require('../../public/lib/articleSelect.js');
 
 function flatten(children) {
   const out = [];
@@ -86,6 +90,7 @@ function load(stateOverrides, spy) {
       cachedFetch: () => new Promise(function () {}),
       CampagneUtils,
       UniteConsoUtils,
+      ArticleSelect,
     },
     fetch: function (url, init) {
       if (spy) spy.fetches.push({ url, init });
@@ -573,20 +578,53 @@ test('LA SOURCE de la liste : les trois chargements posent la liste COMPLÈTE', 
   }
 });
 
-test('la liste de suggestions, elle, reste dédoublonnée (affichage seulement)', () => {
+test('la liste proposée est dédoublonnée par IDENTITÉ, et marque les jumelles', () => {
+  // La `<datalist>` a disparu : le champ est passé en SÉLECTION FERMÉE
+  // (ticket sb/figer-unites). L'index passé au combo remplace la liste de
+  // suggestions, et il est bâti sur le catalogue COMPLET — dédoublonné par
+  // clé d'identité, pas par nom brut.
+  const spy = newSpy();
   const { MagBCTab } = load({
     [S.loading]: false, [S.bcs]: [],
     [S.catalogueArticles]: JUMELLES.concat([{ id: 'j3', nom: 'UREE 46', unite: 'KG' }]),
     [S.showForm]: true,
     [S.form]: formAvec([ligne({ article: '', quantite: '', unite: 'kg' })]),
+  }, spy);
+  const tree = MagBCTab({ type: 'engrais', currentProfile: 'magasinier', profileData: { name: 'Test' } });
+  // Le combo est un composant : le harnais l'exécute, on le retrouve par le
+  // champ de saisie qu'il rend et par l'index qu'on lui a passé.
+  const combos = findAll(tree, (n) => n.props && n.props.placeholder === 'Article');
+  assert.equal(combos.length, 1, 'une ligne = un champ Article');
+
+  const index = ArticleSelect.indexerCatalogue(
+    JUMELLES.concat([{ id: 'j3', nom: 'UREE 46', unite: 'KG' }])
+  );
+  const noms = ArticleSelect.filtrerEntrees(index, '').map((e) => e.nom);
+  // Les deux jumelles portent la MÊME identité : une seule entrée, sinon le
+  // magasinier choisit entre deux lignes rigoureusement identiques.
+  assert.deepEqual(noms, ['Acide Chlorhydrique', 'UREE 46']);
+  // …mais elle est MARQUÉE ambiguë, et non validable : le remède est une
+  // fusion, et le serveur (identiteArticle) refuse ce cas de toute façon.
+  assert.equal(index.parCle['ACIDE CHLORHYDRIQUE'].ambigu, true);
+  assert.equal(ArticleSelect.verdictChoix(index, 'Acide Chlorhydrique').ok, false);
+});
+
+test('le champ Article n\'est PLUS un champ libre : plus de datalist', () => {
+  const { MagBCTab } = load({
+    [S.loading]: false, [S.bcs]: [],
+    [S.catalogueArticles]: [{ id: 'a1', nom: 'KELPAK', unite: 'L' }],
+    [S.showForm]: true,
+    [S.form]: formAvec([ligne({ article: '', quantite: '', unite: 'kg' })]),
   }, newSpy());
   const tree = MagBCTab({ type: 'engrais', currentProfile: 'magasinier', profileData: { name: 'Test' } });
-  const datalist = findAll(tree, (n) => n.type === 'datalist')[0];
-  assert.ok(datalist);
-  const noms = datalist.children.map((o) => o.props.value);
-  // Les deux jumelles portent le MÊME nom : une seule doit être proposée,
-  // sinon le magasinier choisit entre deux lignes rigoureusement identiques.
-  assert.deepEqual(noms, ['Acide Chlorhydrique', 'UREE 46']);
+  assert.equal(
+    findAll(tree, (n) => n.type === 'datalist').length, 0,
+    'une datalist accepte n\'importe quelle saisie : c\'est exactement ce qu\'Omar veut fermer'
+  );
+  assert.equal(
+    findAll(tree, (n) => n.props && n.props.list).length, 0,
+    'aucun `<input list>` ne doit subsister'
+  );
 });
 
 // ── 8. LA FICHE ARTICLE (Stock › Articles, dans le monolithe) ──────────────
