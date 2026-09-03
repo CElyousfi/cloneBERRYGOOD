@@ -189,10 +189,17 @@ reste la source de vérité tant que la bascule n'est pas validée.
 | Code splitting, chargement initial < 500 Ko | **Non fait** | exige `React.lazy` + `Suspense` : modifie la temporalité de rendu, à valider explicitement avant engagement |
 | Lighthouse > 90, FCP < 1,5 s | **Non mesuré** | dépend du point précédent |
 | Tests unitaires Vitest + RTL (300+, > 60 %) | **Non fait** | Vitest n'est pas installé |
-| TypeScript (JSDoc → `.tsx` → `strict`) | **Non fait** | |
-| Feature flags / dual mode `MODULAR_FRONTEND` | **Non câblé** | le drapeau existe mais ne pilote aucune bascule |
-| Tests E2E Playwright (5-10 user journeys) | **Partiel** | 350 rendus couverts, pas de parcours métier complet |
+| TypeScript (JSDoc → `.tsx` → `strict`) | **Étape 1/3** (2026-09-03) | JSDoc : `npm run typecheck` rend 0 erreur (1 403 auparavant) et bloque en CI. `.tsx` et `strict` restent à faire |
+| Feature flags / dual mode `MODULAR_FRONTEND` | **Fait** (2026-09-03) | `public/lib/featureFlags.js` + sélecteur d'entrée dans `index.html` : la page charge `app.js` ou `app.modular.js` selon le drapeau, relu depuis `app_settings/feature_flags` à chaque session authentifiée et appliqué au chargement SUIVANT. Repli automatique si un boot modulaire n'aboutit pas — un drapeau distant ne protège de rien si le bundle plante avant de pouvoir le relire. Vérifié en navigateur réel : `npm run smoke:boot`, 12 assertions |
+| Tests E2E Playwright (5-10 user journeys) | **Partiel** | 350 rendus couverts, pas de parcours métier complet. `playwright.config` toujours absent |
 | Déploiement prod + monitoring Sentry | **Non fait** | |
+| CI : lint → typecheck → tests → build | **Fait** (2026-09-03) | `test.yml` ne lançait ni lint ni typecheck ; les deux sont ajoutés et bloquants, avec le build modulaire, `migrate:verify` et le smoke de boot |
+
+⚠️ Deux corrections d'infrastructure faites au passage, toutes deux invisibles jusque-là :
+`npm run build:vercel` était **cassé** (ancre de cache-bust figée dans
+`assemble-vercel.cjs` : le livrable modulaire n'était plus constructible), et les
+12 cibles de test npm ne trouvaient **aucun fichier** sous Node 20 (glob non
+développé ; la CI contournait le problème en ligne, `npm run qa` non).
 
 Le sort de l'arborescence `src/features/*DomainView.jsx` (réécriture Supabase) est une **décision
 client** : elle n'a pas été supprimée.
