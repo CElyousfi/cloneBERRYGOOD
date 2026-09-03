@@ -114,3 +114,4 @@ dist-vercel/
 extract.py
 scripts/serve-dist.js
 scripts/migrate-finance-to-postgres/_connect_test.js
+__pycache__/

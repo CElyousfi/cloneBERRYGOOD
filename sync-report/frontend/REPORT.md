@@ -5,11 +5,11 @@
 - Hunks dans le diff : **14**
 - Definitions touchees : **1**
 - Hunks hors de toute definition : **0**
-- Definitions touchees sans module attribue : **1**
+- Definitions touchees sans module attribue : **0**
 
 ## Par module
 
-### NON MAPPÉ
+### rh
 
 - `QuinzaineTab` (function, lignes 11124–14264) — 14 hunk(s) → `by-component/QuinzaineTab.diff`
 

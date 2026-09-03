@@ -72,6 +72,39 @@
   }
 
   /**
+   * Uploads a File/Blob directly to Firebase Storage at an EXPLICIT path.
+   *
+   * Same guarantees as `uploadDirect` (hard timeout + explicit contentType), for
+   * the flows whose namespace is not `scans/<entity>/` — e.g. the signed
+   * overtime émargement états (`rh_emargements/<periode>/…`). The path is built
+   * by the caller and REVALIDATED server-side by the recording Cloud Function.
+   *
+   * @param {File} file
+   * @param {string} storagePath
+   * @returns {Promise<{ storage_path: string, filename: string }>}
+   */
+  function uploadDirectToPath(file, storagePath) {
+    if (!SCU_Utils) return Promise.reject(new Error('ScanAttachmentUtils indisponible'));
+    if (!isStorageAvailable()) return Promise.reject(new Error('SDK Firebase Storage non chargé'));
+    if (!file) return Promise.reject(new Error('Aucun fichier'));
+    if (typeof storagePath !== 'string' || !storagePath.trim()) {
+      return Promise.reject(new Error('Chemin de stockage manquant'));
+    }
+
+    var filename = file.name || 'scan.pdf';
+    var ref = window.firebase.storage().ref().child(storagePath);
+    // Explicit contentType is REQUIRED: on mobile file.type is often empty.
+    var contentType = (file.type && file.type !== '') ? file.type : SCU_Utils.mimeFromFilename(filename);
+    return withTimeout(
+      ref.put(file, { contentType: contentType }),
+      SCU_UPLOAD_TIMEOUT_MS,
+      'Upload bloqué — vérifiez la connexion ou réessayez.'
+    ).then(function () {
+      return { storage_path: storagePath, filename: filename };
+    });
+  }
+
+  /**
    * Uploads a File/Blob directly to Firebase Storage.
    * @param {File} file
    * @param {string} entityType - invoices | delivery_notes | purchase_orders
@@ -186,6 +219,7 @@
   var __scanClientUploadApi = {
     isStorageAvailable: isStorageAvailable,
     uploadDirect: uploadDirect,
+    uploadDirectToPath: uploadDirectToPath,
     recordAttachment: recordAttachment,
     uploadAndRecord: uploadAndRecord,
     getAttachmentUrl: getAttachmentUrl,
