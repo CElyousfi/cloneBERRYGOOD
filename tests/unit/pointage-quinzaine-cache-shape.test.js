@@ -19,10 +19,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const SRC = fs.readFileSync(
-  path.join(__dirname, '../../functions/pointageService.js'),
-  'utf8'
-);
+const SRC = require('../helpers/backendSource').serviceSource('pointageService');
 
 test('warmAllPointageCaches : le bloc warmer "4. Quinzaine (latest)" calcule periodeCampagne', () => {
   const warmerStart = SRC.indexOf('// 4. Quinzaine (latest)');

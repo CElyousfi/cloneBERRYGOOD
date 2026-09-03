@@ -50,7 +50,7 @@ const path = require('node:path');
 
 const ROOT = path.join(__dirname, '../..');
 const INDEX_SRC = require('../helpers/backendSource').backendSource();
-const POINTAGE_SRC = fs.readFileSync(path.join(ROOT, 'functions/pointageService.js'), 'utf8');
+const POINTAGE_SRC = require('../helpers/backendSource').serviceSource('pointageService');
 const { CONSO_PARCELLE_CACHE_PREFIX } = require('../../functions/lib/consoBons/cacheKeys');
 const { categorieCanonique } = require('../../functions/lib/stockMerge/articleCategories');
 const { familleBucket } = require('../../functions/lib/valorisation/consoValorisation');

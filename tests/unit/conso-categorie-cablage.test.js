@@ -39,10 +39,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const POINTAGE_SRC = fs.readFileSync(
-  path.join(__dirname, '../../functions/pointageService.js'),
-  'utf8'
-);
+const POINTAGE_SRC = require('../helpers/backendSource').serviceSource('pointageService');
 const INDEX_SRC = require('../helpers/backendSource').backendSource();
 
 /**

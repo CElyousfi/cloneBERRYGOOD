@@ -25,10 +25,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const SRC = fs.readFileSync(
-  path.join(__dirname, '../../functions/pointageService.js'),
-  'utf8'
-);
+const SRC = require('../helpers/backendSource').serviceSource('pointageService');
 
 const ACTION_IDX = SRC.indexOf('async function computeCampagneAnalytiqueDetail(');
 assert.ok(ACTION_IDX !== -1, 'computeCampagneAnalytiqueDetail introuvable');

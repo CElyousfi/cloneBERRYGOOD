@@ -37,4 +37,28 @@ function backendSource() {
   return files.map(f => fs.readFileSync(f, 'utf8')).join('\n');
 }
 
-module.exports = { backendSource };
+/**
+ * Le source d'un service backend eclate en plusieurs fichiers.
+ *
+ * `pointageService.js` etait un monolithe ; il vit maintenant dans
+ * pointageService.js + .part*.js + .actions*.js. Les tests qui lisaient le
+ * fichier unique lisent cette concatenation — meme matiere, repartie autrement.
+ *
+ * @param {string} base nom de base, ex. 'pointageService'
+ */
+function serviceSource(base) {
+  const dir = path.join(ROOT, 'functions');
+  const files = fs.readdirSync(dir)
+    .filter(f => f === base + '.js' || f.startsWith(base + '.'))
+    .filter(f => f.endsWith('.js'))
+    .sort((a, b) => {
+      // le fichier principal en DERNIER : un test qui decoupe a partir de
+      // `exports.<nom>` doit tomber sur le handler, pas sur une re-export.
+      if (a === base + '.js') return 1;
+      if (b === base + '.js') return -1;
+      return a.localeCompare(b);
+    });
+  return files.map(f => fs.readFileSync(path.join(dir, f), 'utf8')).join('\n');
+}
+
+module.exports = { backendSource, serviceSource };
