@@ -1,6 +1,7 @@
 /* Migré depuis public/app.jsx — extraction verbatim (non-régression).
    Module: magasin | Déclaration(s): InventaireStockView */
 import { useEffect, useState } from '../shared/reactHooks.jsx';
+import { canonArt } from './canonArt.jsx';
 
 function InventaireStockView() {
             const [balances, setBalances] = useState([]);

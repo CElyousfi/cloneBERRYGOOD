@@ -1,4 +1,5 @@
-/* Barrel magasin — 11 fichiers */
+/* Barrel magasin — 12 fichiers */
+export * from './canonArt.jsx';
 export * from './InventairePrixView.jsx';
 export * from './InventaireStockView.jsx';
 export * from './MagDashboardStockTab.jsx';
