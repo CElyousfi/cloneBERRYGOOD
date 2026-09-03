@@ -3,14 +3,10 @@
 - Arbre(s) cible(s) : src/modules, public/components, public/lib
 - Monolithe : 69398 lignes, indentation de premier niveau = 8
 - Definitions indexees : **340**
-- Presentes dans l'arbre : **339**
-- Manquantes : **1**
+- Presentes dans l'arbre : **340**
+- Manquantes : **0**
 - Ignorees explicitement : **0**
 - Definies en double : **15**
-
-## Manquantes — a porter
-
-- `canonArt` (const, ligne 51478)
 
 ## Definies en double — copies potentiellement divergentes
 
