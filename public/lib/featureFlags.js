@@ -15,8 +15,9 @@
  *      gagne toujours, et elle est mémorisée pour les navigations suivantes.
  *   2. Un boot modulaire précédent qui n'a jamais abouti — repli automatique.
  *   3. La valeur mise en cache par le dernier `refresh()` réussi.
- *   4. Le défaut : `false`, le monolithe. Un utilisateur qui n'a jamais rien
- *      mis en cache reste sur le chemin éprouvé.
+ *   4. Le défaut : le frontend MODULAIRE. La parité de rendu entre les deux est
+ *      vérifiée écran par écran dans un navigateur — `npm run migrate:parity`,
+ *      20 profils, 350 rendus, 0 écart.
  *
  * LE GARDE-FOU DE BOOT est ce qui rend la bascule réversible. Un drapeau
  * distant ne protège de rien si le bundle plante AVANT d'avoir pu le relire :
@@ -51,28 +52,31 @@
    *   `param`  : valeur brute de `?modular` ('1', '0', ou null si absent)
    *   `cached` : valeur brute en localStorage ('1', '0', ou null)
    *   `bootPending` : marqueur d'un boot modulaire jamais confirmé (ou null)
-   * @returns {{modular: boolean, reason: string, clearBootPending: boolean}}
+   * @returns {{modular: boolean, reason: string, clearBootPending: boolean, persist: string|null}}
+   *   `persist` : valeur à écrire dans le cache, ou null pour n'y pas toucher
    */
   function decideModularFrontend(input) {
     var i = input || {};
 
     // 1. L'URL tranche, dans les deux sens. C'est l'échappatoire manuelle :
     //    `?modular=0` ramène au monolithe même si tout le reste dit l'inverse.
-    if (i.param === '1') return { modular: true, reason: 'url', clearBootPending: false };
-    if (i.param === '0') return { modular: false, reason: 'url', clearBootPending: true };
+    if (i.param === '1') return { modular: true, reason: 'url', clearBootPending: false, persist: null };
+    if (i.param === '0') return { modular: false, reason: 'url', clearBootPending: true, persist: null };
 
-    // 2. Un boot modulaire précédent n'a jamais confirmé son rendu : on ne le
-    //    retente pas en boucle. Le marqueur est consommé — un incident isolé
-    //    ne condamne pas la bascule pour toujours, le prochain refresh la
-    //    rétablira.
-    if (i.bootPending) return { modular: false, reason: 'boot-echec', clearBootPending: true };
+    // 2. Un boot modulaire précédent n'a jamais confirmé son rendu.
+    //    Le repli est COLLANT : on écrit '0' en cache. Sans ça, le défaut
+    //    modulaire reprendrait la main au chargement suivant et l'utilisateur
+    //    alternerait indéfiniment entre une application morte et le monolithe.
+    //    Un `refresh()` réussi, ou un `?modular=1` explicite, le relance.
+    if (i.bootPending) return { modular: false, reason: 'boot-echec', clearBootPending: true, persist: '0' };
 
     // 3. Dernière valeur distante connue.
-    if (i.cached === '1') return { modular: true, reason: 'cache', clearBootPending: false };
-    if (i.cached === '0') return { modular: false, reason: 'cache', clearBootPending: false };
+    if (i.cached === '1') return { modular: true, reason: 'cache', clearBootPending: false, persist: null };
+    if (i.cached === '0') return { modular: false, reason: 'cache', clearBootPending: false, persist: null };
 
-    // 4. Défaut prudent.
-    return { modular: false, reason: 'defaut', clearBootPending: false };
+    // 4. Défaut : le modulaire. La parité de rendu avec le monolithe est
+    //    vérifiée écran par écran (`npm run migrate:parity`).
+    return { modular: true, reason: 'defaut', clearBootPending: false, persist: null };
   }
 
   /** Lecture tolérante de localStorage — indisponible en navigation privée. */
@@ -109,6 +113,7 @@
     // Un choix explicite d'URL devient le choix persistant : sans ça,
     // `?modular=1` serait perdu à la première navigation interne.
     if (param) lsSet(LS_MODULAR, param);
+    else if (d.persist) lsSet(LS_MODULAR, d.persist);
     if (d.clearBootPending) lsDel(LS_BOOT_PENDING);
     return { modular: d.modular, reason: d.reason };
   }

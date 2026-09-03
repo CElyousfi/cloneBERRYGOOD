@@ -108,26 +108,28 @@ async function boot(browser, url, seed) {
   };
 
   try {
-    // A. Défaut : le monolithe, et RIEN du modulaire.
+    // A. Défaut : le frontend MODULAIRE, et rien du monolithe.
     const a = await boot(browser, base + '/');
-    check('A/ défaut → app.js demandé', a.requested.includes('app.js'), JSON.stringify(a.requested));
-    check('A/ défaut → app.modular.js jamais demandé', !a.requested.includes('app.modular.js'), JSON.stringify(a.requested));
-    check('A/ défaut → interface rendue', a.rendered, 'splash toujours présent');
-    check('A/ défaut → aucun marqueur de boot laissé', !a.storage.pending, String(a.storage.pending));
+    check('A/ défaut → app.modular.js demandé', a.requested.includes('app.modular.js'), JSON.stringify(a.requested));
+    check('A/ défaut → monolithe jamais demandé', !a.requested.includes('app.js'), JSON.stringify(a.requested));
+    check('A/ défaut → interface rendue', a.rendered, 'splash toujours présent : le bundle modulaire ne monte pas');
+    check('A/ défaut → marqueur de boot purgé après rendu', !a.storage.pending, String(a.storage.pending));
 
-    // B. ?modular=1 : le bundle ES, rendu, marqueur purgé, choix mémorisé.
-    const b = await boot(browser, base + '/?modular=1');
-    check('B/ ?modular=1 → app.modular.js demandé', b.requested.includes('app.modular.js'), JSON.stringify(b.requested));
-    check('B/ ?modular=1 → monolithe jamais demandé', !b.requested.includes('app.js'), JSON.stringify(b.requested));
-    check('B/ ?modular=1 → interface rendue', b.rendered, 'splash toujours présent : le bundle modulaire ne monte pas');
-    check('B/ ?modular=1 → marqueur de boot purgé après rendu', !b.storage.pending, String(b.storage.pending));
-    check('B/ ?modular=1 → choix mémorisé pour les navigations suivantes', b.storage.flag === '1', String(b.storage.flag));
+    // B. ?modular=0 : l'échappatoire manuelle vers le monolithe.
+    const b = await boot(browser, base + '/?modular=0');
+    check('B/ ?modular=0 → app.js demandé', b.requested.includes('app.js'), JSON.stringify(b.requested));
+    check('B/ ?modular=0 → modulaire jamais demandé', !b.requested.includes('app.modular.js'), JSON.stringify(b.requested));
+    check('B/ ?modular=0 → interface rendue', b.rendered, 'splash toujours présent');
+    check('B/ ?modular=0 → choix mémorisé pour les navigations suivantes', b.storage.flag === '0', String(b.storage.flag));
 
-    // C. Garde-fou : un boot modulaire jamais confirmé ramène au monolithe.
+    // C. Garde-fou : un boot modulaire jamais confirmé ramène au monolithe, et
+    //    le repli COLLE — sinon le défaut modulaire reprendrait la main au
+    //    chargement suivant, et l'utilisateur alternerait indéfiniment.
     const c = await boot(browser, base + '/', ['sb_modular_boot_pending', '1699999999999']);
     check('C/ marqueur d\'échec → repli sur app.js', c.requested.includes('app.js'), JSON.stringify(c.requested));
     check('C/ marqueur d\'échec → modulaire non retenté', !c.requested.includes('app.modular.js'), JSON.stringify(c.requested));
-    check('C/ marqueur consommé (un incident isolé ne condamne pas la bascule)', !c.storage.pending, String(c.storage.pending));
+    check('C/ marqueur consommé', !c.storage.pending, String(c.storage.pending));
+    check('C/ repli persisté en cache (pas d\'alternance au rechargement)', c.storage.flag === '0', String(c.storage.flag));
   } finally {
     await browser.close();
     server.close();

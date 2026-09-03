@@ -15,9 +15,11 @@ const assert = require('node:assert/strict');
 
 const { decideModularFrontend } = require('../../public/lib/featureFlags.js');
 
-test('défaut : sans aucune source, on reste sur le monolithe', () => {
+test('défaut : sans aucune source, on sert le frontend modulaire', () => {
+  // La bascule du défaut est l'acte de migration lui-même. Elle repose sur la
+  // parité de rendu vérifiée écran par écran (npm run migrate:parity).
   const d = decideModularFrontend({});
-  assert.equal(d.modular, false);
+  assert.equal(d.modular, true);
   assert.equal(d.reason, 'defaut');
 });
 
@@ -47,11 +49,14 @@ test('garde-fou : un boot modulaire jamais confirmé ramène au monolithe', () =
   assert.equal(d.reason, 'boot-echec');
 });
 
-test('garde-fou : le marqueur est CONSOMMÉ, un incident isolé ne condamne pas la bascule', () => {
+test('garde-fou : le repli est COLLANT — pas d\'alternance avec le défaut modulaire', () => {
   const d = decideModularFrontend({ cached: '1', bootPending: '1699999999999' });
-  assert.equal(d.clearBootPending, true);
-  // Chargement suivant, marqueur purgé : le cache reprend la main.
-  assert.equal(decideModularFrontend({ cached: '1' }).modular, true);
+  assert.equal(d.clearBootPending, true, 'le marqueur est consommé');
+  assert.equal(d.persist, '0', 'le repli est écrit en cache');
+  // Sans cette persistance, le défaut modulaire reprendrait la main au
+  // chargement suivant et l'utilisateur alternerait entre une application
+  // morte et le monolithe, indéfiniment.
+  assert.equal(decideModularFrontend({ cached: '0' }).modular, false);
 });
 
 test('un ?modular=1 explicite passe outre un échec de boot précédent', () => {
@@ -61,14 +66,16 @@ test('un ?modular=1 explicite passe outre un échec de boot précédent', () => 
   assert.equal(d.reason, 'url');
 });
 
-test('valeurs inattendues : tout ce qui n\'est ni "1" ni "0" est ignoré', () => {
+test('valeurs inattendues : tout ce qui n\'est ni "1" ni "0" retombe sur le défaut', () => {
   for (const bogus of ['true', 'oui', '', 'null', '2']) {
-    assert.equal(decideModularFrontend({ cached: bogus }).modular, false, `cache=${bogus}`);
-    assert.equal(decideModularFrontend({ param: bogus }).modular, false, `param=${bogus}`);
+    const c = decideModularFrontend({ cached: bogus });
+    assert.equal(c.reason, 'defaut', `cache=${bogus} ne doit pas être interprété`);
+    const p = decideModularFrontend({ param: bogus });
+    assert.equal(p.reason, 'defaut', `param=${bogus} ne doit pas être interprété`);
   }
 });
 
 test('entrée absente ou nulle ne lève pas', () => {
-  assert.equal(decideModularFrontend(undefined).modular, false);
-  assert.equal(decideModularFrontend(null).modular, false);
+  assert.equal(decideModularFrontend(undefined).reason, 'defaut');
+  assert.equal(decideModularFrontend(null).reason, 'defaut');
 });
