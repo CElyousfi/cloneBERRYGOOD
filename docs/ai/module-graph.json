@@ -4,7 +4,7 @@
     "healthScore": {
       "subScores": {
         "classification": {
-          "detail": "200/316 fichiers classifiés",
+          "detail": "200/317 fichiers classifiés",
           "max": 40,
           "score": 25
         },
@@ -14,7 +14,7 @@
           "score": 30
         },
         "testCoverage": {
-          "detail": "76/196 modules avec ≥1 test",
+          "detail": "77/197 modules avec ≥1 test",
           "max": 30,
           "score": 12
         }
@@ -35,7 +35,7 @@
         "file": "public/components/CampagneAnalytiqueTab.jsx"
       },
       {
-        "commits": 26,
+        "commits": 25,
         "file": "functions/index.js"
       },
       {
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:101c364116d17e5e",
+    "sourceFingerprint": "sha256:0393806b937aa5b8",
     "stats": {
       "backendModules": 117,
       "cloudFunctions": 0,
@@ -72,11 +72,11 @@
       "domains": 10,
       "extractedComponents": 33,
       "firestoreCollections": 62,
-      "libHelpers": 46,
+      "libHelpers": 47,
       "monolithSymbols": 120,
       "tabFunctions": 120,
-      "unclassifiedFiles": 116,
-      "unitTestFiles": 42
+      "unclassifiedFiles": 117,
+      "unitTestFiles": 43
     }
   },
   "domains": {
@@ -2150,6 +2150,10 @@
       "confidence": "high",
       "domain": "achats"
     },
+    "public/lib/featureFlags.js": {
+      "confidence": "low",
+      "domain": null
+    },
     "public/lib/fusionMasse.js": {
       "confidence": "low",
       "domain": null
@@ -3595,6 +3599,10 @@
     {
       "confidence": "low",
       "file": "public/lib/emargementPdf.js"
+    },
+    {
+      "confidence": "low",
+      "file": "public/lib/featureFlags.js"
     },
     {
       "confidence": "low",

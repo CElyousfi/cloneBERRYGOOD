@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:e0bdcf25b9c293aa",
+    "sourceFingerprint": "sha256:73277b2c05c64a61",
     "stats": {
-      "targetFiles": 317,
-      "targetFilesWithDirectTests": 194,
-      "targetFilesWithTransitiveTests": 215,
-      "testFilesScanned": 294
+      "targetFiles": 318,
+      "targetFilesWithDirectTests": 195,
+      "targetFilesWithTransitiveTests": 216,
+      "testFilesScanned": 295
     }
   },
   "index": {
@@ -2387,6 +2387,14 @@
       ],
       "transitiveTests": [
         "tests/unit/factureExportUtils.test.js"
+      ]
+    },
+    "public/lib/featureFlags.js": {
+      "directTests": [
+        "tests/unit/featureFlags.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/featureFlags.test.js"
       ]
     },
     "public/lib/fusionMasse.js": {
