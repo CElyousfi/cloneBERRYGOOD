@@ -1,0 +1,72 @@
+# Parity check — `../upstream-readonly/public/app.jsx`
+
+- Arbre(s) cible(s) : src/modules, public/components, public/lib
+- Monolithe : 69398 lignes, indentation de premier niveau = 8
+- Definitions indexees : **340**
+- Presentes dans l'arbre : **339**
+- Manquantes : **1**
+- Ignorees explicitement : **0**
+- Definies en double : **15**
+
+## Manquantes — a porter
+
+- `canonArt` (const, ligne 51478)
+
+## Definies en double — copies potentiellement divergentes
+
+- `FAMILLE_ICONS`
+  - public/components/CampagneAnalytiqueTab.js
+  - public/components/CampagneAnalytiqueTab.jsx
+  - src/modules/shared/FAMILLE_ICONS.jsx
+- `FARMS`
+  - public/components/MagBCTab.js
+  - public/components/MagBCTab.jsx
+  - src/modules/achats/AchatsBDCTab.jsx
+  - src/modules/achats/AchatsConsultationTab.jsx
+  - src/modules/achats/AchatsDATab.jsx
+  - src/modules/finance/FinBDCTab.jsx
+  - src/modules/shared/FARMS.jsx
+- `PAIE_BAREMES_DEFAULT`
+  - public/lib/paieUtils.js
+  - src/modules/admin/PAIE_BAREMES_DEFAULT.jsx
+- `PARCELLES_CULTURALES`
+  - src/modules/agronomie/PARCELLES_CULTURALES.jsx
+  - src/modules/bootstrap.jsx
+- `PointageTab`
+  - public/components/PointageValidationView.js
+  - public/components/PointageValidationView.jsx
+  - src/modules/bootstrap.jsx
+  - src/modules/rh/PointageTab.jsx
+- `TXN_TYPE_LABELS`
+  - src/modules/caisse/TXN_TYPE_LABELS.jsx
+  - src/modules/caisse/index.js
+- `cachedFetch`
+  - src/modules/bootstrap.jsx
+  - src/modules/shared/cachedFetch.jsx
+- `calculerPaieOuvrier`
+  - public/lib/paieUtils.js
+  - src/modules/rh/calculerPaieOuvrier.jsx
+- `deriveSubFerme`
+  - src/modules/bootstrap.jsx
+  - src/modules/shared/deriveSubFerme.jsx
+- `getHa`
+  - src/modules/agronomie/getHa.jsx
+  - src/modules/qualite/QualiteProductionTab.jsx
+- `matchCulture`
+  - public/components/CampagneAnalytiqueTab.js
+  - public/components/CampagneAnalytiqueTab.jsx
+  - src/modules/agronomie/matchCulture.jsx
+  - src/modules/recolte/RecolteTab.jsx
+- `nomOuvrier`
+  - src/modules/bootstrap.jsx
+  - src/modules/rh/nomOuvrier.jsx
+- `sbParcelleHa`
+  - src/modules/agronomie/sbParcelleHa.jsx
+  - src/modules/bootstrap.jsx
+- `sbParcelleNom`
+  - src/modules/agronomie/sbParcelleNom.jsx
+  - src/modules/bootstrap.jsx
+- `trouverPalierAnciennete`
+  - public/lib/paieUtils.js
+  - src/modules/rh/trouverPalierAnciennete.jsx
+

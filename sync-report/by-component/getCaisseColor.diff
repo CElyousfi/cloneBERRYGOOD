@@ -1,0 +1,26 @@
+--- BASE/getCaisseColor
++++ MAIN/getCaisseColor
+@@ -20,3 +20,23 @@
+             rejete:    { label: 'Rejeté',    color: '#991B1B', bg: '#FEE2E2' },
+         };
+ 
++        // Exposés pour public/components/CaisseSaisieSub.jsx (composant extrait,
++        // scope séparé). Propriétés de window, pas de binding lexical : aucune
++        // collision possible avec le scope global (cf. umd-global-collision).
++        window.TXN_TYPE_LABELS = TXN_TYPE_LABELS;
++        window.CAISSE_STATUS_LABELS = STATUS_LABELS;
++
++        // Statuts d'un bon de caisse encore modifiables (miroir UI de la garde
++        // backend update-transaction — la garde qui compte est côté serveur).
++        const CAISSE_STATUTS_EDITABLES = ['brouillon', 'soumis', 'a_revoir', 'rejete', 'valide'];
++        // Types saisis à la main (transferts et compte client exclus).
++        const CAISSE_TYPES_EDITABLES = ['alimentation', 'depense', 'sortie', 'paie', 'transport'];
++
++        // Libellés lisibles des champs, pour l'historique des modifications.
++        const CAISSE_FIELD_LABELS = {
++            date: 'Date', montant: 'Montant', type: 'Type', caisse_id: 'Caisse',
++            code_analytique: 'Code analytique', description: 'Description',
++            matricule: 'Matricule', beneficiaire_nom: 'Bénéficiaire', files: 'Pièces jointes',
++            ferme: 'Ferme', campagne: 'Campagne', culture: 'Culture', parcelle: 'Parcelle',
++        };
++
