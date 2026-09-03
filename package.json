@@ -4,6 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "build": "npm run build:frontend && npm run migrate:build",
+    "lint": "node scripts/lint.cjs",
     "build:frontend": "node scripts/build-frontend.js",
     "test:unit": "node --test 'tests/unit/**/*.test.js'",
     "qa": "bash scripts/qa.sh",
@@ -15,8 +17,6 @@
     "smoke:sprint-1": "node tests/smoke-sprint-1.js",
     "deploy:functions": "bash scripts/deploy.sh functions",
     "deploy:hosting": "bash scripts/deploy.sh hosting",
-    "dev": "vite --config vite.config.js",
-    "build:vite": "vite build --config vite.config.js",
     "test:finance": "node --test 'functions/lib/finance/__tests__/*.test.js'",
     "test:all": "node --test 'tests/unit/**/*.test.js' 'functions/lib/finance/__tests__/*.test.js'",
     "migrate:extract": "node scripts/migrate/extract-modules.cjs",

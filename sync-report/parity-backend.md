@@ -1,168 +1,12 @@
 # Parity check — `../upstream-readonly/functions/index.js`
 
-- Arbre(s) cible(s) : functions/lib
+- Arbre(s) cible(s) : functions/src, functions/lib, functions
 - Monolithe : 19359 lignes, indentation de premier niveau = 0
 - Definitions indexees : **162**
-- Presentes dans l'arbre : **9**
-- Manquantes : **153**
+- Presentes dans l'arbre : **162**
+- Manquantes : **0**
 - Ignorees explicitement : **0**
-- Definies en double : **2**
-
-## Manquantes — a porter
-
-- `ARTICLE_HISTORY_CACHE_TTL_MS` (const, ligne 90)
-- `CAISSE_PROFILES_CONTROLE` (const, ligne 16262)
-- `CAISSE_PROFILES_SAISIE` (const, ligne 16261)
-- `COMPOSITION_NPK` (const, ligne 1030)
-- `DEFAULT_MODEL` (const, ligne 2980)
-- `FARMROAD_CACHE_TTL_MS` (const, ligne 2346)
-- `FORECAST_FARM` (const, ligne 2962)
-- `GDD_CONFIG` (const, ligne 3546)
-- `GROWTH_DATE_REGEX` (const, ligne 1253)
-- `GROWTH_MEASUREMENTS` (const, ligne 1251)
-- `GROWTH_PLOT_CONFIG` (const, ligne 1252)
-- `IDENTITE_ARTICLE_CACHE_TTL_MS` (const, ligne 120)
-- `MC_MAPPING_CAMPAGNE` (const, ligne 1412)
-- `MC_PARCELLES_CHARGE` (const, ligne 1413)
-- `MC_PARCELLES_CONSO` (const, ligne 1411)
-- `METEOBLUE_API_KEY` (const, ligne 2961)
-- `METEOBLUE_CACHE_TTL_MS` (const, ligne 2683)
-- `METEO_FERMES` (const, ligne 3558)
-- `PMP_INVOICE_CACHE_TTL_MS` (const, ligne 236)
-- `POIDS_IMC` (const, ligne 3892)
-- `POINTAGE_VALIDATION_FERMES` (const, ligne 5498)
-- `SURFACES_HA` (const, ligne 1038)
-- `USE_MIRROR` (const, ligne 82)
-- `WA_INCOMING_TOPIC` (const, ligne 18699)
-- `_RAW_COMPOSITIONS` (const, ligne 959)
-- `_articleHistoryCache` (const, ligne 91)
-- `_identiteArticleCache` (const, ligne 121)
-- `_pmpInvoiceCache` (const, ligne 237)
-- `_pubsubClient` (const, ligne 18700)
-- `_saveGDD` (function, ligne 3979)
-- `aggregateSerreData` (function, ligne 4636)
-- `articleCategories` (const, ligne 30)
-- `articleMerge` (const, ligne 27)
-- `backupService` (const, ligne 595)
-- `bcDate` (const, ligne 62)
-- `bcDoublons` (const, ligne 63)
-- `bcScan` (const, ligne 59)
-- `bcScanJournal` (const, ligne 61)
-- `bcSuppression` (const, ligne 64)
-- `bdcReceptionGuard` (const, ligne 15)
-- `bdpIntrospectService` (const, ligne 310)
-- `bugTriage` (const, ligne 37)
-- `buildCampagneRapportHebdoDeps` (function, ligne 19278)
-- `buildJoursFeriesProdDeps` (function, ligne 18958)
-- `buildMeteoAlertesDeps` (function, ligne 2812)
-- `buildMeteoSprayDigestDeps` (function, ligne 2777)
-- `buildPhenologyProdDeps` (function, ligne 18849)
-- `caisseAxes` (const, ligne 20)
-- `caisseEntites` (const, ligne 24)
-- `caisseImport` (const, ligne 16)
-- `caisseParametres` (const, ligne 22)
-- `caisseSoldeProvisoire` (const, ligne 23)
-- `calcDewpoint` (function, ligne 3018)
-- `calcGDD` (function, ligne 3847)
-- `calcIMC` (function, ligne 3900)
-- `calcVPD` (function, ligne 3012)
-- `calcVPDFromTH` (function, ligne 3874)
-- `campagneRapportHebdo` (const, ligne 19276)
-- `checkFarmroadHealthAndAlert` (function, ligne 4046)
-- `cloturerDemandesCreationSatisfaites` (function, ligne 201)
-- `computeAccuracy` (function, ligne 3115)
-- `computeCalibrationOffset` (function, ligne 4822)
-- `computeFarmroadKPIs` (function, ligne 2350)
-- `computeGDDForDate` (function, ligne 3931)
-- `computeMaturationCoeff` (function, ligne 4815)
-- `computeWeatherFactor` (function, ligne 4777)
-- `consoAccessControl` (const, ligne 48)
-- `consoBons` (const, ligne 52)
-- `consoValorisationLib` (const, ligne 47)
-- `demandesCreationIO` (const, ligne 67)
-- `downloadUrl` (function, ligne 2314)
-- `emptyFermeValidationState` (function, ligne 5504)
-- `emptyPointageValidationDoc` (function, ligne 5500)
-- `farmroadFetch` (function, ligne 2284)
-- `farmroadFetchAllPages` (function, ligne 2326)
-- `fetchHourlyRadiationByDate` (function, ligne 3629)
-- `fetchMeteoForecast7d` (function, ligne 3594)
-- `fetchMeteoOutdoor` (function, ligne 3565)
-- `fetchMeteoblueForecast` (function, ligne 2965)
-- `functions` (const, ligne 1)
-- `generateAlerts` (function, ligne 4848)
-- `generateRecoForAnalyse` (function, ligne 6556)
-- `getArticleHistoryIndex` (function, ligne 93)
-- `getIdentiteArticleIndex` (function, ligne 127)
-- `getInvoiceByArticleIndex` (function, ligne 239)
-- `getMeteo` (function, ligne 2109)
-- `getMeteoLaouamra` (function, ligne 4621)
-- `getMeteoblueCached` (function, ligne 2706)
-- `getNextNumber` (function, ligne 6537)
-- `getPool` (function, ligne 602)
-- `getPubSub` (function, ligne 18701)
-- `getSql` (function, ligne 609)
-- `identiteArticle` (const, ligne 65)
-- `invalidateIdentiteArticleIndex` (function, ligne 123)
-- `joursFeriesJob` (const, ligne 18956)
-- `laggedCorrelation` (function, ligne 4257)
-- `legacy_fertigation` (function, ligne 651)
-- `linearRegression` (function, ligne 3737)
-- `loadIndoorHourlyRadiationByGhType` (function, ligne 3689)
-- `localDateStr` (function, ligne 3923)
-- `locationsConfig` (const, ligne 57)
-- `meteoAlertes` (const, ligne 76)
-- `meteoblueHttpsGet` (function, ligne 2685)
-- `meteoblueHttpsGetBuffer` (function, ligne 2793)
-- `meteoblueProxy` (const, ligne 73)
-- `netafim` (const, ligne 18779)
-- `nodemailer` (const, ligne 2)
-- `normDIF` (function, ligne 3858)
-- `normDLI` (function, ligne 3866)
-- `normGDD` (function, ligne 3854)
-- `normalizeGrowthCheckpoints` (function, ligne 1256)
-- `normalizeVarieteSousVariete` (function, ligne 4275)
-- `notifyProfilePointageValidation` (function, ligne 5518)
-- `paieAccess` (const, ligne 34)
-- `parcelleGroupSplit` (const, ligne 53)
-- `pearsonCorrelation` (function, ligne 4242)
-- `persistMeteoOutdoor` (function, ligne 3719)
-- `phenologyFetcher` (const, ligne 18845)
-- `phenologyJob` (const, ligne 18841)
-- `phenologyOutdoor` (const, ligne 18844)
-- `phenologyRefLoader` (const, ligne 18842)
-- `phenologyStation` (const, ligne 18843)
-- `phenologyWriter` (const, ligne 18846)
-- `pmpDetailLib` (const, ligne 46)
-- `pointageBdpSync` (const, ligne 313)
-- `pointageMod` (const, ligne 5461)
-- `pointageValidationSM` (const, ligne 41)
-- `pool` (const, ligne 601)
-- `predictIndoor` (function, ligne 3025)
-- `predictIndoorHourly` (function, ligne 3047)
-- `prodSync` (const, ligne 307)
-- `receptionBdc` (const, ligne 39)
-- `recolteWhatsAppNotifier` (const, ligne 481)
-- `refreshFarmroadCache` (function, ligne 2466)
-- `registryAccess` (const, ligne 18185)
-- `resoudreLignesStock` (function, ligne 145)
-- `rhBdpService` (const, ligne 19224)
-- `scanAttachment` (const, ligne 58)
-- `setCorsHR` (function, ligne 13661)
-- `sprayDigest` (const, ligne 75)
-- `sql` (const, ligne 600)
-- `sqlConfig` (const, ligne 6)
-- `stockCaneva` (const, ligne 26)
-- `stockFileReminders` (const, ligne 541)
-- `stockFilesRecord` (const, ligne 68)
-- `stressTemperature` (function, ligne 3885)
-- `stressVPD` (function, ligne 3879)
-- `structureByParcelleWeekDay` (function, ligne 620)
-- `syncService` (const, ligne 298)
-- `updateClimatModel` (function, ligne 3759)
-- `updateModelCoeffs` (function, ligne 3064)
-- `validateGrowthMeasurement` (function, ligne 1270)
-- `whatsappService` (const, ligne 71)
+- Definies en double : **25**
 
 ## Definies en double — copies potentiellement divergentes
 
@@ -172,7 +16,97 @@
   - functions/lib/phenology/referenceLoader.js
   - functions/lib/stock/demandeCreationArticle.js
   - functions/lib/stockFiles/recordSubmission.js
+  - functions/src/modules/rh/rh.paie.js
+  - functions/src/modules/technique/technique.js
+  - functions/src/shared/core.js
+- `USE_MIRROR`
+  - functions/pointageService.part1.js
+  - functions/src/shared/core.js
 - `bdcWorkflow`
   - functions/lib/bdc/bdcDigest.js
   - functions/lib/bdc/reminder.js
+  - functions/src/modules/magasin/magasin.stock.deps.js
+- `campagneRapportHebdo`
+  - functions/index.js
+  - functions/src/modules/finance/finance.js
+- `consoAccessControl`
+  - functions/pointageService.part1.js
+  - functions/src/shared/core.js
+- `consoBons`
+  - functions/pointageService.part1.js
+  - functions/src/modules/magasin/magasin.stock.deps.js
+- `demandeCreationArticle`
+  - functions/lib/stock/demandesCreationIO.js
+  - functions/src/shared/core.js
+- `downloadUrl`
+  - functions/src/modules/magasin/magasin.stock.actions4.js
+  - functions/src/shared/core.js
+- `enregistrerDemandesCreation`
+  - functions/lib/stock/demandesCreationIO.js
+  - functions/src/modules/magasin/magasin.stock.deps.js
+- `functions`
+  - functions/backupService.js
+  - functions/emailService.part1.js
+  - functions/pointageService.part1.js
+  - functions/sqlSyncService.js
+  - functions/src/shared/core.js
+- `getPool`
+  - functions/pointageService.part1.js
+  - functions/sqlSyncService.js
+  - functions/src/shared/core.js
+- `meteogram`
+  - functions/lib/meteo/meteoAlertes.js
+  - functions/src/modules/technique/technique.js
+- `nodemailer`
+  - functions/emailService.part2.js
+  - functions/src/modules/magasin/magasin.stock.deps.js
+- `parcelleGroupSplit`
+  - functions/pointageService.part1.js
+  - functions/src/modules/magasin/magasin.stock.deps.js
+- `phenology`
+  - functions/lib/phenology/__tests__/index.test.js
+  - functions/src/shared/core.js
+- `pool`
+  - functions/pointageBdpSync.js
+  - functions/pointageService.part1.js
+  - functions/sqlSyncService.js
+  - functions/src/modules/recolte/recolte.forecast.js
+  - functions/src/shared/core.js
+- `scanAttachment`
+  - functions/magasinierBot.js
+  - functions/src/shared/core.js
+- `sql`
+  - functions/bdcMirrorService.js
+  - functions/bdpIntrospectService.js
+  - functions/pointageBdpSync.js
+  - functions/pointageService.part1.js
+  - functions/prodSyncService.js
+  - functions/rhBdpService.js
+  - functions/sqlSyncService.js
+  - functions/src/shared/core.js
+- `sqlConfig`
+  - functions/config/sqlConfig.js
+  - functions/pointageService.part1.js
+  - functions/sqlSyncService.js
+  - functions/src/shared/core.js
+- `stockFilesRecord`
+  - functions/magasinierBot.js
+  - functions/src/modules/magasin/magasin.stock.deps.js
+- `stockMovementGuard`
+  - functions/lib/stock/movementImpact.js
+  - functions/src/modules/magasin/magasin.stock.deps.js
+- `stockRoles`
+  - functions/lib/stockRoles/__tests__/articleConversionPermissions.test.js
+  - functions/src/modules/magasin/magasin.stock.deps.js
+- `syncService`
+  - functions/pointageBdpSync.js
+  - functions/src/shared/core.js
+- `uniteConso`
+  - functions/lib/uniteConso/conversionUnite.js
+  - functions/src/modules/magasin/magasin.stock.deps.js
+- `whatsappService`
+  - functions/dailyProductionReport.js
+  - functions/sqlSyncService.js
+  - functions/src/shared/core.js
+  - functions/whatsappProcessor.js
 
