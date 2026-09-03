@@ -40,6 +40,7 @@ interface Window {
   CultureUtils: any;
   EncaissementsCanevas: any;
   FactureExportUtils: any;
+  FeatureFlags: any;
   GrowthUtils: any;
   ImageDownscale: any;
   InflightDedup: any;

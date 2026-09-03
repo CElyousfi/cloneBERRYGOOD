@@ -1,8 +1,6 @@
-# CI de test Smart Berry — tests unitaires + build sur chaque push/PR.
+# CI de test Smart Berry — lint, typage, tests unitaires et build sur chaque push/PR.
 # Indépendant des 2 workflows cron existants (fetch-fuel-data, fetch-telecom-data).
 # Node 20 = version des Cloud Functions (functions/package.json engines).
-# Les tests sont lancés en forme portable find|xargs : le glob quoté de
-# `npm run test:unit` exige Node >= 21.
 name: Tests
 
 on:
@@ -30,8 +28,18 @@ jobs:
         run: npm ci
         working-directory: functions
 
+      # Analyse syntaxique de tous les fichiers suivis (scripts/lint.cjs).
+      # Absent de la CI jusqu'ici : une faute de syntaxe ne se voyait qu'au build.
+      - name: Lint (syntaxe)
+        run: npm run lint
+
+      # Vert depuis la reprise des annotations JSDoc. Bloquant à dessein : la
+      # cible n'a de valeur que si une régression la fait échouer.
+      - name: Typecheck
+        run: npm run typecheck
+
       - name: Tests unitaires frontend
-        run: find tests/unit -name '*.test.js' -print0 | xargs -0 node --test
+        run: npm run test:unit
 
       - name: Tests backend (lib/*/__tests__)
         run: npm run test:all
@@ -39,3 +47,38 @@ jobs:
 
       - name: Build frontend (Babel + sentinelles)
         run: npm run build:frontend
+
+      - name: Build modulaire (Vite) + publication dans public/
+        run: npm run migrate:build && npm run migrate:publish
+
+      # La fidélité du tree modulaire au monolithe, tant que les deux coexistent.
+      - name: Fidélité de la migration
+        run: npm run migrate:verify
+
+  # Le sélecteur d'entrée (monolithe ou bundle ES) ne se teste que dans un vrai
+  # navigateur : l'ordre d'exécution des balises est précisément ce qui casse.
+  # Job séparé — il installe un navigateur, ce que le job principal n'a pas à payer.
+  boot-selector:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies (racine)
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install chromium --with-deps
+
+      - name: Build (monolithe + bundle modulaire)
+        run: npm run build
+
+      # Le script choisit le binaire Playwright quand /usr/bin/chromium est
+      # absent, ce qui est le cas du runner.
+      - name: Smoke — sélecteur d'entrée
+        run: npm run smoke:boot

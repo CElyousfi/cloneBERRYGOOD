@@ -25,7 +25,17 @@ const { chromium } = require('playwright');
 
 const ROOT = p.resolve(__dirname, '..');
 const PUB = p.join(ROOT, 'public');
-const EXEC = process.env.CHROMIUM_PATH || '/usr/bin/chromium';
+
+/**
+ * Choix du navigateur, dans cet ordre : $CHROMIUM_PATH, puis le chromium
+ * système (poste de dev), puis celui que Playwright a installé (CI). Sans ce
+ * dernier repli, le smoke ne tournerait que là où /usr/bin/chromium existe.
+ */
+function chromiumPath() {
+  if (process.env.CHROMIUM_PATH) return process.env.CHROMIUM_PATH;
+  if (fs.existsSync('/usr/bin/chromium')) return '/usr/bin/chromium';
+  return undefined; // Playwright utilise son propre binaire
+}
 
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
@@ -87,7 +97,7 @@ async function boot(browser, url, seed) {
   const server = await serve();
   const base = `http://127.0.0.1:${server.address().port}`;
   const browser = await chromium.launch({
-    executablePath: EXEC,
+    executablePath: chromiumPath(),
     args: ['--no-sandbox', '--disable-dev-shm-usage'],
   });
 
