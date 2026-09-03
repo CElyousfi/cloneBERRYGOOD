@@ -207,15 +207,36 @@ if (fs.existsSync(COMPONENTS_DIR)) {
   }
 }
 
-// 3. Cache-bust: rewrite <script src="app.js?v=..."> AND <script src="lib/*.js?v=...">
-//    AND <script src="components/*.js?v=...">
+// 3. Cache-bust: rewrite <script src="lib/*.js?v=..."> AND
+//    <script src="components/*.js?v=...">
+//
+// L'entrée (app.js ou app.modular.js) n'a plus de balise statique : elle est
+// écrite au chargement par le sélecteur en bas de index.html, qui reprend le
+// `?v=` de la balise lib/featureFlags.js. Une seule source de version dans la
+// page — mais du coup cette balise porte le cache-bust de TOUTE l'entrée, et sa
+// disparition invaliderait silencieusement le cache-busting du frontend. D'où
+// la sentinelle ci-dessous, dans l'esprit des autres gardes de ce script.
 const version = Date.now().toString(36);
 const html = fs.readFileSync(HTML, "utf8");
-let updated = html.replace(/(<script[^>]+src=["']app\.js)(\?v=[^"']*)?(["'])/g, `$1?v=${version}$3`);
-updated = updated.replace(/(<script[^>]+src=["']lib\/[A-Za-z0-9_.\-]+\.js)(\?v=[^"']*)?(["'])/g, `$1?v=${version}$3`);
+
+const FLAGS_TAG_RE = /<script[^>]+src=["']lib\/featureFlags\.js(\?v=[^"']*)?["']/;
+if (!FLAGS_TAG_RE.test(html)) {
+  console.error(
+    "[build-frontend] balise <script src=\"lib/featureFlags.js\"> absente de public/index.html.\n" +
+    "  Le sélecteur d'entrée en bas de page en dérive le ?v= : sans elle, app.js\n" +
+    "  et app.modular.js seraient servis sans cache-bust."
+  );
+  process.exit(3);
+}
+if (!html.includes("app.modular.js")) {
+  console.error("[build-frontend] sélecteur d'entrée introuvable dans public/index.html (app.modular.js non référencé)");
+  process.exit(3);
+}
+
+let updated = html.replace(/(<script[^>]+src=["']lib\/[A-Za-z0-9_.\-]+\.js)(\?v=[^"']*)?(["'])/g, `$1?v=${version}$3`);
 updated = updated.replace(/(<script[^>]+src=["']components\/[A-Za-z0-9_.\-]+\.js)(\?v=[^"']*)?(["'])/g, `$1?v=${version}$3`);
 if (updated === html) {
-  console.error("[build-frontend] could not find <script src=\"app.js\"> in index.html");
+  console.error("[build-frontend] aucun <script src=\"lib/…\"> ni \"components/…\" à re-versionner dans index.html");
   process.exit(3);
 }
 fs.writeFileSync(HTML, updated);

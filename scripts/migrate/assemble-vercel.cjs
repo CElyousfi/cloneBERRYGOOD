@@ -102,26 +102,33 @@ if (process.env.DEMO_NO_AUTH === '1') {
   console.log('  mode normal : écran de connexion actif (DEMO_NO_AUTH non défini)');
 }
 
-// 3. index.html migré + legacy.html d'origine
-const legacy=fs.readFileSync(p.join(PUB,'index.html'),'utf8');
-// L'ancre est une EXPRESSION, pas une chaîne figée : build-frontend.js régénère
-// le cache-bust `?v=…` à chaque build, donc une ancre littérale se périme au
-// premier `npm run build:frontend` et faisait échouer tout le build Vercel.
-const ANCHOR_RE=/[ \t]*<script defer src="app\.js(?:\?v=[^"]*)?"><\/script>\n?/;
-if(!ANCHOR_RE.test(legacy)){ console.error('🛑 ancre <script app.js> introuvable dans public/index.html'); process.exit(1); }
+// 3. index.html (modulaire) + legacy.html (monolithe)
+//
+// La page choisit désormais son entrée AU CHARGEMENT, via le drapeau
+// MODULAR_FRONTEND (public/lib/featureFlags.js). Ce script n'a donc plus de
+// balise à substituer : il PRÉ-POSITIONNE le drapeau, chaque sortie forçant
+// l'un des deux frontends. C'est plus robuste que l'ancienne substitution
+// d'ancre, qui se périmait au premier cache-bust.
+const source=fs.readFileSync(p.join(PUB,'index.html'),'utf8');
+const FLAGS_TAG_RE=/(<script[^>]+src="lib\/featureFlags\.js(?:\?v=[^"]*)?"><\/script>)/;
+if(!FLAGS_TAG_RE.test(source)){ console.error('🛑 balise lib/featureFlags.js introuvable dans public/index.html'); process.exit(1); }
 
-// legacy.html — interface d'origine, monolithe app.js, aucun changement
-fs.writeFileSync(p.join(OUT,'legacy.html'),legacy);
+/** Force le drapeau avant que le sélecteur d'entrée ne le lise. */
+function seedFlag(html,value,label){
+  const out=html.replace(FLAGS_TAG_RE,'$1\n'+
+    '    <!-- '+label+' : drapeau forcé par le build, cette page ne bascule pas. -->\n'+
+    '    <script>try{localStorage.setItem(\'sb_flag_modular_frontend\',\''+value+'\');'+
+    'localStorage.removeItem(\'sb_modular_boot_pending\');}catch(e){}</script>');
+  if(out===html){ console.error('🛑 injection du drapeau sans effet'); process.exit(1); }
+  return out;
+}
 
 // index.html — interface D'ORIGINE, servie par le build modulaire (334 modules ES).
 // C'est le livrable de non-régression : même UI, architecture modulaire.
-const migrated=legacy.replace(ANCHOR_RE,
-  '    <!-- Monolithe app.js (68 977 lignes) remplacé par le point d\'entrée\n'+
-  '         modulaire ES issu de src/modules/. Tous les <script> UMD et lib\n'+
-  '         au-dessus sont conservés à l\'identique : environnement d\'exécution\n'+
-  '         strictement inchangé. -->\n'+
-  '    <script type="module" src="/app.modular.js"></script>\n');
-fs.writeFileSync(p.join(OUT,'index.html'),migrated);
+fs.writeFileSync(p.join(OUT,'index.html'),seedFlag(source,'1','Préversion modulaire'));
+
+// legacy.html — le monolithe, conservé comme référence de comparaison côte à côte.
+fs.writeFileSync(p.join(OUT,'legacy.html'),seedFlag(source,'0','Référence monolithe'));
 
 const size=d=>{let t=0;(function w(x){for(const e of fs.readdirSync(x,{withFileTypes:true})){const f=p.join(x,e.name);e.isDirectory()?w(f):t+=fs.statSync(f).size;}})(d);return t;};
 console.log('dist-vercel/ assemblé');

@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "build": "npm run build:frontend && npm run migrate:build",
+    "build": "npm run build:frontend && npm run migrate:build && npm run migrate:publish",
+    "migrate:publish": "node scripts/migrate/publish-modular.cjs",
     "lint": "node scripts/lint.cjs",
     "build:frontend": "node scripts/build-frontend.js",
     "test:unit": "find tests/unit -name '*.test.js' -print0 | xargs -0 -r node --test",
@@ -15,6 +16,7 @@
     "test": "node tests/test-workflows.js",
     "smoke": "BASE_URL=https://berrygood-farms-dashboard.web.app node tests/smoke-test.js",
     "smoke:sprint-1": "node tests/smoke-sprint-1.js",
+    "smoke:boot": "node tests/smoke-boot-selector.js",
     "deploy:functions": "bash scripts/deploy.sh functions",
     "deploy:hosting": "bash scripts/deploy.sh hosting",
     "test:finance": "find functions/lib/finance/__tests__ -name '*.test.js' -print0 | xargs -0 -r node --test",
