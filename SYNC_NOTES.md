@@ -139,12 +139,105 @@ spécification :
 
 ---
 
+## Modularisation du backend
+
+`functions/index.js` est passé de **19 463 lignes à un barrel de 114 lignes**,
+sans logique métier. Détail complet dans [ARCHITECTURE_BACKEND.md].
+
+| | avant | après |
+|---|---|---|
+| `functions/index.js` | 19 463 | **114** |
+| `functions/pointageService.js` | 5 976 | 248 + 6 fichiers |
+| `functions/emailService.js` | 5 043 | 1 400 + 5 fichiers |
+| plus gros fichier backend | 19 463 | **1 629** |
+
+Trois routeurs d'actions ont été éclatés : `stockManagement` (118 actions),
+`pointageRH` (48) et `emailAnalysis` (40). Les corps sont **verbatim** ; le
+contexte du handler passe par `ctx` et est re-destructuré en tête de module.
+
+**Vérifié** : 105 exports (diff vide) · métadonnées de déploiement 0/105
+différence · texte des 206 handlers identique · séquence des actions identique ·
+`parity_check.py` backend **162/162** · émulateur Firebase : action inconnue →
+400 après traversée des 6 modules, `pointageRH` → 403 (garde avant dispatch).
+
+**Non fait, et pourquoi** : la séparation service/repository *à l'intérieur* de
+chaque domaine demanderait de réécrire le corps des 206 handlers pour en
+extraire les accès Firestore — ce que le brief interdit, et sans filet de test
+par handler. Le découpage livré atteint les objectifs vérifiables et laisse la
+mise en couches à un travail ultérieur, tests de comportement d'abord.
+
+---
+
+## Fichiers encore au-dessus de 2 000 lignes
+
+Cinq fichiers restent hors limite. Aucun n'est un oubli.
+
+| Fichier | Lignes | Raison |
+|---|---|---|
+| `public/app.jsx` | 69 799 | **décision explicite** : encore servi en production ; sa suppression est conditionnée au déploiement de la version modulaire |
+| `public/components/CampagneAnalytiqueTab.jsx` | 3 695 | composant React — voir ci-dessous |
+| `src/modules/rh/QuinzaineTab.jsx` | 3 554 | idem |
+| `public/components/CampagneBudgetTab.jsx` | 2 815 | idem |
+| `tests/unit/campagneBudgetTab.test.js` | 2 207 | fichier de test venu de l'amont |
+
+Les sorties de build (`public/app.js`, `public/components/*.js`) sont exclues de
+la règle : elles sont régénérées par `scripts/build-frontend.js`.
+
+**Pourquoi les composants React n'ont pas été découpés.** `QuinzaineTab` compte
+**52 appels de hooks** au premier niveau et seulement ~298 lignes de fonctions
+internes sans hook. Les ~3 200 lignes restantes sont du JSX qui ferme sur cet
+état. Descendre sous 2 000 exigerait d'extraire des sous-composants en faisant
+passer des dizaines de variables d'état en props — une reformulation, pas un
+déplacement, avec un risque réel sur l'ordre des hooks, et **aucun test** ne
+couvre ce composant.
+
+S'y ajoute un coût de maintenance : `QuinzaineTab.jsx` est aujourd'hui
+**byte-identical** au bloc correspondant du monolithe amont. C'est précisément
+ce qui a rendu la synchro de ce jour sûre — le bloc amont a pu être repris tel
+quel. Le découper romprait cette correspondance pour toutes les synchros à
+venir, sans rapprocher du seuil tant que `public/app.jsx` reste là.
+
+Le brief tranche ce cas : « quand les deux objectifs s'opposent, la parité
+gagne — livrer la structure qu'on peut en gardant le comportement identique, et
+signaler le reste plutôt que remodeler du code qu'on ne comprend pas
+entièrement. » C'est ce qui a été fait.
+
+---
+
+## Cibles npm ajoutées
+
+`npm run build` et `npm run lint` n'existaient pas alors que le brief les exige.
+
+- **build** : `build:frontend` (monolithe legacy) puis `migrate:build` (bundle
+  modulaire).
+- **lint** : garde de syntaxe sur les 1 164 fichiers JS/JSX versionnés, via
+  `@babel/parser` dans le dialecte de chaque fichier. Pas d'ESLint — le brancher
+  sur ~70 000 lignes gelées pour non-régression produirait des milliers
+  d'avertissements de style sans rapport avec le travail.
+- **typecheck** : cible distincte, **jamais verte dans ce dépôt**. Elle échouait
+  d'abord sur la configuration (`baseUrl`, supprimé par TypeScript 7) ; ce point
+  corrigé, elle expose **1 403 erreurs de types préexistantes** (`@ts-check` sur
+  167 fichiers). Chantier séparé, non entrepris ici.
+
+---
+
+## Anomalie amont supplémentaire — signalée, non corrigée
+
+`scriptable/BGF-PFQ.js:117` contient un **chemin de capture d'écran macOS collé
+par accident** au milieu du code : le fichier ne peut pas être analysé, et le
+widget est cassé. Présent en amont depuis `9dfc88a` (2026-03-28).
+
+Trouvé par la garde de syntaxe nouvellement ajoutée. Conformément au brief, il
+est **signalé et non corrigé** : il figure dans la liste d'exceptions justifiées
+de `scripts/lint.cjs`, affichée à chaque exécution du lint.
+
+---
+
 ## État de la mission
 
-- **Frontend : parité atteinte** (340/340) et structure modulaire en place.
-- **Backend : modularisation NON COMMENCÉE.** `functions/index.js` fait
-  19 359 lignes pour 105 exports. C'est le gros du travail restant, et l'objet de
-  la Phase 3 (plan d'architecture à approuver avant tout déplacement de code).
-- **`public/app.jsx` toujours présent** (69 799 lignes) : encore servi en
-  production via `public/app.js`. Sa suppression est conditionnée au déploiement
-  de la version modulaire — décision prise explicitement, pas un oubli.
+- **Frontend : parité atteinte** — `parity_check.py` 340/340, delta amont porté.
+- **Backend : modularisé** — `functions/index.js` réduit à un barrel de 114
+  lignes, `parity_check.py` 162/162, plus aucun fichier backend hors limite.
+- **Prototype Supabase retiré** — 27 489 lignes qui ne servaient à rien.
+- **Reste ouvert** : `public/app.jsx`, par décision explicite, tant que la
+  version modulaire n'est pas déployée ; et les trois composants React ci-dessus.

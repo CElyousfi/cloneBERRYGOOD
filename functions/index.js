@@ -1,114 +1,34 @@
-/* functions/index.js — BARREL de re-export. Aucune logique metier ici.
-   Une Cloud Function est adressee PAR SON NOM D'EXPORT : le renommer supprime
-   l'ancienne fonction et en cree une neuve (URL changee, declencheur detache,
-   cron perdu). Les 105 noms exposes ici sont figes et verifies par diff. */
+/* functions/index.js — BARREL de re-export. Aucune logique métier ici.
+ *
+ * Une Cloud Function est adressée PAR SON NOM D'EXPORT : le renommer supprime
+ * l'ancienne fonction et en crée une neuve — URL HTTP changée, déclencheur
+ * Firestore détaché, cron perdu, clients en vol cassés. Les 105 noms exposés
+ * ici sont donc FIGÉS.
+ *
+ * Chaque module n'exporte que ses propres Cloud Functions : leur union est
+ * exactement la surface d'origine. Elle est verrouillée par diff dans
+ * tests/unit/backendExportSurface.test.js — toute addition, suppression ou
+ * renommage y échoue.
+ */
 'use strict';
-const admin_main = require("./src/modules/admin/admin");
-const agronomie_main = require("./src/modules/agronomie/agronomie");
-const caisse_main = require("./src/modules/caisse/caisse");
-const finance_main = require("./src/modules/finance/finance");
-const magasin_main = require("./src/modules/magasin/magasin");
-const magasin_stock = require("./src/modules/magasin/magasin.stock");
-const recolte_forecast = require("./src/modules/recolte/recolte.forecast");
-const recolte_production = require("./src/modules/recolte/recolte.production");
-const rh_paie = require("./src/modules/rh/rh.paie");
-const rh_pointage = require("./src/modules/rh/rh.pointage");
-const securite_main = require("./src/modules/securite/securite");
-const technique_main = require("./src/modules/technique/technique");
 
-exports.alerts = admin_main.alerts;
-exports.backupApi = admin_main.backupApi;
-exports.bdpIntrospect = admin_main.bdpIntrospect;
-exports.bugReports = admin_main.bugReports;
-exports.dashboard = admin_main.dashboard;
-exports.health = admin_main.health;
-exports.meetingCR = admin_main.meetingCR;
-exports.notifications = admin_main.notifications;
-exports.onAlertCreated = admin_main.onAlertCreated;
-exports.onBugReportCreate = admin_main.onBugReportCreate;
-exports.onBugReportUpdate = admin_main.onBugReportUpdate;
-exports.processWhatsappIncoming = admin_main.processWhatsappIncoming;
-exports.scheduledBackup = admin_main.scheduledBackup;
-exports.sqlSyncTrigger = admin_main.sqlSyncTrigger;
-exports.sqlToFirestoreSync = admin_main.sqlToFirestoreSync;
-exports.tasks = admin_main.tasks;
-exports.uploadPhoto = admin_main.uploadPhoto;
-exports.whatsappAdmin = admin_main.whatsappAdmin;
-exports.whatsappWebhook = admin_main.whatsappWebhook;
-exports.agroSummary = agronomie_main.agroSummary;
-exports.avancementCulture = agronomie_main.avancementCulture;
-exports.dailyPhenologyJob = agronomie_main.dailyPhenologyJob;
-exports.fertigation = agronomie_main.fertigation;
-exports.gddNightlyJob = agronomie_main.gddNightlyJob;
-exports.gddTracking = agronomie_main.gddTracking;
-exports.growthTracking = agronomie_main.growthTracking;
-exports.netafimSyncDaily = agronomie_main.netafimSyncDaily;
-exports.netafimSyncOnce = agronomie_main.netafimSyncOnce;
-exports.onAnalyseFoliaireWrite = agronomie_main.onAnalyseFoliaireWrite;
-exports.parcelles = agronomie_main.parcelles;
-exports.phytosanitaire = agronomie_main.phytosanitaire;
-exports.produits = agronomie_main.produits;
-exports.recommandation = agronomie_main.recommandation;
-exports.runDailyPhenologyJobNow = agronomie_main.runDailyPhenologyJobNow;
-exports.caisseManagement = caisse_main.caisseManagement;
-exports.budgetService = finance_main.budgetService;
-exports.campagneRapportHebdo = finance_main.campagneRapportHebdo;
-exports.campagneRapportHebdoTrigger = finance_main.campagneRapportHebdoTrigger;
-exports.mappingConsoManagement = magasin_main.mappingConsoManagement;
-exports.stockFileReminder16h = magasin_main.stockFileReminder16h;
-exports.stockFileReminder17h = magasin_main.stockFileReminder17h;
-exports.stockFileReminder18h = magasin_main.stockFileReminder18h;
-exports.stockManagement = magasin_stock.stockManagement;
-exports.ecarts = recolte_forecast.ecarts;
-exports.harvestPrediction = recolte_forecast.harvestPrediction;
-exports.harvestWeather = recolte_forecast.harvestWeather;
-exports.indoorForecast = recolte_forecast.indoorForecast;
-exports.indoorForecastRefresh = recolte_forecast.indoorForecastRefresh;
-exports.uploadEcarts = recolte_forecast.uploadEcarts;
-exports.climatProduction = recolte_production.climatProduction;
-exports.dailyProductionDigest = recolte_production.dailyProductionDigest;
-exports.dailyProductionReportTrigger = recolte_production.dailyProductionReportTrigger;
-exports.horsRecolteService = recolte_production.horsRecolteService;
-exports.onProdRecolteWriteNotify = recolte_production.onProdRecolteWriteNotify;
-exports.submitProductionDigestTemplate = recolte_production.submitProductionDigestTemplate;
-exports.syncProdTrigger = recolte_production.syncProdTrigger;
-exports.syncRecolteFromProd = recolte_production.syncRecolteFromProd;
-exports.fonctionsManagement = rh_paie.fonctionsManagement;
-exports.ojra = rh_paie.ojra;
-exports.primesManagement = rh_paie.primesManagement;
-exports.productivityReportsCron = rh_paie.productivityReportsCron;
-exports.registryService = rh_paie.registryService;
-exports.rh = rh_paie.rh;
-exports.runSyncJoursFeriesNow = rh_paie.runSyncJoursFeriesNow;
-exports.syncJoursFeries = rh_paie.syncJoursFeries;
-exports.backfillPointageBdpLiveTrigger = rh_pointage.backfillPointageBdpLiveTrigger;
-exports.backfillPresence = rh_pointage.backfillPresence;
-exports.checkPresenceSyncHealth = rh_pointage.checkPresenceSyncHealth;
-exports.pointageRH = rh_pointage.pointageRH;
-exports.pointageRH2 = rh_pointage.pointageRH2;
-exports.pointageV3 = rh_pointage.pointageV3;
-exports.pointageValidation = rh_pointage.pointageValidation;
-exports.syncPointageBdpTrigger = rh_pointage.syncPointageBdpTrigger;
-exports.syncPresenceEntree = rh_pointage.syncPresenceEntree;
-exports.syncPresenceSortie = rh_pointage.syncPresenceSortie;
-exports.validatePointageBdpTrigger = rh_pointage.validatePointageBdpTrigger;
-exports.validation = rh_pointage.validation;
-exports.warmPointageCache = rh_pointage.warmPointageCache;
-exports.authApi = securite_main.authApi;
-exports.farmroad = technique_main.farmroad;
-exports.farmroadRefresh = technique_main.farmroadRefresh;
-exports.fuel = technique_main.fuel;
-exports.meteoSprayDigest = technique_main.meteoSprayDigest;
-exports.meteoSprayDigestTrigger = technique_main.meteoSprayDigestTrigger;
-exports.meteoblue = technique_main.meteoblue;
-exports.probeAnalysisReport = technique_main.probeAnalysisReport;
-exports.probeAnalyzer = technique_main.probeAnalyzer;
-exports.probeRawData = technique_main.probeRawData;
-exports.replicationProbe = technique_main.replicationProbe;
-exports.sentinelRecipients = technique_main.sentinelRecipients;
-exports.telecom = technique_main.telecom;
-
-// Agregation historique du service e-mail (14 fonctions : analyzeEmail,
-// fetchEmails, parseLiquidation*, parseTimacInvoice*...). Etait en ligne dans
-// le monolithe ; sa place est ici, au point d'entree.
-Object.assign(exports, require("./emailService"));
+for (const mod of [
+  require("./src/modules/admin/admin"),
+  require("./src/modules/agronomie/agronomie"),
+  require("./src/modules/caisse/caisse"),
+  require("./src/modules/finance/finance"),
+  require("./src/modules/magasin/magasin"),
+  require("./src/modules/magasin/magasin.stock"),
+  require("./src/modules/recolte/recolte.forecast"),
+  require("./src/modules/recolte/recolte.production"),
+  require("./src/modules/rh/rh.paie"),
+  require("./src/modules/rh/rh.pointage"),
+  require("./src/modules/securite/securite"),
+  require("./src/modules/technique/technique"),
+  // Agrégation historique du service e-mail : 14 fonctions (analyzeEmail,
+  // fetchEmails, parseLiquidation*, parseTimacInvoice*…). Était en ligne dans
+  // le monolithe ; sa place est ici, au point d'entrée.
+  require("./emailService"),
+]) {
+  Object.assign(exports, mod);
+}
