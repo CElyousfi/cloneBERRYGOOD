@@ -37,6 +37,7 @@ function createRepository(deps) {
      */
     async getInvoices(filters = {}) {
       // TODO Step 3: if (isEnabled('FINANCE_READ_POSTGRES')) return getInvoicesFromPostgres(filters);
+      /** @type {FirebaseFirestore.Query} */ // .where()/.limit() renvoient une Query, pas la collection
       let query = db.collection('invoices');
       if (filters.status) query = query.where('payment_status', '==', filters.status);
       if (filters.ferme) query = query.where('ferme', '==', filters.ferme);

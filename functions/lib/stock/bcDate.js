@@ -116,6 +116,7 @@ function campagneChange(fromDate, toDate) {
  * @returns {{bcUpdate: Object, movementUpdate: Object, history: Object, changed: boolean}}
  */
 function buildDateUpdate(args) {
+  /** @type {any} */ // le `|| {}` defensif efface la forme documentee par le @param ci-dessus
   const o = args || {};
   const bc = o.bc || {};
   const date = o.date;

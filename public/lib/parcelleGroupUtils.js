@@ -48,7 +48,7 @@
     var total = 0;
     for (var i = 0; i < membres.length; i++) {
       var m = membres[i];
-      var ha = m && typeof m.ha === 'number' ? m.ha : parseFloat((m && m.ha) || '');
+      var ha = m && typeof m.ha === 'number' ? m.ha : parseFloat(String((m && m.ha) || ''));
       if (!(ha > 0) || !isFinite(ha)) {
         throw new Error(
           'Ha Smart Berry manquant ou nul pour la parcelle « ' + ((m && m.label) || '?') +

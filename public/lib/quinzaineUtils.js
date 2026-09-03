@@ -106,6 +106,7 @@
    * }}
    */
   function computeTransportQuinzaine(rows, opts) {
+    /** @type {any} */ // le `|| {}` defensif efface la forme documentee par le @param ci-dessus
     const o = opts || {};
     const periode = o.periode;
     const transportEquipes = Array.isArray(o.transportEquipes) ? o.transportEquipes : [];

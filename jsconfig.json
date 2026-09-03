@@ -1,5 +1,11 @@
 {
+  // `strict` est explicite : TypeScript 7 l'active par défaut, ce que ce dépôt
+  // ne veut pas. Les fichiers vérifiés sont du JS annoté `// @ts-check` — le
+  // contrat est "attrape les vraies fautes", pas "annote 200 fichiers d'app
+  // pour satisfaire noImplicitAny". Sans cette ligne, la cible rend 1403
+  // erreurs dont ~1000 sont des paramètres implicitement `any`.
   "compilerOptions": {
+    "strict": false,
     "checkJs": false,
     "allowJs": true,
     "noEmit": true,
@@ -14,6 +20,7 @@
     }
   },
   "include": [
+    "types/**/*.d.ts",
     "public/lib/**/*.js",
     "functions/lib/**/*.js",
     "tests/unit/**/*.js",

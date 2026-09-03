@@ -126,6 +126,7 @@
    *   `operations` : clé de ligne `GBxx::OPKEY` → cellules + libellé.
    */
   function indexBudgets(args) {
+    /** @type {any} */ // le `|| {}` defensif efface la forme documentee par le @param ci-dessus
     var a = args || {};
     var AU = a.analytique;
     var rules = a.budgetRules || {};
@@ -250,6 +251,7 @@
    *   d'afficher les séries Budget/Écart (elles ne montreraient que des « — »).
    */
   function buildBudgetPivot(args) {
+    /** @type {any} */ // le `|| {}` defensif efface la forme documentee par le @param ci-dessus
     var a = args || {};
     var rows = a.groupedRows || [];
     var AU = a.analytique;

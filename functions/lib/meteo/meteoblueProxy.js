@@ -17,7 +17,7 @@ const METEOBLUE_BASE_URL = "https://my.meteoblue.com/packages";
 
 /**
  * @typedef {Object} MeteoblueDeps
- * @property {(url: string) => Promise<object|null>} fetchJson
+ * @property {(url: string) => Promise<Record<string, any>|null>} fetchJson
  *   HTTP GET → JSON parsed. Resolves null on any error (timeout, non-2xx,
  *   malformed body). Caller injects (e.g. wraps https.get or fetch).
  * @property {string} apiKey Meteoblue API key.
@@ -72,7 +72,7 @@ function buildSprayUrl({ lat, lon, altitude }, apiKey) {
  * exceeded — this is not always a 4xx, so a truthy-check alone lets it
  * through and poisons the shared Firestore cache for 4h.
  *
- * @param {object|null|undefined} data
+ * @param {Record<string, any>|null|undefined} data réponse JSON brute Meteoblue
  * @returns {boolean}
  */
 function isValidWeatherPayload(data) {
@@ -88,7 +88,7 @@ function isValidWeatherPayload(data) {
  * Validates that an "agromodelspray-1h" Meteoblue response has a usable
  * spraywindow series (same "hollow HTTP 200" concern as isValidWeatherPayload).
  *
- * @param {object|null|undefined} data
+ * @param {Record<string, any>|null|undefined} data réponse JSON brute Meteoblue
  * @returns {boolean}
  */
 function isValidSprayPayload(data) {

@@ -215,6 +215,7 @@ function forcageDemande(v) {
  * @returns {{forced: boolean, by: {uid: string, profileId: string, name: string}, at: number, motif: string, bon_doublon_id: string, bon_doublon_numero: string}}
  */
 function construireTraceForcage(args) {
+  /** @type {any} */ // le `|| {}` defensif efface la forme documentee par le @param ci-dessus
   const o = args || {};
   const v = o.verdict || { motif: null, bon_id: '', bon_numero: '' };
   return {

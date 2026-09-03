@@ -104,6 +104,7 @@
    *   comparable: boolean}}
    */
   function comparer(args) {
+    /** @type {any} */ // le `|| {}` defensif efface la forme documentee par le @param ci-dessus
     var a = args || {};
     var f = a.fichier;
     var q = a.quinzaine;

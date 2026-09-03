@@ -249,6 +249,7 @@ function formatDateLabel(date, timeZone) {
  * @returns {Array<string>}
  */
 function buildBodyParams(params) {
+  /** @type {any} */ // le `|| {}` defensif efface la forme documentee par le @param ci-dessus
   const p = params || {};
   return [String(p.culture || ''), String(p.dateLabel || ''), String(p.nbParcelles == null ? 0 : p.nbParcelles)];
 }

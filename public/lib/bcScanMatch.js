@@ -29,14 +29,15 @@
  * GLOBAL du navigateur. Tout est wrappé dans une IIFE, aucun identifiant
  * top-level ne fuite (cf. crashes #75/#77, React #200). UN SEUL global :
  *   window.BcScanMatch
- *
+ */
+// @ts-check
+/**
  * @typedef {{ label: string, nom?: string, culture?: string }} ParcelleOption
  * @typedef {{ label: string, score: number,
  *             status: 'alias'|'exact'|'probable'|'unmatched',
  *             candidats: string[], aliasCount?: number|null }} ParcelleMatch
  * @typedef {{ parcelle?: string, count?: number, campagne?: string }} ParcelleAlias
  */
-// @ts-check
 (function () {
   'use strict';
 
@@ -252,14 +253,13 @@
     if (!Object.prototype.hasOwnProperty.call(aliases, key)) return null;
     var raw = aliases[key];
     if (!raw) return null;
-    var isStr = typeof raw === 'string';
-    var label = String(isStr ? raw : (raw.parcelle || '')).trim();
+    var label = String(typeof raw === 'string' ? raw : (raw.parcelle || '')).trim();
     if (!label) return null;
-    var aliasCampagne = isStr ? '' : String(raw.campagne || '');
+    var aliasCampagne = typeof raw === 'string' ? '' : String(raw.campagne || '');
     if (campagne && aliasCampagne && aliasCampagne !== String(campagne)) return null;
     var connue = opts.some(function (o) { return o.label === label; });
     if (!connue) return null;
-    var count = isStr ? null : (parseInt(String(raw.count), 10) || null);
+    var count = typeof raw === 'string' ? null : (parseInt(String(raw.count), 10) || null);
     return { label: label, score: 1, status: 'alias', candidats: [], aliasCount: count };
   }
 
@@ -282,6 +282,7 @@
    * @returns {ParcelleMatch}
    */
   function matchParcelle(enteteLu, options, aliases, campagne) {
+    /** @type {ParcelleMatch} */
     var empty = { label: '', score: 0, status: 'unmatched', candidats: [] };
     var entete = String(enteteLu == null ? '' : enteteLu).trim();
     var opts = (Array.isArray(options) ? options : []).map(toOption).filter(Boolean);
@@ -332,6 +333,7 @@
      * @returns {ParcelleMatch}
      */
     var passeVariete = function (candidatsSecteur, peutProposer) {
+      /** @type {ParcelleMatch} */
       var base = { label: '', score: 0, status: 'unmatched', candidats: candidatsSecteur };
       if (!variete) return base;
       var sansSecteur = opts.filter(function (o) {

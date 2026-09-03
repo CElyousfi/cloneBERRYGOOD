@@ -133,7 +133,7 @@ function fxRound2(n) {
  *   - ISO `YYYY-MM-DD` (also tolerates a trailing time component)
  *   - French `DD/MM/YYYY`
  * Returns a Date at local midnight, or null if unparseable.
- * @param {string} value
+ * @param {string|Date|null|undefined} value
  * @returns {Date|null}
  */
 function parseFactureDate(value) {
@@ -373,9 +373,11 @@ function resolveTauxLigne(item) {
  * @property {number} quantite
  * @property {number} prix_unitaire
  * @property {number} montant_ht
- * @property {number} taux_tva        VAT rate applied to the line (fraction, 0.2 = 20%)
- * @property {number} montant_tva
- * @property {number} montant_ttc
+ * @property {number|null} taux_tva   VAT rate applied to the line (fraction, 0.2 = 20%).
+ *                                     null sur la ligne « (non détaillé) », dont le
+ *                                     taux n'est précisément pas déterminable.
+ * @property {number|null} montant_tva
+ * @property {number|null} montant_ttc
  * @property {boolean} reconciled      false if the facture's per-line VAT could not
  *                                     be reconciled with the base (TTC − HT) → flagged.
  * @property {'saisi'|'non_determine'} taux_source  origine du taux (v5).
@@ -452,6 +454,7 @@ function buildFactureLines(facture) {
   // Sans items → ligne unique de repli. Aucun taux saisi par ligne disponible →
   // état INFORMATIF "TVA par ligne non saisie" (on NE devine NI taux NI TVA).
   if (items.length === 0) {
+    /** @type {FactureLine} */
     const line = {
       designation: '(non détaillé)',
       quantite: 0,
@@ -597,6 +600,7 @@ function buildRecapStatutRows(scoped, statusLabels) {
   const ncell = (v) => ({ kind: 'num', v: Number(v) || 0 });
   const ccell = (v) => ({ kind: 'cnt', v: Number(v) || 0 });
   const row = (label, count, ttc) => {
+    /** @type {Array<{kind: string, v: string|number}>} */
     const r = new Array(RECAP_NB_COLS).fill(null).map(() => tcell(''));
     r[RECAP_COL.NUM_INTERNE] = tcell(label);
     if (count != null) r[RECAP_COL.TVA] = ccell(count);

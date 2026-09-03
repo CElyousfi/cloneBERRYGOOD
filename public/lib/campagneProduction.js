@@ -67,6 +67,7 @@
    * @returns {{parParcelle: Object<string, number>, kgTotal: number, kgNonRattaches: number}}
    */
   function kgParParcelle(args) {
+    /** @type {any} */ // le `|| {}` defensif efface la forme documentee par le @param ci-dessus
     var a = args || {};
     var typeVente = a.typeVente === undefined ? 'Export' : a.typeVente;
     var parBlocId = {};

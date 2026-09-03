@@ -30,6 +30,7 @@ var DEFAULT_GUARDED_TYPES = ['sortie', 'transfert'];
  */
 function checkStockAvailability(movement, availableByRef, opts) {
   var guardedTypes = (opts && opts.guardedTypes) || DEFAULT_GUARDED_TYPES;
+  /** @type {any} */ // le `|| {}` defensif efface la forme documentee par le @param ci-dessus
   var mov = movement || {};
   var type = mov.type;
 

@@ -192,11 +192,14 @@
    *   vaut *jours travaillés + fériés*.
    * @param {Object} args.baremes barèmes de paie.
    * @param {string} args.dateISO date de référence (SMAG daté, prime datée).
+   * @param {number} [args.joursDepuisSocle] jours cumulés depuis le socle
+   *   d'ancienneté, ajoutés à `fiche.baselineJours` pour le palier.
    * @returns {{brut: number, net: number, chargesPatronales: number,
    *   cnss: number, amo: number, cotisationsSalariales: number,
    *   coutEmployeur: number, declare: boolean}}
    */
   function paieOuvrier(args) {
+    /** @type {any} */ // le `|| {}` defensif efface la forme documentee par le @param ci-dessus
     var a = args || {};
     var paie = a.paie;
     var fiche = a.fiche || {};
@@ -502,6 +505,7 @@
    * @returns {number}
    */
   function masseSalarialeNette(args) {
+    /** @type {any} */ // le `|| {}` defensif efface la forme documentee par le @param ci-dessus
     var a = args || {};
     var mo = a.mo || {};
     var primes = a.primes || {};

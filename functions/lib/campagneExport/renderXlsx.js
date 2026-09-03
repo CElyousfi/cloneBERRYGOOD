@@ -51,7 +51,7 @@ function xlFill(argb) {
  * portant qu'un libellé (famille, total…) au lieu d'un bandeau.
  * @param {*} row
  * @param {number} nbCols
- * @param {function(*):void} fn
+ * @param {(cell: any) => void} fn
  */
 function styleFullWidth(row, nbCols, fn) {
   for (let c = 1; c <= nbCols; c += 1) fn(row.getCell(c));

@@ -96,7 +96,7 @@ function computeDeliveryData(bdcItems, bls) {
     received[it.article] = (received[it.article] || 0) + (it.quantite_recue || 0);
   }));
   return (bdcItems || []).map((it) => {
-    const qCmd = parseFloat(it.quantite) || 0;
+    const qCmd = parseFloat(String(it.quantite)) || 0;
     const qLiv = received[it.article] || 0;
     const reste = Math.max(0, Math.round((qCmd - qLiv) * 100) / 100);
     const pct = qCmd > 0 ? Math.min(100, Math.round((qLiv / qCmd) * 100)) : 0;
@@ -122,9 +122,9 @@ function computeDeliveryData(bdcItems, bls) {
  * @returns {number}
  */
 function computeReceptionEcart(quantiteRecue, reliquat, quantiteCommandee) {
-  const recue = parseFloat(quantiteRecue) || 0;
-  const rel = parseFloat(reliquat);
-  const base = !isNaN(rel) ? rel : (parseFloat(quantiteCommandee) || 0);
+  const recue = parseFloat(String(quantiteRecue)) || 0;
+  const rel = parseFloat(String(reliquat));
+  const base = !isNaN(rel) ? rel : (parseFloat(String(quantiteCommandee)) || 0);
   return recue - base;
 }
 
@@ -141,7 +141,7 @@ function computeReceptionEcart(quantiteRecue, reliquat, quantiteCommandee) {
  * @returns {string}
  */
 function clampReceivedQty(value, reliquat) {
-  const rel = parseFloat(reliquat);
+  const rel = parseFloat(String(reliquat));
   const val = parseFloat(value);
   if (isNaN(rel) || isNaN(val)) return value;
   if (val < 0) return '0';
@@ -227,7 +227,7 @@ function filterReceptionsForBdc(movements, bdcId) {
 function computeReceptionRowsWithReliquat(bdcItems, receptions) {
   const qCmdByArticle = {};
   (bdcItems || []).forEach((it) => {
-    qCmdByArticle[it.article] = parseFloat(it.quantite) || 0;
+    qCmdByArticle[it.article] = parseFloat(String(it.quantite)) || 0;
   });
 
   const chronological = (receptions || []).slice().sort((a, b) => {

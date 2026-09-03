@@ -53,7 +53,7 @@ function parcelleLabel(pc) {
  * and normalizes each to { id, label, variete, sousVariete, ferme }.
  * Sorted by variété then label.
  * @param {Array<Object>} parcellesCulturales
- * @param {string} [varieteFilter] — if provided and !== 'Toutes', keep only this variété
+ * @param {string} [varieteFilter] - if provided and !== 'Toutes', keep only this variété
  * @returns {Array<{id: string, label: string, variete: string, sousVariete: (string|null), ferme: string}>}
  */
 function framboiseParcelles(parcellesCulturales, varieteFilter) {
@@ -138,7 +138,7 @@ function parseLength(v) {
  * recent (max created_at). Rows without a valid date or length are ignored.
  *
  * @param {Array<{date?: string, checkpoint?: string, length_cm?: (number|string), created_at?: number}>} measurements
- * @param {Array<string>} [checkpoints] — configured checkpoints to union into dataKeys
+ * @param {Array<string>} [checkpoints] - configured checkpoints to union into dataKeys
  * @returns {{rows: Array<Object>, dataKeys: Array<string>}}
  */
 function buildGrowthSeries(measurements, checkpoints) {

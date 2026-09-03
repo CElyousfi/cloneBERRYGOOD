@@ -66,6 +66,7 @@ const MOTIF_MIN = 3;
  * @returns {{ok: boolean, code: number, error: string, motif: string}}
  */
 function validerSuppression(args) {
+  /** @type {any} */ // le `|| {}` defensif efface la forme documentee par le @param ci-dessus
   const o = args || {};
   const verdictRole = peutSupprimerBonConso(o.role);
   if (!verdictRole.ok) {
@@ -120,6 +121,7 @@ function trierMouvements(movements) {
  * @returns {{bcUpdate: Object, movementUpdate: Object, history: Object}}
  */
 function buildSuppressionUpdate(args) {
+  /** @type {any} */ // le `|| {}` defensif efface la forme documentee par le @param ci-dessus
   const o = args || {};
   const bc = o.bc || {};
   const by = {

@@ -9,10 +9,9 @@
  * GLOBAL du navigateur. Tout est wrappé dans une IIFE, aucun identifiant
  * top-level ne fuite (cf. crashes #75/#77, React #200). UN SEUL global exposé :
  *   window.ImageDownscale
- *
- * @typedef {{ width: number, height: number, scaled: boolean }} TargetSize
  */
 // @ts-check
+/** @typedef {{ width: number, height: number, scaled: boolean }} TargetSize */
 (function () {
   'use strict';
 

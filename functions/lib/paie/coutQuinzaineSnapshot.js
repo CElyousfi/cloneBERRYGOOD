@@ -67,9 +67,11 @@ function nombre(v) {
  * lu quelque part comme s'il faisait autorité.
  *
  * @param {Object} brut corps de la requête.
- * @returns {{periode: string, coutEmployeur: number, netAPayer: number,
- *   masseSalariale: number, jours: number, pleinPerimetre: boolean,
- *   postes: Object<string, number>}}
+ * @returns {{periode: string, dateDebut: string, dateFin: string,
+ *   coutEmployeur: number, netAPayer: number, masseSalariale: number,
+ *   jours: number, joursFeries: number, pleinPerimetre: boolean,
+ *   postes: Object<string, number>, sousPostes: Object<string, number>,
+ *   population: {declares: number, nonDeclares: number, brutDeclare: number}}}
  */
 function normaliser(brut) {
   const b = brut || {};

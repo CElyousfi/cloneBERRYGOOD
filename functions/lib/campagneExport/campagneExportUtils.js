@@ -531,7 +531,9 @@ function buildParcelleBudgetIndex(args) {
   const a = args || {};
   const budgets = a.budgets || {};
   const bOps = a.budgetsOperations || {};
+  /** @type {any} */ // le `|| {}` defensif efface la forme documentee par le @param ci-dessus
   const rules = a.budgetRules || {};
+  /** @type {any} */ // le `|| {}` defensif efface la forme documentee par le @param ci-dessus
   const AU = a.analytique || {};
 
   const ready = typeof rules.familleTotal === 'function'
@@ -691,6 +693,7 @@ function buildParcelleBudgetIndex(args) {
  * @returns {Array<{kind:string, cells:Array<*>}>}
  */
 function buildSyntheseRows(parcelles) {
+  /** @type {Array<{kind: string, cells: Array<string|number>}>} */ // __cexp_num rend '' OU un nombre
   const rows = [{ kind: ROW_KIND.COL_HEADER, cells: __cexp_SYNTHESE_HEADER.slice() }];
   let totalHa = 0;
   let totalJh = 0;
@@ -856,6 +859,7 @@ function buildParcelleSheetRows(params) {
   const periodes = p.periodes || [];
   const opRows = p.opRows || [];
 
+  /** @type {Array<{kind: string, cells: Array<string|number>}>} */ // __cexp_num rend '' OU un nombre
   const rows = [
     { kind: ROW_KIND.META, cells: ['Parcelle :', p.nomSb || ''] },
     { kind: ROW_KIND.META, cells: ['Superficie :', haLabel(p.ha)] },
@@ -901,6 +905,7 @@ function buildParcelleSheetRows(params) {
     rows.push({ kind: ROW_KIND.FAMILLE, cells: [famille] });
 
     famRows.forEach(function (r) {
+      /** @type {Array<string|number>} */ // cellules texte ET numeriques
       const line = [r.operation || ''];
       periodes.forEach(function (per) {
         const cell = (r.byPeriode || {})[per];
@@ -924,6 +929,7 @@ function buildParcelleSheetRows(params) {
       rows.push({ kind: ROW_KIND.OPERATION, cells: line });
     });
 
+    /** @type {Array<string|number>} */ // cellules texte ET numeriques
     const famLine = ['Total ' + famille];
     periodes.forEach(function (per) { famLine.push(__cexp_num(famTotal.byP[per])); });
     famLine.push(__cexp_num(famTotal.jh));
@@ -938,6 +944,7 @@ function buildParcelleSheetRows(params) {
     rows.push({ kind: ROW_KIND.BLANK, cells: [] });
   });
 
+  /** @type {Array<string|number>} */ // cellules texte ET numeriques
   const totalLine = ['TOTAL GÉNÉRAL'];
   periodes.forEach(function (per) { totalLine.push(__cexp_num(grand.byP[per])); });
   totalLine.push(__cexp_num(grand.jh));

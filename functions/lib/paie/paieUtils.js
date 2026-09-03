@@ -63,6 +63,8 @@
    *   heuresNormalesParJour?: number,
    *   tauxChargesPatronales: number,
    *   tauxCotisationsSalariales: number,
+   *   tauxCnssSalariale?: number,
+   *   tauxAmo?: number,
    *   paliers: Array<{ seuilJours: number, pourcentage: number, label: string }>,
    *   smagHistory?: Array<{ dateFrom: string, smagBrutJournalier: number, smagNetJournalier: number }>
    * }}
@@ -152,10 +154,11 @@
    * pick the most recent entry whose dateFrom <= dateISO. Otherwise (or if no entry matches,
    * e.g. dateISO before the first dateFrom), fall back to the flat fields.
    * @param {object} baremes
-   * @param {string} [dateISO] — 'YYYY-MM-DD'. If omitted, falls back to flat fields.
+   * @param {string} [dateISO] - 'YYYY-MM-DD'. If omitted, falls back to flat fields.
    * @returns {{ smagBrutJournalier: number, smagNetJournalier: number }}
    */
   function resolveSmagForDate(baremes, dateISO) {
+    /** @type {any} */ // le `|| {}` defensif efface la forme documentee par le @param ci-dessus
     const b = baremes || {};
     const flat = {
       smagBrutJournalier: Number(b.smagBrutJournalier) || 0,

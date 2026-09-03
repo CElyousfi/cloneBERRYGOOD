@@ -29,7 +29,7 @@ const IN_MAX_VALUES = 30;
  * Firestore, donc l'appelant ne doit lancer aucune requête dans ce cas.
  *
  * @param {Array<string>} ids
- * @param {number} [size] — défaut IN_MAX_VALUES (30, limite dure Firestore).
+ * @param {number} [size] - défaut IN_MAX_VALUES (30, limite dure Firestore).
  * @returns {Array<Array<string>>}
  */
 function chunkIds(ids, size) {

@@ -223,7 +223,9 @@
    * remplacerait une saisie libre par un choix ambigu — pas un progrès. Le
    * remède est une FUSION, et le message le dit.
    *
-   * @param {{parCle?: Object<string, EntreeCatalogue>}} index
+   * @param {{entrees?: Array<EntreeCatalogue>, parCle?: Object<string, EntreeCatalogue>}} index
+   *   L'index COMPLET de construireIndex : `parCle` pour l'identité exacte, et
+   *   `entrees` que le repli `filtrerEntrees` parcourt.
    * @param {*} saisie
    * @returns {ChoixArticle}
    */

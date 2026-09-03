@@ -106,7 +106,8 @@
     var ps = snap.postes;
     var n = function (v) { var x = Number(v); return isFinite(x) ? x : 0; };
 
-    var lignes = [
+    /** @type {Array<{cle: string, libelle: string, campagne: number, quinzaine: number, ecart?: number}>} */
+    var lignes = [ // `ecart` est calcule juste apres, dans le forEach
       { cle: 'transport', libelle: 'Prime transport',
         campagne: n(pc.transport), quinzaine: n(ps.primeTransport) },
       { cle: 'recolte', libelle: 'Prime récolte',
@@ -139,7 +140,9 @@
       campagne: totalC - sommeC, quinzaine: totalQ - sommeQ,
       ecart: (totalQ - sommeQ) - (totalC - sommeC),
     });
-    return lignes;
+    // `ecart` est renseigne pour chaque ligne par le forEach ci-dessus : la
+    // forme finale est bien celle du @returns.
+    return /** @type {Array<{cle: string, libelle: string, campagne: number, quinzaine: number, ecart: number}>} */ (lignes);
   }
 
   /**
@@ -152,10 +155,13 @@
    * @param {Array<Object>} args.rows lignes de la grille (toutes cultures).
    * @param {Object<string, {coutEmployeur: number}>} [args.snapshots] instantanés
    *   enregistrés par l'écran Quinzaine, indexés par période.
-   * @returns {{lignes: Array<Object>, totalGrille: number, totalPointage: number,
-   *   ecart: number, ecartPct: number|null}}
+   * @returns {{lignes: Array<Object>, totalGrille: number,
+   *   totalGrilleComparable: number, totalQuinzaine: number,
+   *   totalJhSansTaux: number, ecart: number, ecartPct: number|null,
+   *   sansSnapshot: Array<string>}}
    */
   function rapprocher(args) {
+    /** @type {any} */ // le `|| {}` defensif efface la forme documentee par le @param ci-dessus
     var a = args || {};
     var parGrille = chargeParQuinzaine(a.rows);
     var totalGrille = 0;

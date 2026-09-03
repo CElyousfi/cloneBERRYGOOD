@@ -51,7 +51,7 @@
      *             reason:string }}
      */
     function decideAuthState(input) {
-        input = input || {};
+        input = input || /** @type {any} */ ({}); // defaut defensif : aucun champ
         var authUser = input.authUser || null;
         var meResult = input.meResult || null;
         var cachedProfile = input.cachedProfile || null;

@@ -263,6 +263,7 @@
    *   aucune raison d'afficher la vue quinzaine (elle ne montrerait que des « — »).
    */
   function decoreQuinzaine(args) {
+    /** @type {any} */ // le `|| {}` defensif efface la forme documentee par le @param ci-dessus
     var a = args || {};
     var rows = a.groupedRows || [];
     var num = Number(a.num) || 0;

@@ -129,6 +129,7 @@ function finCampagne(campagne) {
  * @returns {string|null} libellé de campagne, ou null si date invalide
  */
 function campagneDeCharge(args) {
+  /** @type {any} */ // le `|| {}` defensif efface la forme documentee par le @param ci-dessus
   const opts = args || {};
   const date = opts.date;
   if (!date || typeof date !== 'string' || !__cu_ISO_DATE_RE.test(date)) return null;
@@ -154,6 +155,7 @@ function campagneDeCharge(args) {
  * @returns {string|null} 'primocane' | 'floricane' | 'unique', ou null si date invalide
  */
 function phaseDeCharge(args) {
+  /** @type {any} */ // le `|| {}` defensif efface la forme documentee par le @param ci-dessus
   const opts = args || {};
   const date = opts.date;
   if (!date || typeof date !== 'string' || !__cu_ISO_DATE_RE.test(date)) return null;

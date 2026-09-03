@@ -48,7 +48,7 @@ function computeReceivedByArticle(existingBls) {
  */
 function computeOrderedByArticle(bdcItems) {
   const ordered = {};
-  (bdcItems || []).forEach((it) => { ordered[it.article] = (ordered[it.article] || 0) + (parseFloat(it.quantite) || 0); });
+  (bdcItems || []).forEach((it) => { ordered[it.article] = (ordered[it.article] || 0) + (parseFloat(String(it.quantite)) || 0); });
   return ordered;
 }
 
@@ -68,7 +68,7 @@ function validateReliquat(bdcItems, existingBls, incomingItems) {
 
   for (const it of incomingItems || []) {
     const article = it.article || '';
-    const quantiteRecue = parseFloat(it.quantite_recue) || 0;
+    const quantiteRecue = parseFloat(String(it.quantite_recue)) || 0;
     if (quantiteRecue < 0) {
       return {
         status: 400,

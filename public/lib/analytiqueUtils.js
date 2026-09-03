@@ -65,12 +65,15 @@
    * @property {string} operationFamille  famille d'opération brute
    * @property {number} jh                journées-homme du groupe
    * @property {number} cout              coût du groupe (DH)
+   * @property {number} [coutCharge]      coût chargé (DH), absent des lignes
+   *   construites avant l'ajout de la charge patronale
    */
 
   /**
    * @typedef {Object} AnalytiquePivotCell
    * @property {number} jh
    * @property {number} cout
+   * @property {number} [coutCharge]
    * @property {number} ha
    * @property {AnalytiqueRow[]} detailRows
    */
@@ -245,8 +248,8 @@
    *                                   'AUTRE' ; operation: '<gbCode>::<clé opKey normalisée>'
    * @property {string} label
    * @property {Object<string, {jh:number, cout:number, ha:number, detailRows:AnalytiqueRow[]}>} pivot
-   * @property {string} [groupeKey]  — présent quand type==='famille' ou 'operation'
-   * @property {string} [familleKey] — présent uniquement quand type==='operation' (code GB parent)
+   * @property {string} [groupeKey]  - présent quand type==='famille' ou 'operation'
+   * @property {string} [familleKey] - présent uniquement quand type==='operation' (code GB parent)
    */
 
   /**

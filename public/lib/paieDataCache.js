@@ -54,7 +54,7 @@
    * Return a cached value if present and not expired, else undefined.
    * @param {string} key
    * @param {number} [ttlMs]
-   * @param {number} [now] — injectable clock for tests.
+   * @param {number} [now] - injectable clock for tests.
    * @returns {any|undefined}
    */
   function peek(key, ttlMs, now) {
@@ -69,7 +69,7 @@
    * Store a value under a key with the current timestamp.
    * @param {string} key
    * @param {any} value
-   * @param {number} [now] — injectable clock for tests.
+   * @param {number} [now] - injectable clock for tests.
    * @returns {any} the stored value (for chaining).
    */
   function set(key, value, now) {
@@ -88,7 +88,7 @@
    * effect cost on mount).
    *
    * @param {string} key
-   * @param {function(): Promise<any>} loader
+   * @param {() => Promise<any>} loader
    * @param {{ ttlMs?: number, now?: number }} [opts]
    * @returns {Promise<any>}
    */
@@ -121,7 +121,7 @@
    * Invalidate one key (exact) or, if a prefix is given, all keys starting with it.
    * Called after writes (toggleDeclare, prime de fonction, imports) so the next
    * open reflects the mutation rather than a stale cache.
-   * @param {string} [prefix] — if omitted, clears everything.
+   * @param {string} [prefix] - if omitted, clears everything.
    */
   function invalidate(prefix) {
     if (!prefix) { store = {}; return; }

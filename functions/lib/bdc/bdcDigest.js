@@ -531,6 +531,7 @@ function summarizePendingReception(bdcs, blsByBdcId, options) {
  */
 function buildReceptionPayload(summary, limit, options) {
   const opts = options || {};
+  /** @type {Record<string, any>} */ // sac JSON pour le tool LLM : enrichi ci-dessous
   const payload = buildDigestPayload(/** @type {any} */ (summary), limit, opts);
   // `byBlocker` est un agrégat du digest validation : sans objet ici.
   delete payload.byBlocker;

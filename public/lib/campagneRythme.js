@@ -392,6 +392,7 @@
    * @returns {number|null}
    */
   function resteRythmeCellule(args) {
+    /** @type {any} */ // le `|| {}` defensif efface la forme documentee par le @param ci-dessus
     var a = args || {};
     var q = a.quinzaines || {};
     var cell = a.cell;
@@ -463,6 +464,7 @@
    *   nonProjetees: Array<string>}}}
    */
   function decoreRestes(args) {
+    /** @type {any} */ // le `|| {}` defensif efface la forme documentee par le @param ci-dessus
     var a = args || {};
     var rows = a.groupedRows || [];
     var budgetees = 0;
@@ -531,7 +533,9 @@
    * @returns {string}
    */
   function noteRestes(perimetre, q, fenetre) {
+    /** @type {any} */ // le `|| {}` defensif efface la forme documentee par le @param ci-dessus
     var p = perimetre || {};
+    /** @type {any} */ // le `|| {}` defensif efface la forme documentee par le @param ci-dessus
     var quinz = q || {};
     var base = 'Reste budgété = budget × Ha − réalisé. ';
     var sfin = 'Le « — » signale une valeur non calculable : aucun budget saisi,'

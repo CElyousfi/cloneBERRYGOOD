@@ -23,6 +23,8 @@ const E = require('./envois');
  * @property {(buffer: Buffer, mime: string, fileName: string) => Promise<{id?: string, error?: string}>} uploadMedia
  * @property {(to: string, template: string, ref: {mediaId: string}, fileName: string, bodyParams: Array<string>, lang: undefined, toName: string) => Promise<{success: boolean, error?: string, waMessageId?: string}>} sendTemplateMessageWithDocument
  * @property {(to: string, template: string, bodyParams: Array<string>) => Promise<{success: boolean, error?: string}>} sendTemplateMessage
+ * @property {() => Promise<string|null>} [fallbackAlertPhone] numéro de repli
+ *   quand l'alerte n'a plus aucun destinataire (cf. config/whatsapp).
  * @property {(s: *) => string} [toSingleLine]
  * @property {() => Date} [now]
  * @property {(msg: string, ctx?: *) => void} [logger]
@@ -428,6 +430,7 @@ function buildHttpHandler(deps) {
 
       // Verrou 2 — profil dirigeant uniquement, résolu SERVEUR (users/{uid}),
       // jamais depuis la requête.
+      /** @type {any} */ // le `|| {}` defensif efface la forme documentee par le @param ci-dessus
       const profil = (await deps.resolveProfile(user)) || {};
       const autorise = C.TRIGGER_PROFILES.indexOf(profil.profileId) !== -1 || profil.role === 'admin';
       if (!autorise) {

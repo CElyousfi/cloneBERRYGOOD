@@ -408,6 +408,7 @@
    * @returns {Object}
    */
   function postesExcel(args) {
+    /** @type {any} */ // le `|| {}` defensif efface la forme documentee par le @param ci-dessus
     const a = args || {};
     const P = a.pointage || [];
     const S = a.sansCnss || [];
