@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:a562a89d2a28d9ac -->
-# Code Map — Actions backend (392)
+<!-- sourceFingerprint: sha256:23463fb038296a7d -->
+# Code Map — Actions backend (394)
 
 Chaque action `?action=<nom>` des Cloud Functions, avec son emplacement exact et le handler `exports.xxx` qui la sert — à consulter AVANT toute recherche dans functions/index.js.
 
@@ -59,7 +59,7 @@ Chaque action `?action=<nom>` des Cloud Functions, avec son emplacement exact et
 | create-da | functions/index.js:7525 | stockManagement | POST |
 | create-demande-virement | functions/index.js:10056 | stockManagement | POST |
 | create-facture | functions/index.js:7899 | stockManagement | POST |
-| create-fonction | functions/index.js:18379 | fonctionsManagement | POST |
+| create-fonction | functions/index.js:18483 | fonctionsManagement | POST |
 | create-manual-expedition | functions/emailService.js:3069 | emailAnalysis | POST |
 | create-measurement | functions/index.js:1361 | growthTracking | POST |
 | create-movement | functions/index.js:12131 | stockManagement | POST |
@@ -109,7 +109,7 @@ Chaque action `?action=<nom>` des Cloud Functions, avec son emplacement exact et
 | fix-expedition-status | functions/emailService.js:2988 | emailAnalysis | — |
 | force-sync-periode | functions/pointageService.js:5557 | pointageRH | POST |
 | generate-reco-foliaire | functions/index.js:10561 | stockManagement | POST |
-| generate-verify-token | functions/index.js:18666 | whatsappAdmin | POST |
+| generate-verify-token | functions/index.js:18770 | whatsappAdmin | POST |
 | get-actuals | functions/index.js:14469 | budgetService | — |
 | get-article-history | functions/index.js:12758 | stockManagement | — |
 | get-attachment-url | functions/index.js:10907 | stockManagement | — |
@@ -118,7 +118,7 @@ Chaque action `?action=<nom>` des Cloud Functions, avec son emplacement exact et
 | get-bdc | functions/index.js:7036 | stockManagement | — |
 | get-budget | functions/index.js:14273 | budgetService | — |
 | get-comparison | functions/index.js:14576 | budgetService | — |
-| get-config | functions/index.js:18495 | whatsappAdmin | — |
+| get-config | functions/index.js:18599 | whatsappAdmin | — |
 | get-consumption-costs | functions/index.js:12691 | stockManagement | — |
 | get-curves | functions/index.js:14298 | budgetService | — |
 | get-demandes | functions/index.js:13862 | horsRecolteService | — |
@@ -126,8 +126,8 @@ Chaque action `?action=<nom>` des Cloud Functions, avec son emplacement exact et
 | get-irrigation-config | functions/index.js:13033 | stockManagement | — |
 | get-irrigation-forecast | functions/index.js:13048 | stockManagement | — |
 | get-locations | functions/index.js:12869 | stockManagement | — |
-| get-logs | functions/index.js:18629 | whatsappAdmin | — |
-| get-messages | functions/index.js:18658 | whatsappAdmin | — |
+| get-logs | functions/index.js:18733 | whatsappAdmin | — |
+| get-messages | functions/index.js:18762 | whatsappAdmin | — |
 | get-movement | functions/index.js:12369 | stockManagement | — |
 | get-norm-proposals | functions/index.js:14102 | horsRecolteService | — |
 | get-normes | functions/index.js:13880 | horsRecolteService | — |
@@ -136,15 +136,17 @@ Chaque action `?action=<nom>` des Cloud Functions, avec son emplacement exact et
 | get-pointage-workers | functions/index.js:14119 | horsRecolteService | — |
 | get-price-history | functions/index.js:12951 | stockManagement | — |
 | get-progress | functions/index.js:13773 | horsRecolteService | — |
-| get-registry | functions/index.js:18210 | registryService | GET |
+| get-registry | functions/index.js:18314 | registryService | GET |
 | get-saisies-today | functions/index.js:13796 | horsRecolteService | — |
 | get-seasons | functions/index.js:14249 | budgetService | — |
 | get-validations | functions/index.js:5542 | pointageValidation | — |
 | get-variete-contexte | functions/index.js:10312 | stockManagement | — |
-| get-verify-token | functions/index.js:18675 | whatsappAdmin | — |
+| get-verify-token | functions/index.js:18779 | whatsappAdmin | — |
 | heures-sup | functions/pointageService.js:3791 | pointageRH | — |
-| heures-sup-montants | functions/index.js:17943 | primesManagement | GET |
+| heures-sup-montants | functions/index.js:17945 | primesManagement | GET |
 | hors-recolte | functions/pointageService.js:3522 | pointageRH | — |
+| hs-emargement-submit | functions/index.js:18014 | primesManagement | POST |
+| hs-emargement-url | functions/index.js:18065 | primesManagement | GET |
 | import | functions/index.js:14991 | fuel | POST |
 | import | functions/index.js:15326 | fuel | POST |
 | import | functions/index.js:15417 | telecom | POST |
@@ -154,16 +156,16 @@ Chaque action `?action=<nom>` des Cloud Functions, avec son emplacement exact et
 | import-analyse-agq | functions/index.js:10472 | stockManagement | POST |
 | import-articles-excel | functions/index.js:8941 | stockManagement | POST |
 | import-articles-sql | functions/index.js:8864 | stockManagement | POST |
-| import-baseline | functions/index.js:18078 | primesManagement | POST |
+| import-baseline | functions/index.js:18182 | primesManagement | POST |
 | import-caneva-stock | functions/index.js:11832 | stockManagement | POST |
 | import-canevas | functions/index.js:14323 | budgetService | POST |
 | import-curves | functions/index.js:14397 | budgetService | POST |
-| import-declares | functions/index.js:18056 | primesManagement | POST |
+| import-declares | functions/index.js:18160 | primesManagement | POST |
 | import-excel-file | functions/index.js:17101 | caisseManagement | POST |
 | import-fournisseurs-sql | functions/index.js:8561 | stockManagement | POST |
 | import-fournisseurs-xls | functions/index.js:8723 | stockManagement | POST |
 | import-liquidation | functions/emailService.js:4770 | emailAnalysis | POST |
-| import-primes | functions/index.js:18105 | primesManagement | POST |
+| import-primes | functions/index.js:18209 | primesManagement | POST |
 | import-weekly-report | functions/emailService.js:4832 | emailAnalysis | POST |
 | irrigation-intelligence | functions/index.js:13313 | stockManagement | — |
 | irrigation-intelligence-next-pulse | functions/index.js:13210 | stockManagement | — |
@@ -204,7 +206,7 @@ Chaque action `?action=<nom>` des Cloud Functions, avec son emplacement exact et
 | list-delete-requests | functions/index.js:9491 | stockManagement | — |
 | list-demandes-virement | functions/index.js:10048 | stockManagement | — |
 | list-factures | functions/index.js:7889 | stockManagement | — |
-| list-fonctions | functions/index.js:18428 | fonctionsManagement | — |
+| list-fonctions | functions/index.js:18532 | fonctionsManagement | — |
 | list-measurements | functions/index.js:1314 | growthTracking | GET |
 | list-movements | functions/index.js:12351 | stockManagement | — |
 | list-scan-history | functions/index.js:11044 | stockManagement | — |
@@ -229,7 +231,7 @@ Chaque action `?action=<nom>` des Cloud Functions, avec son emplacement exact et
 | pending-validations | functions/index.js:8532 | stockManagement | — |
 | pending-validations | functions/index.js:13010 | stockManagement | — |
 | periods | functions/index.js:15859 | ojra | — |
-| personnel-ref | functions/index.js:19246 | rh | GET |
+| personnel-ref | functions/index.js:19350 | rh | GET |
 | plant-invoices | functions/emailService.js:4433 | emailAnalysis | — |
 | postes-fixes | functions/pointageService.js:4583 | pointageRH | — |
 | presence | functions/index.js:569 | syncProdTrigger | — |
@@ -279,7 +281,7 @@ Chaque action `?action=<nom>` des Cloud Functions, avec son emplacement exact et
 | reset-email-cursor | functions/index.js:6916 | stockManagement | POST |
 | restore | functions/backupService.js:320 | backupApi | — |
 | retenir-offre | functions/index.js:10018 | stockManagement | POST |
-| retry-log | functions/index.js:18637 | whatsappAdmin | POST |
+| retry-log | functions/index.js:18741 | whatsappAdmin | POST |
 | revert | functions/index.js:1561 | mappingConsoManagement | — |
 | saisie | functions/index.js:13680 | horsRecolteService | POST |
 | save | functions/index.js:14909 | meetingCR | POST |
@@ -290,9 +292,9 @@ Chaque action `?action=<nom>` des Cloud Functions, avec son emplacement exact et
 | save-code-analytique | functions/index.js:9942 | stockManagement | POST |
 | save-config | functions/index.js:5868 | ecarts | POST |
 | save-curve | functions/index.js:14308 | budgetService | POST |
-| save-heures-sup | functions/index.js:17957 | primesManagement | POST |
+| save-heures-sup | functions/index.js:17966 | primesManagement | POST |
 | save-irrigation-config | functions/index.js:13039 | stockManagement | POST |
-| save-prime | functions/index.js:17913 | primesManagement | POST |
+| save-prime | functions/index.js:17915 | primesManagement | POST |
 | save-season | functions/index.js:14255 | budgetService | POST |
 | save-variete-contexte | functions/index.js:10320 | stockManagement | POST |
 | sb-groupe-delete | functions/pointageService.js:5390 | pointageRH | POST |
@@ -311,13 +313,13 @@ Chaque action `?action=<nom>` des Cloud Functions, avec son emplacement exact et
 | seed-defaults | functions/index.js:17375 | caisseManagement | POST |
 | send-bdc | functions/index.js:7268 | stockManagement | POST |
 | send-bdc-email | functions/index.js:7411 | stockManagement | POST |
-| send-welcome | functions/index.js:18583 | whatsappAdmin | POST |
-| send-welcome-all | functions/index.js:18602 | whatsappAdmin | POST |
+| send-welcome | functions/index.js:18687 | whatsappAdmin | POST |
+| send-welcome-all | functions/index.js:18706 | whatsappAdmin | POST |
 | set-checkpoints | functions/index.js:1342 | growthTracking | POST |
-| set-declare | functions/index.js:17976 | primesManagement | POST |
+| set-declare | functions/index.js:18080 | primesManagement | POST |
 | set-locations | functions/index.js:12892 | stockManagement | POST |
-| set-ouvrier-fonction | functions/index.js:18334 | fonctionsManagement | POST |
-| simulate-template | functions/index.js:18530 | whatsappAdmin | POST |
+| set-ouvrier-fonction | functions/index.js:18438 | fonctionsManagement | POST |
+| simulate-template | functions/index.js:18634 | whatsappAdmin | POST |
 | sql-comparison | functions/index.js:6092 | validation | — |
 | status | functions/backupService.js:310 | backupApi | — |
 | status | functions/emailService.js:2763 | emailAnalysis | — |
@@ -338,9 +340,9 @@ Chaque action `?action=<nom>` des Cloud Functions, avec son emplacement exact et
 | summary | functions/index.js:15436 | telecom | — |
 | summary | functions/index.js:15806 | ojra | — |
 | summary | functions/pointageService.js:2914 | pointageRH | — |
-| sync-identite-bdp | functions/index.js:18023 | primesManagement | POST |
-| test-expedition-rejected | functions/index.js:18560 | whatsappAdmin | POST |
-| test-message | functions/index.js:18519 | whatsappAdmin | POST |
+| sync-identite-bdp | functions/index.js:18127 | primesManagement | POST |
+| test-expedition-rejected | functions/index.js:18664 | whatsappAdmin | POST |
+| test-message | functions/index.js:18623 | whatsappAdmin | POST |
 | toggle-google | functions/index.js:13623 | authApi | POST |
 | track-orders | functions/index.js:10100 | stockManagement | — |
 | transactions | functions/index.js:15383 | fuel | — |
@@ -363,11 +365,11 @@ Chaque action `?action=<nom>` des Cloud Functions, avec son emplacement exact et
 | update-bdc-virement | functions/index.js:7302 | stockManagement | POST |
 | update-bug-status | functions/index.js:1778 | bugReports | — |
 | update-caisse | functions/index.js:16527 | caisseManagement | POST |
-| update-config | functions/index.js:18506 | whatsappAdmin | POST |
+| update-config | functions/index.js:18610 | whatsappAdmin | POST |
 | update-da | functions/index.js:7544 | stockManagement | POST |
 | update-expedition | functions/emailService.js:3017 | emailAnalysis | POST |
-| update-fonction | functions/index.js:18401 | fonctionsManagement | POST |
-| update-identite | functions/index.js:17997 | primesManagement | POST |
+| update-fonction | functions/index.js:18505 | fonctionsManagement | POST |
+| update-identite | functions/index.js:18101 | primesManagement | POST |
 | update-movement | functions/index.js:12537 | stockManagement | POST |
 | update-norme | functions/index.js:13909 | horsRecolteService | POST |
 | update-parcelle-config | functions/index.js:13971 | horsRecolteService | POST |

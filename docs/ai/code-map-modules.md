@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:28da6808598c9cdb -->
-# Code Map — Modules lib (227)
+<!-- sourceFingerprint: sha256:444d08cb5ff6dd8b -->
+# Code Map — Modules lib (229)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
 
@@ -129,6 +129,8 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/pointageBdp/comparePointage.js | — | rowKey, indexByKey, comparePointage, JR_KEYS |
 | functions/lib/pointageBdp/mapBdpRow.js | — | s, n, deriveJournees, derivePeriodePaie, mapBdpRowToContract |
 | functions/lib/pointageValidation/stateMachine.js | — | CHEF_FERME_BY_PROFILE, SUBMIT_STATES, EQUIPE_STATUSES, DIVERS_STATUSES, normalizeFermeState, isFermeLocked, canValidateEquipe, canSubmitFerme, canChefValidate, canChefReject, canUnlock, nextSubmitState, fermeForChefProfile |
+| functions/lib/primes/emargementWrite.js | — | EMARGEMENT_PREFIX, normalizeFermeKey, buildEmargementPath, isEmargementPath, buildEmargementWrite |
+| functions/lib/primes/heuresSupWrite.js | — | buildHeuresSupWrite, buildHeuresSupHistoryEntry |
 | functions/lib/primes/identiteSync.js | — | buildIdentiteSyncPlan |
 | functions/lib/primes/primeHistory.js | — | buildPrimeUpdate |
 | functions/lib/primes/primesAccess.js | — | canManagePrimes, forbiddenReason, PRIMES_PROFILES_AUTORISES |
@@ -227,7 +229,7 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | public/lib/rapprochementPaie.js | RapprochementPaie | nombre, valeurFerieFichier, ligne, comparer, alertes |
 | public/lib/recolteKpiUtils.js | RecolteKpiUtils | aggregatePeriodKpis, computeNetDhParKg, computeNetDhParKgProd, distinctOuvriersFromRows |
 | public/lib/scanAttachmentUtils.js | ScanAttachmentUtils | ENTITY_MAP, ALLOWED_EXTENSIONS, isValidEntityType, collectionForEntity, folderForEntity, extOf, mimeFromFilename, sanitizeFilename, buildScanPath, isScanPathForEntity, validateUploadAttachmentParams |
-| public/lib/scanClientUpload.js | ScanClientUpload | isStorageAvailable, uploadDirect, recordAttachment, uploadAndRecord, getAttachmentUrl |
+| public/lib/scanClientUpload.js | ScanClientUpload | isStorageAvailable, uploadDirect, uploadDirectToPath, recordAttachment, uploadAndRecord, getAttachmentUrl |
 | public/lib/scanHistoryDisplay.js | ScanHistoryDisplay | scanFournisseurLabel, scanTtc, scanBdcMatche |
 | public/lib/stockDestinations.js | StockDestinations | resolveDestinationOptions, resolveReceptionDestination, resolveBdcDestination, SD_HORS_CONFIG_SUFFIX, SD_NOTE_HORS_CONFIG, SD_FERMES_STOCK_NON_MUTUALISE |
 | public/lib/stockMovementGuard.js | StockMovementGuard | IMPORT_CREATED_BY, VALIDATED_STATUS, isImportedMovement, isValidatedMovement, isDeletedMovement, isCreator, evaluateMutable, canEditMovement, canDeleteMovement, ADMIN_DELETE_ROLES, isAdminDeleter, evaluateAdminDelete, canAdminDeleteMovement, refusalMessage |

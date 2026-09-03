@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:0db32f6fc32109ed",
+    "sourceFingerprint": "sha256:99f2bc68a22cf38e",
     "stats": {
-      "targetFiles": 294,
-      "targetFilesWithDirectTests": 177,
-      "targetFilesWithTransitiveTests": 199,
-      "testFilesScanned": 275
+      "targetFiles": 298,
+      "targetFilesWithDirectTests": 180,
+      "targetFilesWithTransitiveTests": 201,
+      "testFilesScanned": 278
     }
   },
   "index": {
@@ -1154,6 +1154,22 @@
         "tests/unit/validationAccess.test.js"
       ]
     },
+    "functions/lib/primes/emargementWrite.js": {
+      "directTests": [
+        "functions/lib/primes/__tests__/emargementWrite.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/primes/__tests__/emargementWrite.test.js"
+      ]
+    },
+    "functions/lib/primes/heuresSupWrite.js": {
+      "directTests": [
+        "functions/lib/primes/__tests__/heuresSupWrite.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/primes/__tests__/heuresSupWrite.test.js"
+      ]
+    },
     "functions/lib/primes/identiteSync.js": {
       "directTests": [
         "tests/unit/identiteSync.test.js"
@@ -1183,6 +1199,7 @@
         "tests/unit/primesImport.test.js"
       ],
       "transitiveTests": [
+        "functions/lib/primes/__tests__/heuresSupWrite.test.js",
         "tests/unit/identiteSync.test.js",
         "tests/unit/primesImport.test.js"
       ]
@@ -1423,17 +1440,22 @@
     },
     "functions/lib/stock/scanAttachment.js": {
       "directTests": [
+        "functions/lib/primes/__tests__/emargementWrite.test.js",
         "functions/lib/stockFiles/__tests__/allowedMime.test.js",
         "tests/unit/validateAttachmentMetadata.test.js"
       ],
       "transitiveTests": [
+        "functions/lib/primes/__tests__/emargementWrite.test.js",
         "functions/lib/stockFiles/__tests__/allowedMime.test.js",
         "tests/unit/validateAttachmentMetadata.test.js"
       ]
     },
     "functions/lib/stock/scanAttachmentUtils.js": {
-      "directTests": [],
+      "directTests": [
+        "functions/lib/primes/__tests__/emargementWrite.test.js"
+      ],
       "transitiveTests": [
+        "functions/lib/primes/__tests__/emargementWrite.test.js",
         "functions/lib/stockFiles/__tests__/allowedMime.test.js",
         "tests/unit/validateAttachmentMetadata.test.js"
       ]
@@ -1873,6 +1895,14 @@
       "transitiveTests": []
     },
     "public/components/FactureDetailPopup.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/HsEmargementFooter.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/HsEmargementFooter.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
