@@ -104,25 +104,24 @@ if (process.env.DEMO_NO_AUTH === '1') {
 
 // 3. index.html migré + legacy.html d'origine
 const legacy=fs.readFileSync(p.join(PUB,'index.html'),'utf8');
-const anchor='<script defer src="app.js?v=mt4mnskr"></script>';
-if(!legacy.includes(anchor)){ console.error('🛑 ancre <script app.js> introuvable dans public/index.html'); process.exit(1); }
+// L'ancre est une EXPRESSION, pas une chaîne figée : build-frontend.js régénère
+// le cache-bust `?v=…` à chaque build, donc une ancre littérale se périme au
+// premier `npm run build:frontend` et faisait échouer tout le build Vercel.
+const ANCHOR_RE=/[ \t]*<script defer src="app\.js(?:\?v=[^"]*)?"><\/script>\n?/;
+if(!ANCHOR_RE.test(legacy)){ console.error('🛑 ancre <script app.js> introuvable dans public/index.html'); process.exit(1); }
 
 // legacy.html — interface d'origine, monolithe app.js, aucun changement
 fs.writeFileSync(p.join(OUT,'legacy.html'),legacy);
 
 // index.html — interface D'ORIGINE, servie par le build modulaire (334 modules ES).
 // C'est le livrable de non-régression : même UI, architecture modulaire.
-if(!legacy.includes(anchor)){ console.error('🛑 ancre <script app.js> introuvable'); process.exit(1); }
-const migrated=legacy.replace(anchor,
+const migrated=legacy.replace(ANCHOR_RE,
   '    <!-- Monolithe app.js (68 977 lignes) remplacé par le point d\'entrée\n'+
   '         modulaire ES issu de src/modules/. Tous les <script> UMD et lib\n'+
   '         au-dessus sont conservés à l\'identique : environnement d\'exécution\n'+
   '         strictement inchangé. -->\n'+
-  '    <script type="module" src="/app.modular.js"></script>');
+  '    <script type="module" src="/app.modular.js"></script>\n');
 fs.writeFileSync(p.join(OUT,'index.html'),migrated);
-
-// legacy.html — monolithe d'origine, conservé comme référence de comparaison
-fs.writeFileSync(p.join(OUT,'legacy.html'),legacy);
 
 const size=d=>{let t=0;(function w(x){for(const e of fs.readdirSync(x,{withFileTypes:true})){const f=p.join(x,e.name);e.isDirectory()?w(f):t+=fs.statSync(f).size;}})(d);return t;};
 console.log('dist-vercel/ assemblé');
