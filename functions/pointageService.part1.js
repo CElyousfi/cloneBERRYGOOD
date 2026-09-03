@@ -916,7 +916,7 @@ function computeChargCond(allRows, holidays) {
   // un ouvrier n'est crédité de la prime Jour Férié que s'il a travaillé le jour
   // férié lui-même, OU qu'il a une présence encadrante (jour ouvré avant ET après
   // le férié). Remplace l'ancien forfait "actif quelque part dans la quinzaine".
-  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Casablanca', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  const today = require('./lib/dates/isoDateInTz').isoDateInTz(new Date(), 'Africa/Casablanca');
   // Jours où au moins un ouvrier de la ferme a une ligne de pointage (proxy "jour ouvré",
   // sans dépendre d'un calendrier de repos hebdomadaire fixe qui varie selon ferme/équipe).
   const joursTravailles = [...new Set(allRows.map(r => r.DateStr).filter(Boolean))].sort();

@@ -11,13 +11,12 @@
  * (Africa/Casablanca). All increments are routed through `tryConsume`.
  */
 
+const { isoDateInTz } = require('../dates/isoDateInTz');
+
 function todayKey(now) {
   const t = Number.isFinite(now) ? Number(now) : Date.now();
   try {
-    return new Intl.DateTimeFormat('sv-SE', {
-      timeZone: 'Africa/Casablanca',
-      year: 'numeric', month: '2-digit', day: '2-digit',
-    }).format(new Date(t));
+    return isoDateInTz(new Date(t), 'Africa/Casablanca');
   } catch (_) {
     return new Date(t).toISOString().slice(0, 10);
   }

@@ -27,6 +27,8 @@ const VALID_FARMS = ['berry_good', 'bahia'];
 /** Libellés d'affichage des fermes (messages WhatsApp, UI). */
 const FARM_LABELS = { berry_good: 'Berry Good', bahia: 'Bahia' };
 
+const { isoDateInTz } = require('../dates/isoDateInTz');
+
 const CASABLANCA_TZ = 'Africa/Casablanca';
 
 /**
@@ -46,13 +48,7 @@ function isValidFarm(farm) {
  * @returns {string} YYYY-MM-DD
  */
 function todayInCasablanca(now) {
-  const fmt = new Intl.DateTimeFormat('en-CA', {
-    timeZone: CASABLANCA_TZ,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  });
-  return fmt.format(now || new Date()); // en-CA → "YYYY-MM-DD"
+  return isoDateInTz(now || new Date(), CASABLANCA_TZ);
 }
 
 /**

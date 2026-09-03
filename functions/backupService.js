@@ -10,6 +10,7 @@ const functions = require("firebase-functions");
 const { admin, db } = require("./config/firebase");
 const { handleCors } = require("./middleware/cors");
 const { requireAuth } = require("./middleware/requireAuth");
+const { isoDateInTz } = require("./lib/dates/isoDateInTz");
 
 const BACKUP_PREFIX = "backups";
 const RETENTION_DAYS = 7;
@@ -175,7 +176,7 @@ async function restoreCollection(bucket, dateStr, collectionName) {
 async function runBackup() {
   const bucket = getBackupBucket();
   const now = new Date();
-  const dateStr = now.toLocaleDateString("en-CA", { timeZone: "Africa/Casablanca" });
+  const dateStr = isoDateInTz(now, "Africa/Casablanca");
   const startedAt = now.toISOString();
 
   const collectionNames = await getCollectionsToBackup();

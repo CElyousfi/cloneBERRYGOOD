@@ -11,6 +11,7 @@ const { setCors } = require("../../middleware/cors");
 const { withCache, invalidateCachePrefix: invalidateApiCachePrefix } = require("../../middleware/cache");
 const { verifyAuth, requireAuth } = require("../../middleware/requireAuth");
 const { dispatchNotification } = require("../../notificationDispatcher");
+const { isoDateInTz } = require("../../lib/dates/isoDateInTz");
 const { resolveCallerRole, resolveCallerProfile } = require("../../lib/auth/resolveRole");
 const consoAccessControl = require("../../lib/valorisation/accessControl");
 const { deriveFermeFromParcelle } = require("../../lib/valorisation/fermeParcelle");
@@ -502,8 +503,7 @@ function calcIMC({ gddCumule, tmax, tmin, hr, dli }) {
 function localDateStr(date) {
   const d = date || new Date();
   // Use Intl to get Casablanca date reliably
-  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Casablanca', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
-  return parts; // returns YYYY-MM-DD
+  return isoDateInTz(d, 'Africa/Casablanca'); // returns YYYY-MM-DD
 }
 
 // Core GDD computation for a given date string

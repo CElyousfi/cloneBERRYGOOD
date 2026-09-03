@@ -11,23 +11,20 @@
  * `syncPointageFromProd` rend l'opération idempotente.
  */
 
+const { isoDateInTz } = require('../dates/isoDateInTz');
+
 const DEFAULT_WINDOW_DAYS = 7;
 const CASABLANCA_TZ = 'Africa/Casablanca';
 
 /**
  * Renvoie la date locale Africa/Casablanca (YYYY-MM-DD) pour un instant donné.
- * Utilise Intl (en-CA → format ISO YYYY-MM-DD) pour éviter tout décalage UTC.
+ * Délègue à isoDateInTz : le format est assemblé depuis les champs Intl, pas
+ * emprunté au motif d'une locale (cf. functions/lib/dates/isoDateInTz.js).
  * @param {Date} now
  * @returns {string} YYYY-MM-DD
  */
 function todayInCasablanca(now) {
-  const fmt = new Intl.DateTimeFormat('en-CA', {
-    timeZone: CASABLANCA_TZ,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  });
-  return fmt.format(now); // en-CA → "YYYY-MM-DD"
+  return isoDateInTz(now, CASABLANCA_TZ);
 }
 
 /**

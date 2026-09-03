@@ -34,6 +34,7 @@ const {
 } = require("./radsumCalculator");
 const { resolveStage } = require("./stageResolver");
 const { getIrrigationRecipe } = require("./irrigationRecipe");
+const { isoDateInTz } = require("../dates/isoDateInTz");
 
 /**
  * @typedef {Object} DailyPhenologyJobDeps
@@ -282,10 +283,7 @@ function buildHttpHandler(deps) {
   if (!deps || typeof deps.requireAuth !== "function" || typeof deps.runJob !== "function") {
     throw new TypeError("buildHttpHandler: deps.requireAuth + deps.runJob required");
   }
-  const todayISO = deps.todayISO || (() => {
-    const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Casablanca", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-    return parts;
-  });
+  const todayISO = deps.todayISO || (() => isoDateInTz(new Date(), "Africa/Casablanca"));
   const setCors = deps.setCors || (() => {});
   const logger = deps.logger || (() => {});
 

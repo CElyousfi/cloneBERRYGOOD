@@ -19,6 +19,8 @@
  *    sync upsert in place (no duplicates).
  */
 
+const { isoDateInTz } = require('../dates/isoDateInTz');
+
 const FERME = 'BAHIA';
 const SOURCE = 'netafim-cron';
 const DOC_ID_PREFIX = 'netafim__';
@@ -48,13 +50,8 @@ function toLocalDate(iso) {
   if (!iso) return null;
   const t = Date.parse(String(iso));
   if (!Number.isFinite(t)) return null;
-  // sv-SE locale yields "YYYY-MM-DD HH:mm:ss"; we take the date half.
   try {
-    const fmt = new Intl.DateTimeFormat('sv-SE', {
-      timeZone: 'Africa/Casablanca',
-      year: 'numeric', month: '2-digit', day: '2-digit',
-    });
-    return fmt.format(new Date(t));
+    return isoDateInTz(new Date(t), 'Africa/Casablanca');
   } catch (_) {
     return new Date(t).toISOString().slice(0, 10);
   }

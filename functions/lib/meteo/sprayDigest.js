@@ -15,6 +15,7 @@
 
 const sprayChart = require('./sprayChart');
 const renderPng = require('./renderPng');
+const { isoDateInTz } = require('../dates/isoDateInTz');
 
 /**
  * @typedef {Object} SprayWindows
@@ -234,12 +235,7 @@ const CHART_FILENAME = 'meteo-traitements.png';
 const FALLBACK_ERROR_CODES = ['131008', '132001', '132007', '132012', '132018'];
 
 /** Format YYYY-MM-DD au fuseau Africa/Casablanca, indépendant du fuseau process. */
-const CASABLANCA_DATE_FMT = new Intl.DateTimeFormat('en-CA', {
-  timeZone: 'Africa/Casablanca',
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-});
+const CASABLANCA_DATE_FMT = { format: (d) => isoDateInTz(d, 'Africa/Casablanca') };
 
 /**
  * Date du jour (YYYY-MM-DD) au fuseau Africa/Casablanca. Le Maroc est à UTC+1
