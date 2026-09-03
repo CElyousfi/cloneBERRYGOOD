@@ -144,8 +144,7 @@ test('lot mixte : create + doublon + erreurs, indices 1-based corrects', () => {
 // et n'inclut PAS 'encaissement' / 'vente'.
 // ---------------------------------------------------------------------------
 test('non-régression : whitelist create-transaction inchangée', () => {
-  const indexPath = path.join(__dirname, '..', '..', 'functions', 'index.js');
-  const src = fs.readFileSync(indexPath, 'utf8');
+  const src = require('../helpers/backendSource').backendSource();
   // La ligne exacte de validation du type dans create-transaction.
   assert.ok(
     src.includes('["alimentation", "depense", "sortie", "paie", "transport"].includes(type)'),

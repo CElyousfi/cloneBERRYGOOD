@@ -43,10 +43,7 @@ const POINTAGE_SRC = fs.readFileSync(
   path.join(__dirname, '../../functions/pointageService.js'),
   'utf8'
 );
-const INDEX_SRC = fs.readFileSync(
-  path.join(__dirname, '../../functions/index.js'),
-  'utf8'
-);
+const INDEX_SRC = require('../helpers/backendSource').backendSource();
 
 /**
  * Retire commentaires de ligne et de bloc, en respectant les littéraux

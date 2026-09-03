@@ -1131,7 +1131,7 @@ test('trigger HTTP : ?only= validé en liste blanche (400), APRÈS la gate de r�
   // validation, ou qui la placerait avant la gate de rôle, casse ce test.
   const fs = require('fs');
   const path = require('path');
-  const src = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'index.js'), 'utf8');
+  const src = require('../../../../tests/helpers/backendSource').backendSource();
 
   const bloc = src.slice(src.indexOf('exports.meteoSprayDigestTrigger'));
   const handler = bloc.slice(0, bloc.indexOf('exports.', 10));

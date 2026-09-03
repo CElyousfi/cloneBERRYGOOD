@@ -33,7 +33,7 @@ const babel = require('@babel/core');
 
 const ROOT = path.join(__dirname, '../..');
 const SRC = fs.readFileSync(path.join(ROOT, 'public/app.jsx'), 'utf8');
-const BACKEND = fs.readFileSync(path.join(ROOT, 'functions/index.js'), 'utf8');
+const BACKEND = require('../helpers/backendSource').backendSource();
 const FM = require('../../public/lib/fusionMasse.js');
 
 // ── extraction depuis le source de prod ────────────────────────────────────

@@ -31,7 +31,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const SRC = fs.readFileSync(path.join(__dirname, '../../functions/index.js'), 'utf8');
+const SRC = require('../helpers/backendSource').backendSource();
 
 /** Corps du handler `update-bc-date` (de sa garde d'action au handler suivant). */
 function handlerSource() {

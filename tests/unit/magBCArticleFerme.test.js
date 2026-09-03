@@ -278,7 +278,7 @@ test('MUTANT « refus serveur affaibli » : create-bc refuse toujours de son cô
   // Le GEL D'UNITÉ (`uniteConso.figee`) appartient à l'AUTRE PR et n'est
   // volontairement pas asserté ici : l'exiger rendrait ce lot non livrable
   // seul — exactement ce que la séparation cherche à éviter.
-  const SRC = fs.readFileSync(path.join(ROOT, 'functions/index.js'), 'utf8');
+  const SRC = require('../helpers/backendSource').backendSource();
   const debut = SRC.indexOf('if (action === "create-bc" && req.method === "POST")');
   const fin = SRC.indexOf('// ========== MODIFICATION DE LA DATE', debut);
   const bloc = SRC.slice(debut, fin).split('\n').map((l) => l.replace(/^\s*\/\/.*$/, '')).join('\n');

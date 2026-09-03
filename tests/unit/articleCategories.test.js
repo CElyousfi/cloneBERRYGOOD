@@ -373,7 +373,7 @@ test('CHAÎNE — maillon 4 : update-article n’a pas le droit de normaliser la
   // périmètre. `update-article`, lui, écrit la valeur telle qu'elle arrive :
   // y ajouter `normalizeCategorie` réécrirait 335 fiches au premier
   // enregistrement, sans que rien ne le montre à l'écran.
-  const src = fs.readFileSync(path.join(ROOT, 'functions/index.js'), 'utf8');
+  const src = require('../helpers/backendSource').backendSource();
   const debut = src.indexOf('if (action === "update-article"');
   const fin = src.indexOf('if (action === "', debut + 10);
   assert.ok(debut > -1 && fin > debut, 'handler update-article introuvable');

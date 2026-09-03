@@ -28,8 +28,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const INDEX = path.join(__dirname, '..', '..', '..', 'index.js');
-const SOURCE = fs.readFileSync(INDEX, 'utf8');
+const SOURCE = require('../../../../tests/helpers/backendSource').backendSource();
 
 /**
  * Retire les commentaires de ligne d'un extrait de source.

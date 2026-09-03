@@ -200,9 +200,17 @@ test('maskComments: neutralise les commentaires, préserve longueur, lignes et c
   assert.ok(masked.includes('https://x.test/a'), "le // d'une URL en chaîne n'ouvre pas un commentaire");
 });
 
-test('discoverActionFiles: découverte dynamique, index.js inclus, tests exclus', () => {
+test('discoverActionFiles: découverte dynamique, modules inclus, tests exclus', () => {
   const files = discoverActionFiles(ROOT);
-  assert.ok(files.includes('functions/index.js'), 'functions/index.js doit être découvert');
+  // Depuis la modularisation du backend, functions/index.js est un BARREL de
+  // re-export : il ne déclare plus aucune action, et n'a donc rien à faire dans
+  // cette liste — l'assertion « 0 action interdite » plus bas le rejetterait.
+  // Les actions vivent dans functions/src/modules/**, et c'est leur découverte
+  // qui compte.
+  assert.ok(
+    files.some(f => f.startsWith('functions/src/modules/')),
+    'les modules de functions/src/modules/ doivent être découverts'
+  );
   assert.ok(files.length > 1, 'plusieurs fichiers de service exposent des actions');
   for (const f of files) {
     assert.ok(f.startsWith('functions/'), `${f} sous functions/`);

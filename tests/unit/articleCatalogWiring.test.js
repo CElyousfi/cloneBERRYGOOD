@@ -39,7 +39,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const SRC = fs.readFileSync(path.join(__dirname, '../../functions/index.js'), 'utf8');
+const SRC = require('../helpers/backendSource').backendSource();
 
 /**
  * Corps d'un handler d'action, de sa garde `if (action === "<nom>"` jusqu'à la
@@ -697,7 +697,7 @@ test('les QUATRE chemins d’écriture du catalogue posent le libellé CANONIQUE
 
   // Le module est bien requis (sinon les assertions ci-dessus viseraient une
   // référence indéfinie, et TOUTES les Cloud Functions tomberaient au runtime).
-  assert.match(SRC, /const articleCategories = require\("\.\/lib\/stockMerge\/articleCategories"\);/);
+  assert.match(SRC, /const articleCategories = require\("(?:\.\.\/)*\.?\/?lib\/stockMerge\/articleCategories"\);/);
 });
 
 test('la règle de catégorie backend est bien celle testée, et ne requiert JAMAIS public/', () => {

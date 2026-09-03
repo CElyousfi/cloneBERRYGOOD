@@ -49,7 +49,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const ROOT = path.join(__dirname, '../..');
-const INDEX_SRC = fs.readFileSync(path.join(ROOT, 'functions/index.js'), 'utf8');
+const INDEX_SRC = require('../helpers/backendSource').backendSource();
 const POINTAGE_SRC = fs.readFileSync(path.join(ROOT, 'functions/pointageService.js'), 'utf8');
 const { CONSO_PARCELLE_CACHE_PREFIX } = require('../../functions/lib/consoBons/cacheKeys');
 const { categorieCanonique } = require('../../functions/lib/stockMerge/articleCategories');

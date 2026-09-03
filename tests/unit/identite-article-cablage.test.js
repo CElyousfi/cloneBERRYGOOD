@@ -54,7 +54,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const ROOT = path.join(__dirname, '../..');
-const INDEX_RAW = fs.readFileSync(path.join(ROOT, 'functions/index.js'), 'utf8');
+const INDEX_RAW = require('../helpers/backendSource').backendSource();
 
 /**
  * Retire commentaires de ligne et de bloc en respectant les littéraux de
