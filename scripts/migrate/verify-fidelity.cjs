@@ -1,6 +1,24 @@
 /* verify-fidelity — chaque statement top-level de src/modules doit venir VERBATIM
    de public/app.jsx.
 
+   ⚠️ CE CONTRÔLE N'EST PLUS DANS `npm run migrate:verify` (2026-09-03).
+
+   Il a rempli son rôle : prouver que l'extraction n'avait rien inventé ni perdu.
+   Mais c'est une garantie TERMINALE — elle interdit au tree modulaire d'évoluer.
+   Découper un fichier de 3 554 lignes, ajouter `React.lazy`, réorganiser en
+   pages/composants/hooks : chacun de ces gestes la fait échouer, non parce qu'il
+   casse quelque chose, mais parce qu'il s'éloigne du monolithe. Or s'éloigner du
+   monolithe est exactement le but.
+
+   Elle est remplacée par une preuve de RENDU plutôt que de source :
+   `npm run migrate:parity` (scripts/migrate/compare-frontends.cjs) parcourt les
+   deux frontends dans un navigateur et les compare écran par écran.
+
+   Dernier constat d'équivalence à l'octet près, au commit qui a basculé le
+   défaut vers le modulaire : 358 statements, 355 verbatim, 2 réécritures de
+   setter, 1 module désindenté — 0 divergence. Ce script reste appelable
+   (`npm run migrate:fidelity`) tant que public/app.jsx existe.
+
    Deux écarts sont produits par l'extraction elle-même et ne sont donc pas des
    divergences de code :
      - setter généré : `X = rhs` devient `__set_X(rhs)` quand un binding est

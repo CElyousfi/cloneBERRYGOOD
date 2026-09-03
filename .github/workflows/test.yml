@@ -51,8 +51,10 @@ jobs:
       - name: Build modulaire (Vite) + publication dans public/
         run: npm run migrate:build && npm run migrate:publish
 
-      # La fidélité du tree modulaire au monolithe, tant que les deux coexistent.
-      - name: Fidélité de la migration
+      # Toute référence libre de src/modules doit se résoudre. C'est ce qui
+      # rattrape un import oublié après un découpage ou un déplacement de
+      # fichier — le risque principal maintenant que le tree modulaire évolue.
+      - name: Références du tree modulaire
         run: npm run migrate:verify
 
   # Le sélecteur d'entrée (monolithe ou bundle ES) ne se teste que dans un vrai
