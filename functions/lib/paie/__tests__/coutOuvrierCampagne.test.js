@@ -553,6 +553,39 @@ test('un matricule ALPHANUMÉRIQUE retrouve sa fiche de déclaré', () => {
   assert.strictEqual(Math.round(p.primeFonction), 20);
 });
 
+test('heures sup ACCORDÉES — la map est keyée NUMÉRIQUE, le pointage non', () => {
+  // Même piège que `cleRegistre`, une boucle plus bas : `heuresSupNet` est
+  // écrite par l'écran Quinzaine sous une clé NORMALISÉE (`11424`), alors que
+  // le pointage sert `ZZ11424`. Lu au matricule brut, le montant accordé vaut
+  // 0 pour tout matricule à lettres — c'est-à-dire la majorité de l'effectif —
+  // et le poste « Heures Sup. accordées » de la Campagne disparaît sans bruit.
+  const out = M.coutOuvrierCampagne({
+    quinzaines: [{
+      periode: 'Q04', dateFin: '2026-07-15',
+      parOuvrier: { ZZ11424: { jours: new Set(['2026-07-01']), jh: 1, base: 97.44 } },
+      heuresSupNet: { 11424: 450 },
+    }],
+    registre: {}, baremes: {}, equipesTransport: [],
+  });
+  assert.strictEqual(out.parQuinzaine[0].postes.heuresSupAccordees, 450);
+  assert.strictEqual(out.detail.heuresSupAccordees, 450);
+});
+
+test('heures sup ACCORDÉES — une map keyée BRUT reste lue (défense en profondeur)', () => {
+  // Le repli n'existe pour AUCUN document connu : `save-heures-sup` normalise
+  // depuis toujours. Il couvre une écriture future qui oublierait la règle —
+  // et ce test dit que c'est bien l'intention, pas un vestige.
+  const out = M.coutOuvrierCampagne({
+    quinzaines: [{
+      periode: 'Q04', dateFin: '2026-07-15',
+      parOuvrier: { ZZ11424: { jours: new Set(['2026-07-01']), jh: 1, base: 97.44 } },
+      heuresSupNet: { ZZ11424: 450 },
+    }],
+    registre: {}, baremes: {}, equipesTransport: [],
+  });
+  assert.strictEqual(out.parQuinzaine[0].postes.heuresSupAccordees, 450);
+});
+
 test('sans fiche, l\'ouvrier reste traité comme non-déclaré', () => {
   // La normalisation ne doit pas INVENTER de fiche : une nouvelle embauche
   // absente du registre reste un non-déclaré, sans charges.

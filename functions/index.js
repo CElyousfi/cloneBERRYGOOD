@@ -17870,6 +17870,8 @@ const { canManagePrimes, forbiddenReason } = require("./lib/primes/primesAccess"
 const { normalizeMatricule, buildImportPreview } = require("./lib/primes/primesImport");
 const { buildPrimeUpdate } = require("./lib/primes/primeHistory");
 const { buildIdentiteSyncPlan } = require("./lib/primes/identiteSync");
+const { buildHeuresSupWrite, buildHeuresSupHistoryEntry } = require("./lib/primes/heuresSupWrite");
+const emargementWrite = require("./lib/primes/emargementWrite");
 
 exports.primesManagement = functions
   .region("europe-west1")
@@ -17948,6 +17950,13 @@ exports.primesManagement = functions
         return res.json({
           success: true, periode,
           montants: (d && d.montants) || {},
+          // États d'émargement SIGNÉS déposés, un par ferme. Renvoyés par CETTE
+          // réponse et pas par un appel dédié : l'écran Quinzaine n'a alors pas
+          // de lecture supplémentaire à attendre, donc pas de nouvelle clause à
+          // ajouter à `_coherent` (app.jsx) qui protège l'instantané de campagne
+          // d'un enregistrement partiel. Projection EXPLICITE : tout champ non
+          // listé ici est silencieusement ignoré.
+          emargements: (d && d.emargements) || {},
           updatedAt: (d && d.updatedAt) || null,
           updatedBy: (d && d.updatedBy) || null,
         });
@@ -17963,13 +17972,108 @@ exports.primesManagement = functions
         if (montant < 0) return res.status(400).json({ success: false, error: "montant négatif" });
 
         const ref = db_firestore.collection("rh_heures_sup").doc(periode);
-        // `merge` sur le chemin du seul matricule : deux saisies simultanées sur
-        // deux ouvriers différents ne s'écrasent pas l'une l'autre.
-        const upd = { periode, updatedAt: now, updatedBy: actor };
-        upd["montants." + matricule] = montant;
-        await ref.set({ periode, montants: {}, }, { merge: true });
-        await ref.update(upd);
+        // UN SEUL set mergé, dont le masque porte `montants.<matricule>` et
+        // rien d'autre de la map : les montants des AUTRES ouvriers de la
+        // quinzaine sont préservés, le document est créé s'il n'existe pas, et
+        // l'opération est atomique. Forme construite par un helper pur testé
+        // (functions/lib/primes/heuresSupWrite.js) — cf. le piège du `montants:
+        // {}` qui écrasait toute la map.
+        const hsWrite = buildHeuresSupWrite(periode, matricule, montant, { now, actor });
+        await ref.set(hsWrite.data, hsWrite.options);
+
+        // PISTE D'AUDIT — une entrée PAR SAISIE, en SOUS-COLLECTION.
+        // `updatedAt`/`updatedBy` ci-dessus sont globaux au document : sur douze
+        // ouvriers saisis, seule la douzième laisse une trace, et un montant
+        // ramené de 800 à 0 n'en laisse aucune. Sous-collection et non tableau :
+        // concaténer imposerait de LIRE le document avant d'écrire, ce que cette
+        // action évite délibérément (deux saisies simultanées se courseraient).
+        // `actor` vient du serveur (résolu en tête de la function), jamais du body.
+        // ÉCRITURE SECONDAIRE : son échec n'annule PAS le montant déjà enregistré
+        // — perdre une ligne d'audit est moins grave que perdre la saisie de paie.
+        try {
+          await ref.collection("history").add(
+            buildHeuresSupHistoryEntry(periode, matricule, montant, { now, actor })
+          );
+        } catch (e) {
+          console.error("save-heures-sup: historisation échouée", periode, matricule, e && e.message);
+        }
         return res.json({ success: true, periode, matricule, montant });
+      }
+
+      // ---------- hs-emargement-submit : DÉPÔT de l'état d'émargement SIGNÉ ----------
+      //
+      // Le bouton « États d'émargement » GÉNÈRE des états à colonne signature
+      // vide ; le chef de ferme signe sur papier. Cette action referme la boucle :
+      // la RH dépose le scan signé, une pièce par FERME et par quinzaine.
+      //
+      // Modèle CANONIQUE du repo (cf. stock-file-submit) : le fichier est uploadé
+      // CLIENT-DIRECT vers Storage (la limite de payload de 10 Mo des Cloud
+      // Functions ne s'applique donc pas), et cette action ne fait que VALIDER
+      // puis ENREGISTRER le lien. Un objet refusé est SUPPRIMÉ du bucket avant
+      // tout enregistrement, pour ne laisser ni orphelin ni lien mort.
+      if (action === "hs-emargement-submit" && req.method === "POST") {
+        const periode = String((req.body && req.body.periode) || "").trim();
+        const ferme = String((req.body && req.body.ferme) || "").trim();
+        const storagePath = String((req.body && req.body.storage_path) || "").trim();
+        const filename = String((req.body && req.body.filename) || "").trim();
+        if (!periode) return res.status(400).json({ success: false, error: "periode requise" });
+        if (!emargementWrite.normalizeFermeKey(ferme)) {
+          return res.status(400).json({ success: false, error: "ferme requise" });
+        }
+        // Chemin revalidé SERVEUR : un client altéré ne doit pas pouvoir faire
+        // enregistrer (ni exposer par URL signée) un objet situé ailleurs. La
+        // PÉRIODE en fait partie : un objet du dossier de la quinzaine 04 ne
+        // peut pas être enregistré comme l'état signé de la quinzaine 05.
+        if (!emargementWrite.isEmargementPath(storagePath, periode)) {
+          return res.status(400).json({ success: false, error: "storage_path hors du dossier de la quinzaine (" + emargementWrite.EMARGEMENT_PREFIX + ")" });
+        }
+
+        let exists = false;
+        try { [exists] = await bucket.file(storagePath).exists(); } catch (_) { exists = false; }
+        if (!exists) return res.status(400).json({ success: false, error: "Fichier introuvable dans le stockage (upload incomplet ?)" });
+
+        let objMeta = null;
+        try { [objMeta] = await bucket.file(storagePath).getMetadata(); } catch (_) { objMeta = null; }
+        if (!objMeta) return res.status(400).json({ success: false, error: "Métadonnées du fichier illisibles" });
+        // Allowlist PAR DÉFAUT (PDF + images) : un état d'émargement est un
+        // document signé scanné ou photographié, jamais un tableur.
+        const metaCheck = scanAttachment.validateAttachmentMetadata({ size: objMeta.size, contentType: objMeta.contentType });
+        if (!metaCheck.valid) {
+          try { await bucket.file(storagePath).delete(); } catch (_) { /* best effort cleanup */ }
+          return res.status(400).json({ success: false, error: metaCheck.error });
+        }
+
+        // Écriture MERGÉE sur la seule feuille `emargements.<FERME>` : les états
+        // des autres fermes ET la map `montants` (la paie) du même document sont
+        // préservés. Forme construite par un helper pur testé
+        // (functions/lib/primes/emargementWrite.js).
+        const emWrite = emargementWrite.buildEmargementWrite(periode, ferme, {
+          path: storagePath, filename, now, actor,
+        });
+        await db_firestore.collection("rh_heures_sup").doc(periode).set(emWrite.data, emWrite.options);
+        const signedUrl = await scanAttachment.generateSignedUrl(bucket, storagePath);
+        return res.json({
+          success: true, periode, ferme_key: emWrite.fermeKey,
+          emargement: emWrite.data.emargements[emWrite.fermeKey],
+          url: signedUrl,
+        });
+      }
+
+      // ---------- hs-emargement-url : URL SIGNÉE d'un état déjà déposé ----------
+      // V4, 7 jours. JAMAIS d'URL publique : le document porte des identités
+      // d'ouvriers et des montants.
+      if (action === "hs-emargement-url" && req.method === "GET") {
+        const periode = String(req.query.periode || "").trim();
+        const fermeKey = emargementWrite.normalizeFermeKey(req.query.ferme);
+        if (!periode) return res.status(400).json({ success: false, error: "periode requise" });
+        if (!fermeKey) return res.status(400).json({ success: false, error: "ferme requise" });
+        const snap = await db_firestore.collection("rh_heures_sup").doc(periode).get();
+        const em = (snap.exists && snap.data().emargements) || {};
+        const entry = em[fermeKey];
+        if (!entry || !entry.path) return res.status(404).json({ success: false, error: "Aucun état d'émargement déposé pour cette ferme" });
+        const signedUrl = await scanAttachment.generateSignedUrl(bucket, entry.path);
+        if (!signedUrl) return res.status(500).json({ success: false, error: "URL de lecture indisponible" });
+        return res.json({ success: true, periode, ferme_key: fermeKey, url: signedUrl });
       }
 
       // ---------- set-declare : déclaration ouvrier + baseline ancienneté ----------

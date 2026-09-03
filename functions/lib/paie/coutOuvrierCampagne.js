@@ -540,7 +540,19 @@ function coutOuvrierCampagne(args) {
         // repris du coût moyen BEE ONE.
         feriesJours: Number(e.feriesJours) || 0,
         // Heures sup accordées (rh_heures_sup), montant NET.
-        heuresSupNet: Number((q.heuresSupNet || {})[mat]) || 0,
+        //
+        // MÊME clé normalisée que le registre, et pour la même raison : la map
+        // est écrite par l'écran Quinzaine sous un matricule NUMÉRIQUE, alors
+        // que le pointage sert `ZZ11424`. Lue au matricule brut, elle rendait 0
+        // pour tout matricule à lettres — le poste disparaissait sans bruit.
+        //
+        // Le repli sur `[mat]` est une DÉFENSE EN PROFONDEUR, pas une
+        // compatibilité : l'unique chemin d'écriture (`save-heures-sup`,
+        // functions/index.js) applique `normalizeMatricule` depuis toujours,
+        // donc aucun document connu ne porte de clé brute. Il coûte une
+        // comparaison et couvre une écriture future qui oublierait la règle.
+        heuresSupNet: Number((q.heuresSupNet || {})[cleRegistre(mat)]
+          || (q.heuresSupNet || {})[mat]) || 0,
         baremes: a.baremes || {},
         // SMAG daté : celui en vigueur À LA FIN de la quinzaine payée.
         dateISO: q.dateFin || '',
