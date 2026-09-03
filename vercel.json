@@ -220,6 +220,10 @@
     {
       "source": "/api/rh",
       "destination": "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/rh"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ],
   "headers": [
