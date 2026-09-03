@@ -6,7 +6,7 @@
 - Presentes dans l'arbre : **162**
 - Manquantes : **0**
 - Ignorees explicitement : **0**
-- Definies en double : **25**
+- Definies en double : **24**
 
 ## Definies en double — copies potentiellement divergentes
 
@@ -26,9 +26,6 @@
   - functions/lib/bdc/bdcDigest.js
   - functions/lib/bdc/reminder.js
   - functions/src/modules/magasin/magasin.stock.deps.js
-- `campagneRapportHebdo`
-  - functions/index.js
-  - functions/src/modules/finance/finance.js
 - `consoAccessControl`
   - functions/pointageService.part1.js
   - functions/src/shared/core.js

@@ -1,5 +1,5 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:eed5015f59b8593d -->
+<!-- sourceFingerprint: sha256:f4756ad19754c70f -->
 # Code Map — Composants frontend (365)
 
 Chaque composant React de public/app.jsx et public/components/, avec son emplacement exact et le tab qui le monte — à consulter AVANT toute recherche dans app.jsx.
@@ -246,7 +246,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | MagParcTab | public/app.jsx:34324 | mag_parc |
 | MagReceptionTab | public/app.jsx:51453 | mag_reception |
 | MagSortieTab | public/app.jsx:57944 | mag_sortie |
-| MagStockFilesTab | public/components/MagStockFilesTab.jsx:235 | mag_stock_files |
+| MagStockFilesTab | public/components/MagStockFilesTab.jsx:240 | mag_stock_files |
 | MagStockIntrantsTab | public/app.jsx:52226 | mag_stock_intrants |
 | MagTransfertTab | public/app.jsx:57458 | mag_transfert |
 | MappingConsoTab | public/components/MagMappingConsoTab.jsx:155 | — |
@@ -259,7 +259,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | MeteoTab | public/app.jsx:29751 | station_meteo |
 | MMC_Kpi | public/components/MagMappingConsoTab.jsx:126 | — |
 | MOReferentielView | public/components/ParcellesReferentielTab.jsx:426 | — |
-| MSF_Dropzone | public/components/MagStockFilesTab.jsx:164 | — |
+| MSF_Dropzone | public/components/MagStockFilesTab.jsx:169 | — |
 | NewVersionToast | public/app.jsx:68510 | — |
 | NotificationPopup | public/app.jsx:68993 | — |
 | PaieTab | public/app.jsx:27251 | paie |

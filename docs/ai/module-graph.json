@@ -4,47 +4,47 @@
     "healthScore": {
       "subScores": {
         "classification": {
-          "detail": "241/389 fichiers classifiés",
+          "detail": "200/316 fichiers classifiés",
           "max": 40,
           "score": 25
         },
         "domainCompleteness": {
-          "detail": "9/10 domaines avec frontend+backend+firestore",
+          "detail": "10/10 domaines avec frontend+backend+firestore",
           "max": 30,
-          "score": 27
+          "score": 30
         },
         "testCoverage": {
-          "detail": "77/178 modules avec ≥1 test",
+          "detail": "76/196 modules avec ≥1 test",
           "max": 30,
-          "score": 13
+          "score": 12
         }
       },
-      "total": 65
+      "total": 67
     },
     "heatmap": [
       {
-        "commits": 50,
+        "commits": 44,
         "file": "public/app.jsx"
       },
       {
-        "commits": 40,
+        "commits": 28,
         "file": "public/components/CampagneAnalytiqueTab.js"
       },
       {
-        "commits": 39,
+        "commits": 27,
         "file": "public/components/CampagneAnalytiqueTab.jsx"
       },
       {
-        "commits": 35,
+        "commits": 26,
         "file": "functions/index.js"
       },
       {
-        "commits": 27,
-        "file": "tests/unit/campagneAnalytiquePivot.test.js"
+        "commits": 18,
+        "file": "functions/pointageService.js"
       },
       {
-        "commits": 24,
-        "file": "functions/pointageService.js"
+        "commits": 18,
+        "file": "tests/unit/campagneAnalytiquePivot.test.js"
       },
       {
         "commits": 15,
@@ -64,19 +64,19 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:d7b98f5e1076562c",
+    "sourceFingerprint": "sha256:101c364116d17e5e",
     "stats": {
-      "backendModules": 99,
-      "cloudFunctions": 91,
-      "coverageScore": 43,
+      "backendModules": 117,
+      "cloudFunctions": 0,
+      "coverageScore": 39,
       "domains": 10,
       "extractedComponents": 33,
       "firestoreCollections": 62,
       "libHelpers": 46,
       "monolithSymbols": 120,
       "tabFunctions": 120,
-      "unclassifiedFiles": 148,
-      "unitTestFiles": 48
+      "unclassifiedFiles": 116,
+      "unitTestFiles": 42
     }
   },
   "domains": {
@@ -84,6 +84,7 @@
       "backend": {
         "cloudFunctions": [],
         "modules": [
+          "achats",
           "bdc"
         ],
         "routes": [],
@@ -95,7 +96,7 @@
         ]
       },
       "confidence": "medium",
-      "coverageScore": 47,
+      "coverageScore": 44,
       "firestore": {
         "collections": [
           "bc_scan_aliases",
@@ -203,10 +204,12 @@
       "label": "Achats & Fournisseurs",
       "tests": {
         "backend": [
+          "functions/lib/achats/__tests__/bdcStateValidation.test.js",
+          "functions/lib/achats/__tests__/fournisseurUtils.test.js",
+          "functions/lib/achats/__tests__/rapprochementCalc.test.js",
           "tests/unit/bdcReminderService.test.js"
         ],
         "unit": [
-          "tests/unit/MagBCScanModal.test.js",
           "tests/unit/bcScanMatch.test.js",
           "tests/unit/bdcReceptionUtils.test.js",
           "tests/unit/bdcWorkflow.test.js",
@@ -218,37 +221,12 @@
     },
     "admin": {
       "backend": {
-        "cloudFunctions": [
-          "authApi",
-          "backupApi",
-          "bugReports",
-          "onBugReportCreate",
-          "onBugReportUpdate",
-          "scheduledBackup",
-          "whatsappAdmin"
-        ],
+        "cloudFunctions": [],
         "modules": [
           "auth",
           "bugReports"
         ],
-        "routes": [
-          {
-            "functionId": "authApi",
-            "source": "/api/auth"
-          },
-          {
-            "functionId": "backupApi",
-            "source": "/api/backup"
-          },
-          {
-            "functionId": "whatsappAdmin",
-            "source": "/api/whatsapp-admin"
-          },
-          {
-            "functionId": "bugReports",
-            "source": "/api/bug-reports"
-          }
-        ],
+        "routes": [],
         "services": [
           "functions/backupService.js"
         ]
@@ -286,50 +264,14 @@
     },
     "agro": {
       "backend": {
-        "cloudFunctions": [
-          "agroSummary",
-          "dailyPhenologyJob",
-          "fertigation",
-          "meteoSprayDigest",
-          "meteoSprayDigestTrigger",
-          "meteoblue",
-          "netafimSyncDaily",
-          "netafimSyncOnce",
-          "phytosanitaire",
-          "runDailyPhenologyJobNow"
-        ],
+        "cloudFunctions": [],
         "modules": [
           "irrigation",
           "meteo",
           "netafim",
           "phenology"
         ],
-        "routes": [
-          {
-            "functionId": "fertigation",
-            "source": "/api/fertigation"
-          },
-          {
-            "functionId": "phytosanitaire",
-            "source": "/api/phytosanitaire"
-          },
-          {
-            "functionId": "agroSummary",
-            "source": "/api/agro-summary"
-          },
-          {
-            "functionId": "meteoblue",
-            "source": "/api/meteoblue"
-          },
-          {
-            "functionId": "meteoSprayDigestTrigger",
-            "source": "/api/meteo-spray-digest"
-          },
-          {
-            "functionId": "runDailyPhenologyJobNow",
-            "source": "/api/run-daily-phenology-job-now"
-          }
-        ],
+        "routes": [],
         "services": []
       },
       "confidence": "medium",
@@ -414,25 +356,13 @@
     },
     "caisse": {
       "backend": {
-        "cloudFunctions": [
-          "avancementCulture",
-          "caisseManagement"
-        ],
+        "cloudFunctions": [],
         "modules": [
           "caisse",
           "caisseImport",
           "marcheLocalCaisse"
         ],
-        "routes": [
-          {
-            "functionId": "avancementCulture",
-            "source": "/api/avancement"
-          },
-          {
-            "functionId": "caisseManagement",
-            "source": "/api/caisse"
-          }
-        ],
+        "routes": [],
         "services": []
       },
       "confidence": "high",
@@ -516,29 +446,17 @@
     },
     "paie": {
       "backend": {
-        "cloudFunctions": [
-          "fonctionsManagement",
-          "primesManagement"
-        ],
+        "cloudFunctions": [],
         "modules": [
           "fonctions",
           "paie",
           "primes"
         ],
-        "routes": [
-          {
-            "functionId": "primesManagement",
-            "source": "/api/primes"
-          },
-          {
-            "functionId": "fonctionsManagement",
-            "source": "/api/fonctions"
-          }
-        ],
+        "routes": [],
         "services": []
       },
       "confidence": "medium",
-      "coverageScore": 77,
+      "coverageScore": 69,
       "firestore": {
         "collections": [
           "fonctions",
@@ -568,7 +486,15 @@
           "QuinzaineTab"
         ]
       },
-      "gitCoupling": [],
+      "gitCoupling": [
+        {
+          "coCommits": 3,
+          "domain": null,
+          "file": "functions/lib/paie/paieUtils.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        }
+      ],
       "label": "Paie & RH",
       "tests": {
         "backend": [
@@ -582,7 +508,6 @@
           "functions/lib/primes/__tests__/heuresSupWrite.test.js"
         ],
         "unit": [
-          "tests/unit/QuinzaineCampagneSelect.test.js",
           "tests/unit/campagneBudgetQuinzaine.test.js",
           "tests/unit/lecturePaieExcel.test.js",
           "tests/unit/paieDataCache.test.js",
@@ -595,74 +520,33 @@
     },
     "pointage": {
       "backend": {
-        "cloudFunctions": [
-          "backfillPointageBdpLiveTrigger",
-          "backfillPresence",
-          "bdpIntrospect",
-          "checkPresenceSyncHealth",
-          "pointageRH",
-          "pointageRH2",
-          "pointageV3",
-          "pointageValidation",
-          "syncPointageBdpTrigger",
-          "syncPresenceEntree",
-          "syncPresenceSortie",
-          "validatePointageBdpTrigger",
-          "validation",
-          "warmPointageCache"
-        ],
+        "cloudFunctions": [],
         "modules": [
           "pointage",
           "pointageBdp",
           "pointageValidation",
           "validation"
         ],
-        "routes": [
-          {
-            "functionId": "bdpIntrospect",
-            "source": "/api/bdp-introspect"
-          },
-          {
-            "functionId": "syncPointageBdpTrigger",
-            "source": "/api/sync-pointage-bdp-test"
-          },
-          {
-            "functionId": "validatePointageBdpTrigger",
-            "source": "/api/validate-pointage-bdp-test"
-          },
-          {
-            "functionId": "backfillPointageBdpLiveTrigger",
-            "source": "/api/backfill-pointage-bdp-live"
-          },
-          {
-            "functionId": "backfillPresence",
-            "source": "/api/backfill-presence"
-          },
-          {
-            "functionId": "pointageV3",
-            "source": "/api/pointage-rh"
-          },
-          {
-            "functionId": "validation",
-            "source": "/api/validation"
-          },
-          {
-            "functionId": "pointageValidation",
-            "source": "/api/pointage-validation"
-          }
-        ],
+        "routes": [],
         "services": [
           "functions/bdcValidationService.js",
           "functions/bdpIntrospectService.js",
           "functions/equipesConfig.js",
           "functions/pointageBdpSync.js",
+          "functions/pointageService.actions1.js",
+          "functions/pointageService.actions2.js",
+          "functions/pointageService.actions3.js",
+          "functions/pointageService.actions4.js",
+          "functions/pointageService.dispatch.js",
           "functions/pointageService.js",
+          "functions/pointageService.part1.js",
+          "functions/pointageService.part2.js",
           "functions/rhBdpService.js",
           "functions/update-bdc-validation-template.js"
         ]
       },
       "confidence": "high",
-      "coverageScore": 14,
+      "coverageScore": 10,
       "firestore": {
         "collections": [
           "pointage_validations_equipe",
@@ -705,14 +589,16 @@
     "qualite": {
       "backend": {
         "cloudFunctions": [],
-        "modules": [],
+        "modules": [
+          "qualite"
+        ],
         "routes": [],
         "services": [
           "functions/reprocess-pfq-today.js"
         ]
       },
       "confidence": "medium",
-      "coverageScore": 0,
+      "coverageScore": 50,
       "firestore": {
         "collections": [
           "pfq_interne"
@@ -739,39 +625,22 @@
       "gitCoupling": [],
       "label": "Qualité",
       "tests": {
-        "backend": [],
+        "backend": [
+          "functions/lib/qualite/__tests__/brixCalc.test.js",
+          "functions/lib/qualite/__tests__/ecartAnalysis.test.js",
+          "functions/lib/qualite/__tests__/expeditionCalc.test.js",
+          "functions/lib/qualite/__tests__/inspectionRules.test.js"
+        ],
         "unit": []
       }
     },
     "recolte": {
       "backend": {
-        "cloudFunctions": [
-          "climatProduction",
-          "dailyProductionDigest",
-          "dailyProductionReportTrigger",
-          "growthTracking",
-          "horsRecolteService",
-          "onProdRecolteWriteNotify",
-          "submitProductionDigestTemplate",
-          "syncRecolteFromProd"
-        ],
+        "cloudFunctions": [],
         "modules": [
           "productionEstimation.js"
         ],
-        "routes": [
-          {
-            "functionId": "growthTracking",
-            "source": "/api/growth"
-          },
-          {
-            "functionId": "horsRecolteService",
-            "source": "/api/hors-recolte-suivi"
-          },
-          {
-            "functionId": "climatProduction",
-            "source": "/api/climat-production"
-          }
-        ],
+        "routes": [],
         "services": [
           "functions/audit-recolte-fallback.js",
           "functions/dailyProductionReport.js",
@@ -821,30 +690,21 @@
     },
     "referentiel": {
       "backend": {
-        "cloudFunctions": [
-          "campagneRapportHebdo",
-          "campagneRapportHebdoTrigger",
-          "parcelles"
-        ],
+        "cloudFunctions": [],
         "modules": [
           "campagneBudget",
           "campagneExport",
           "campagneRapportHebdo",
           "parcelleGroupes"
         ],
-        "routes": [
-          {
-            "functionId": "parcelles",
-            "source": "/api/parcelles"
-          }
-        ],
+        "routes": [],
         "services": [
           "functions/fix-cascade-ferme.js",
           "functions/parcellesCulturales.js"
         ]
       },
       "confidence": "high",
-      "coverageScore": 75,
+      "coverageScore": 55,
       "firestore": {
         "collections": [
           "bc_scan_parcelle_aliases",
@@ -885,51 +745,16 @@
       },
       "gitCoupling": [
         {
-          "coCommits": 38,
+          "coCommits": 27,
           "domain": null,
           "file": "public/components/CampagneAnalytiqueTab.js",
           "note": "probabilistic",
           "windowDays": 90
         },
         {
-          "coCommits": 24,
+          "coCommits": 16,
           "domain": null,
           "file": "tests/unit/campagneAnalytiquePivot.test.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 11,
-          "domain": null,
-          "file": "public/components/CampagneAnalytiqueTab.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 11,
-          "domain": null,
-          "file": "public/components/PivotAnalytiqueGrid.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 11,
-          "domain": null,
-          "file": "public/components/PivotAnalytiqueGrid.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 11,
-          "domain": null,
-          "file": "tests/unit/campagneBudgetTab.test.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 10,
-          "domain": null,
-          "file": "tests/unit/pivotAnalytiqueGrid.test.js",
           "note": "probabilistic",
           "windowDays": 90
         },
@@ -941,13 +766,6 @@
           "windowDays": 90
         },
         {
-          "coCommits": 9,
-          "domain": null,
-          "file": "tests/unit/pivotAnalytiqueGrid.test.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
           "coCommits": 8,
           "domain": null,
           "file": "functions/lib/paie/__tests__/coutOuvrierCampagne.test.js",
@@ -955,23 +773,30 @@
           "windowDays": 90
         },
         {
-          "coCommits": 8,
-          "domain": null,
-          "file": "tests/unit/campagneAnalytiquePivot.test.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 7,
+          "coCommits": 6,
           "domain": null,
           "file": "functions/pointageService.js",
           "note": "probabilistic",
           "windowDays": 90
         },
         {
-          "coCommits": 7,
+          "coCommits": 5,
           "domain": null,
-          "file": "public/components/CampagneBudgetTab.js",
+          "file": "public/components/CampagneAnalytiqueTab.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 5,
+          "domain": null,
+          "file": "public/components/PivotAnalytiqueGrid.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 5,
+          "domain": null,
+          "file": "public/components/PivotAnalytiqueGrid.js",
           "note": "probabilistic",
           "windowDays": 90
         },
@@ -992,21 +817,14 @@
         {
           "coCommits": 4,
           "domain": null,
-          "file": "tests/unit/campagneAnalytiquePivot.test.js",
+          "file": "tests/unit/pivotAnalytiqueGrid.test.js",
           "note": "probabilistic",
           "windowDays": 90
         },
         {
-          "coCommits": 3,
+          "coCommits": 4,
           "domain": null,
-          "file": "functions/lib/campagneBudget/__tests__/validate.test.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 3,
-          "domain": null,
-          "file": "functions/lib/campagneBudget/validate.js",
+          "file": "tests/unit/pivotAnalytiqueGrid.test.js",
           "note": "probabilistic",
           "windowDays": 90
         },
@@ -1020,28 +838,14 @@
         {
           "coCommits": 3,
           "domain": null,
-          "file": "scripts/build-frontend.js",
+          "file": "tests/unit/campagneAnalytiquePivot.test.js",
           "note": "probabilistic",
           "windowDays": 90
         },
         {
           "coCommits": 3,
           "domain": null,
-          "file": "tests/unit/campagneBudgetQuinzaine.test.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 3,
-          "domain": null,
-          "file": "tests/unit/campagneBudgetQuinzaine.test.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 3,
-          "domain": null,
-          "file": "tests/unit/campagneRythme.test.js",
+          "file": "tests/unit/campagneAnalytiquePivot.test.js",
           "note": "probabilistic",
           "windowDays": 90
         }
@@ -1061,10 +865,6 @@
           "functions/lib/parcelleGroupes/__tests__/validate.test.js"
         ],
         "unit": [
-          "tests/unit/AffectationAnalytiqueTable.test.js",
-          "tests/unit/CampagneBudgetTab.test.js",
-          "tests/unit/ParcellesGroupesPanel.test.js",
-          "tests/unit/PivotAnalytiqueGrid.test.js",
           "tests/unit/analytiqueUtils.test.js",
           "tests/unit/campagneBudgetPivot.test.js",
           "tests/unit/campagneExportUtils.test.js",
@@ -1077,12 +877,7 @@
     },
     "stock": {
       "backend": {
-        "cloudFunctions": [
-          "stockFileReminder16h",
-          "stockFileReminder17h",
-          "stockFileReminder18h",
-          "stockManagement"
-        ],
+        "cloudFunctions": [],
         "modules": [
           "stock",
           "stockCaneva",
@@ -1090,12 +885,7 @@
           "stockMerge",
           "stockRoles"
         ],
-        "routes": [
-          {
-            "functionId": "stockManagement",
-            "source": "/api/stock"
-          }
-        ],
+        "routes": [],
         "services": [
           "functions/magasinierBot.js"
         ]
@@ -1784,7 +1574,31 @@
       "confidence": "low",
       "domain": null
     },
+    "functions/emailService.actions1.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/emailService.actions2.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/emailService.actions3.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/emailService.dispatch.js": {
+      "confidence": "low",
+      "domain": null
+    },
     "functions/emailService.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/emailService.part1.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/emailService.part2.js": {
       "confidence": "low",
       "domain": null
     },
@@ -1820,369 +1634,9 @@
       "confidence": "low",
       "domain": null
     },
-    "functions/index.js#agroSummary": {
+    "functions/lib/achats": {
       "confidence": "medium",
-      "domain": "agro"
-    },
-    "functions/index.js#alerts": {
-      "confidence": "low",
-      "domain": null
-    },
-    "functions/index.js#authApi": {
-      "confidence": "medium",
-      "domain": "admin"
-    },
-    "functions/index.js#avancementCulture": {
-      "confidence": "high",
-      "domain": "caisse"
-    },
-    "functions/index.js#backfillPointageBdpLiveTrigger": {
-      "confidence": "high",
-      "domain": "pointage"
-    },
-    "functions/index.js#backfillPresence": {
-      "confidence": "high",
-      "domain": "pointage"
-    },
-    "functions/index.js#backupApi": {
-      "confidence": "high",
-      "domain": "admin"
-    },
-    "functions/index.js#bdpIntrospect": {
-      "confidence": "medium",
-      "domain": "pointage"
-    },
-    "functions/index.js#budgetService": {
-      "confidence": "low",
-      "domain": null
-    },
-    "functions/index.js#bugReports": {
-      "confidence": "medium",
-      "domain": "admin"
-    },
-    "functions/index.js#caisseManagement": {
-      "confidence": "high",
-      "domain": "caisse"
-    },
-    "functions/index.js#campagneRapportHebdo": {
-      "confidence": "high",
-      "domain": "referentiel"
-    },
-    "functions/index.js#campagneRapportHebdoTrigger": {
-      "confidence": "high",
-      "domain": "referentiel"
-    },
-    "functions/index.js#checkPresenceSyncHealth": {
-      "confidence": "high",
-      "domain": "pointage"
-    },
-    "functions/index.js#climatProduction": {
-      "confidence": "high",
-      "domain": "recolte"
-    },
-    "functions/index.js#dailyPhenologyJob": {
-      "confidence": "high",
-      "domain": "agro"
-    },
-    "functions/index.js#dailyProductionDigest": {
-      "confidence": "high",
-      "domain": "recolte"
-    },
-    "functions/index.js#dailyProductionReportTrigger": {
-      "confidence": "high",
-      "domain": "recolte"
-    },
-    "functions/index.js#dashboard": {
-      "confidence": "low",
-      "domain": null
-    },
-    "functions/index.js#ecarts": {
-      "confidence": "low",
-      "domain": null
-    },
-    "functions/index.js#farmroad": {
-      "confidence": "low",
-      "domain": null
-    },
-    "functions/index.js#farmroadRefresh": {
-      "confidence": "low",
-      "domain": null
-    },
-    "functions/index.js#fertigation": {
-      "confidence": "high",
-      "domain": "agro"
-    },
-    "functions/index.js#fonctionsManagement": {
-      "confidence": "high",
-      "domain": "paie"
-    },
-    "functions/index.js#fuel": {
-      "confidence": "low",
-      "domain": null
-    },
-    "functions/index.js#gddNightlyJob": {
-      "confidence": "low",
-      "domain": null
-    },
-    "functions/index.js#gddTracking": {
-      "confidence": "low",
-      "domain": null
-    },
-    "functions/index.js#growthTracking": {
-      "confidence": "high",
-      "domain": "recolte"
-    },
-    "functions/index.js#harvestPrediction": {
-      "confidence": "low",
-      "domain": null
-    },
-    "functions/index.js#harvestWeather": {
-      "confidence": "low",
-      "domain": null
-    },
-    "functions/index.js#health": {
-      "confidence": "low",
-      "domain": null
-    },
-    "functions/index.js#horsRecolteService": {
-      "confidence": "high",
-      "domain": "recolte"
-    },
-    "functions/index.js#indoorForecast": {
-      "confidence": "low",
-      "domain": null
-    },
-    "functions/index.js#indoorForecastRefresh": {
-      "confidence": "low",
-      "domain": null
-    },
-    "functions/index.js#mappingConsoManagement": {
-      "confidence": "low",
-      "domain": null
-    },
-    "functions/index.js#meetingCR": {
-      "confidence": "low",
-      "domain": null
-    },
-    "functions/index.js#meteoSprayDigest": {
-      "confidence": "medium",
-      "domain": "agro"
-    },
-    "functions/index.js#meteoSprayDigestTrigger": {
-      "confidence": "medium",
-      "domain": "agro"
-    },
-    "functions/index.js#meteoblue": {
-      "confidence": "medium",
-      "domain": "agro"
-    },
-    "functions/index.js#netafimSyncDaily": {
-      "confidence": "high",
-      "domain": "agro"
-    },
-    "functions/index.js#netafimSyncOnce": {
-      "confidence": "high",
-      "domain": "agro"
-    },
-    "functions/index.js#notifications": {
-      "confidence": "low",
-      "domain": null
-    },
-    "functions/index.js#ojra": {
-      "confidence": "low",
-      "domain": null
-    },
-    "functions/index.js#onAlertCreated": {
-      "confidence": "low",
-      "domain": null
-    },
-    "functions/index.js#onAnalyseFoliaireWrite": {
-      "confidence": "low",
-      "domain": null
-    },
-    "functions/index.js#onBugReportCreate": {
-      "confidence": "medium",
-      "domain": "admin"
-    },
-    "functions/index.js#onBugReportUpdate": {
-      "confidence": "medium",
-      "domain": "admin"
-    },
-    "functions/index.js#onProdRecolteWriteNotify": {
-      "confidence": "high",
-      "domain": "recolte"
-    },
-    "functions/index.js#parcelles": {
-      "confidence": "high",
-      "domain": "referentiel"
-    },
-    "functions/index.js#phytosanitaire": {
-      "confidence": "high",
-      "domain": "agro"
-    },
-    "functions/index.js#pointageRH": {
-      "confidence": "high",
-      "domain": "pointage"
-    },
-    "functions/index.js#pointageRH2": {
-      "confidence": "high",
-      "domain": "pointage"
-    },
-    "functions/index.js#pointageV3": {
-      "confidence": "high",
-      "domain": "pointage"
-    },
-    "functions/index.js#pointageValidation": {
-      "confidence": "high",
-      "domain": "pointage"
-    },
-    "functions/index.js#primesManagement": {
-      "confidence": "high",
-      "domain": "paie"
-    },
-    "functions/index.js#probeAnalysisReport": {
-      "confidence": "low",
-      "domain": null
-    },
-    "functions/index.js#probeAnalyzer": {
-      "confidence": "low",
-      "domain": null
-    },
-    "functions/index.js#probeRawData": {
-      "confidence": "low",
-      "domain": null
-    },
-    "functions/index.js#processWhatsappIncoming": {
-      "confidence": "low",
-      "domain": null
-    },
-    "functions/index.js#productivityReportsCron": {
-      "confidence": "low",
-      "domain": null
-    },
-    "functions/index.js#produits": {
-      "confidence": "low",
-      "domain": null
-    },
-    "functions/index.js#recommandation": {
-      "confidence": "low",
-      "domain": null
-    },
-    "functions/index.js#registryService": {
-      "confidence": "low",
-      "domain": null
-    },
-    "functions/index.js#replicationProbe": {
-      "confidence": "low",
-      "domain": null
-    },
-    "functions/index.js#rh": {
-      "confidence": "low",
-      "domain": null
-    },
-    "functions/index.js#runDailyPhenologyJobNow": {
-      "confidence": "high",
-      "domain": "agro"
-    },
-    "functions/index.js#runSyncJoursFeriesNow": {
-      "confidence": "low",
-      "domain": null
-    },
-    "functions/index.js#scheduledBackup": {
-      "confidence": "high",
-      "domain": "admin"
-    },
-    "functions/index.js#sentinelRecipients": {
-      "confidence": "low",
-      "domain": null
-    },
-    "functions/index.js#sqlSyncTrigger": {
-      "confidence": "low",
-      "domain": null
-    },
-    "functions/index.js#sqlToFirestoreSync": {
-      "confidence": "low",
-      "domain": null
-    },
-    "functions/index.js#stockFileReminder16h": {
-      "confidence": "medium",
-      "domain": "stock"
-    },
-    "functions/index.js#stockFileReminder17h": {
-      "confidence": "medium",
-      "domain": "stock"
-    },
-    "functions/index.js#stockFileReminder18h": {
-      "confidence": "medium",
-      "domain": "stock"
-    },
-    "functions/index.js#stockManagement": {
-      "confidence": "medium",
-      "domain": "stock"
-    },
-    "functions/index.js#submitProductionDigestTemplate": {
-      "confidence": "high",
-      "domain": "recolte"
-    },
-    "functions/index.js#syncJoursFeries": {
-      "confidence": "low",
-      "domain": null
-    },
-    "functions/index.js#syncPointageBdpTrigger": {
-      "confidence": "high",
-      "domain": "pointage"
-    },
-    "functions/index.js#syncPresenceEntree": {
-      "confidence": "high",
-      "domain": "pointage"
-    },
-    "functions/index.js#syncPresenceSortie": {
-      "confidence": "high",
-      "domain": "pointage"
-    },
-    "functions/index.js#syncProdTrigger": {
-      "confidence": "low",
-      "domain": null
-    },
-    "functions/index.js#syncRecolteFromProd": {
-      "confidence": "high",
-      "domain": "recolte"
-    },
-    "functions/index.js#tasks": {
-      "confidence": "low",
-      "domain": null
-    },
-    "functions/index.js#telecom": {
-      "confidence": "low",
-      "domain": null
-    },
-    "functions/index.js#uploadEcarts": {
-      "confidence": "low",
-      "domain": null
-    },
-    "functions/index.js#uploadPhoto": {
-      "confidence": "low",
-      "domain": null
-    },
-    "functions/index.js#validatePointageBdpTrigger": {
-      "confidence": "high",
-      "domain": "pointage"
-    },
-    "functions/index.js#validation": {
-      "confidence": "high",
-      "domain": "pointage"
-    },
-    "functions/index.js#warmPointageCache": {
-      "confidence": "high",
-      "domain": "pointage"
-    },
-    "functions/index.js#whatsappAdmin": {
-      "confidence": "medium",
-      "domain": "admin"
-    },
-    "functions/index.js#whatsappWebhook": {
-      "confidence": "low",
-      "domain": null
+      "domain": "achats"
     },
     "functions/lib/auth": {
       "confidence": "medium",
@@ -2221,6 +1675,14 @@
       "domain": "referentiel"
     },
     "functions/lib/consoBons": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/lib/dates": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/lib/finance": {
       "confidence": "low",
       "domain": null
     },
@@ -2304,7 +1766,15 @@
       "confidence": "low",
       "domain": null
     },
+    "functions/lib/qualite": {
+      "confidence": "high",
+      "domain": "qualite"
+    },
     "functions/lib/receptionValorisation": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/lib/rh": {
       "confidence": "low",
       "domain": null
     },
@@ -2372,7 +1842,35 @@
       "confidence": "high",
       "domain": "pointage"
     },
+    "functions/pointageService.actions1.js": {
+      "confidence": "high",
+      "domain": "pointage"
+    },
+    "functions/pointageService.actions2.js": {
+      "confidence": "high",
+      "domain": "pointage"
+    },
+    "functions/pointageService.actions3.js": {
+      "confidence": "high",
+      "domain": "pointage"
+    },
+    "functions/pointageService.actions4.js": {
+      "confidence": "high",
+      "domain": "pointage"
+    },
+    "functions/pointageService.dispatch.js": {
+      "confidence": "high",
+      "domain": "pointage"
+    },
     "functions/pointageService.js": {
+      "confidence": "high",
+      "domain": "pointage"
+    },
+    "functions/pointageService.part1.js": {
+      "confidence": "high",
+      "domain": "pointage"
+    },
+    "functions/pointageService.part2.js": {
       "confidence": "high",
       "domain": "pointage"
     },
@@ -3896,7 +3394,31 @@
     },
     {
       "confidence": "low",
+      "file": "functions/emailService.actions1.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/emailService.actions2.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/emailService.actions3.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/emailService.dispatch.js"
+    },
+    {
+      "confidence": "low",
       "file": "functions/emailService.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/emailService.part1.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/emailService.part2.js"
     },
     {
       "confidence": "low",
@@ -3924,175 +3446,19 @@
     },
     {
       "confidence": "low",
-      "file": "functions/index.js#alerts"
-    },
-    {
-      "confidence": "low",
-      "file": "functions/index.js#budgetService"
-    },
-    {
-      "confidence": "low",
-      "file": "functions/index.js#dashboard"
-    },
-    {
-      "confidence": "low",
-      "file": "functions/index.js#ecarts"
-    },
-    {
-      "confidence": "low",
-      "file": "functions/index.js#farmroad"
-    },
-    {
-      "confidence": "low",
-      "file": "functions/index.js#farmroadRefresh"
-    },
-    {
-      "confidence": "low",
-      "file": "functions/index.js#fuel"
-    },
-    {
-      "confidence": "low",
-      "file": "functions/index.js#gddNightlyJob"
-    },
-    {
-      "confidence": "low",
-      "file": "functions/index.js#gddTracking"
-    },
-    {
-      "confidence": "low",
-      "file": "functions/index.js#harvestPrediction"
-    },
-    {
-      "confidence": "low",
-      "file": "functions/index.js#harvestWeather"
-    },
-    {
-      "confidence": "low",
-      "file": "functions/index.js#health"
-    },
-    {
-      "confidence": "low",
-      "file": "functions/index.js#indoorForecast"
-    },
-    {
-      "confidence": "low",
-      "file": "functions/index.js#indoorForecastRefresh"
-    },
-    {
-      "confidence": "low",
-      "file": "functions/index.js#mappingConsoManagement"
-    },
-    {
-      "confidence": "low",
-      "file": "functions/index.js#meetingCR"
-    },
-    {
-      "confidence": "low",
-      "file": "functions/index.js#notifications"
-    },
-    {
-      "confidence": "low",
-      "file": "functions/index.js#ojra"
-    },
-    {
-      "confidence": "low",
-      "file": "functions/index.js#onAlertCreated"
-    },
-    {
-      "confidence": "low",
-      "file": "functions/index.js#onAnalyseFoliaireWrite"
-    },
-    {
-      "confidence": "low",
-      "file": "functions/index.js#probeAnalysisReport"
-    },
-    {
-      "confidence": "low",
-      "file": "functions/index.js#probeAnalyzer"
-    },
-    {
-      "confidence": "low",
-      "file": "functions/index.js#probeRawData"
-    },
-    {
-      "confidence": "low",
-      "file": "functions/index.js#processWhatsappIncoming"
-    },
-    {
-      "confidence": "low",
-      "file": "functions/index.js#productivityReportsCron"
-    },
-    {
-      "confidence": "low",
-      "file": "functions/index.js#produits"
-    },
-    {
-      "confidence": "low",
-      "file": "functions/index.js#recommandation"
-    },
-    {
-      "confidence": "low",
-      "file": "functions/index.js#registryService"
-    },
-    {
-      "confidence": "low",
-      "file": "functions/index.js#replicationProbe"
-    },
-    {
-      "confidence": "low",
-      "file": "functions/index.js#rh"
-    },
-    {
-      "confidence": "low",
-      "file": "functions/index.js#runSyncJoursFeriesNow"
-    },
-    {
-      "confidence": "low",
-      "file": "functions/index.js#sentinelRecipients"
-    },
-    {
-      "confidence": "low",
-      "file": "functions/index.js#sqlSyncTrigger"
-    },
-    {
-      "confidence": "low",
-      "file": "functions/index.js#sqlToFirestoreSync"
-    },
-    {
-      "confidence": "low",
-      "file": "functions/index.js#syncJoursFeries"
-    },
-    {
-      "confidence": "low",
-      "file": "functions/index.js#syncProdTrigger"
-    },
-    {
-      "confidence": "low",
-      "file": "functions/index.js#tasks"
-    },
-    {
-      "confidence": "low",
-      "file": "functions/index.js#telecom"
-    },
-    {
-      "confidence": "low",
-      "file": "functions/index.js#uploadEcarts"
-    },
-    {
-      "confidence": "low",
-      "file": "functions/index.js#uploadPhoto"
-    },
-    {
-      "confidence": "low",
-      "file": "functions/index.js#whatsappWebhook"
-    },
-    {
-      "confidence": "low",
       "file": "functions/lib/budgetBgf.js"
     },
     {
       "confidence": "low",
       "file": "functions/lib/consoBons"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/lib/dates"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/lib/finance"
     },
     {
       "confidence": "low",
@@ -4125,6 +3491,10 @@
     {
       "confidence": "low",
       "file": "functions/lib/receptionValorisation"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/lib/rh"
     },
     {
       "confidence": "low",

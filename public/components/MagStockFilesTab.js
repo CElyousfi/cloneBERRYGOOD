@@ -88,13 +88,20 @@
   // recalculée côté serveur (functions/lib/stockFiles/recordSubmission.js).
   function msfTodayCasablanca() {
     try {
-      var fmt = new Intl.DateTimeFormat('en-CA', {
+      // Les champs sont assembles a la main : le motif de date courte d'une
+      // locale vient du CLDR et change entre versions d'ICU (en-CA rend
+      // "08/15/2026" sur ICU 72), donc aucune locale ne garantit l'ISO.
+      var parts = new Intl.DateTimeFormat('en-US-u-ca-gregory-nu-latn', {
         timeZone: 'Africa/Casablanca',
         year: 'numeric',
         month: '2-digit',
         day: '2-digit'
+      }).formatToParts(new Date());
+      var f = {};
+      parts.forEach(function (p) {
+        f[p.type] = p.value;
       });
-      return fmt.format(new Date());
+      return f.year + '-' + f.month + '-' + f.day;
     } catch (e) {
       return new Date().toISOString().slice(0, 10);
     }

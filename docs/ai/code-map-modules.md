@@ -1,11 +1,15 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:444d08cb5ff6dd8b -->
-# Code Map — Modules lib (229)
+<!-- sourceFingerprint: sha256:dd6c45e86e923220 -->
+# Code Map — Modules lib (248)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
 
 | Fichier | Export global | Fonctions |
 | --- | --- | --- |
+| functions/lib/achats/bdcStateValidation.js | — | validateBdcTransition, canChefValidate, canDgValidate, computeBdcTotal, isBdcExpired |
+| functions/lib/achats/fournisseurUtils.js | — | normalizeFournisseurName, computeFournisseurBalance, detectDuplicateFournisseur |
+| functions/lib/achats/index.js | — | — voir fichier — |
+| functions/lib/achats/rapprochementCalc.js | — | matchBonToReception, computeRapprochementSummary |
 | functions/lib/auth/paieAccess.js | — | canAccessDivers, resolvePointageRHAccess |
 | functions/lib/auth/registryAccess.js | — | CHEF_FIELDS, FULL_FIELDS, normalizeMatriculeNum, normalizeAllowedSet, projectChefFields, projectRegistryFull, projectRegistryForChef |
 | functions/lib/auth/resolveRole.js | — | resolveCallerRole, resolveCallerProfile |
@@ -48,6 +52,12 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/consoBons/fermeConso.js | — | fermeDeParcelle, resolveFermeInconnue |
 | functions/lib/consoBons/fetchBons.js | — | fetchBonsConsommation, fetchReferentielParcelles, fetchArticleCategories |
 | functions/lib/consoBons/index.js | — | CONSO_PARCELLE_CACHE_PREFIX, adaptBonsToConsoRows, categorieOf, quantiteOf, alnumArticleKey, buildArticleCategoryIndex, lookupArticleCategorie, aggregateConsoParcelle, articlesAClasser, fermeDeParcelle, resolveFermeInconnue, fetchBonsConsommation, fetchReferentielParcelles, fetchArticleCategories |
+| functions/lib/dates/isoDateInTz.js | — | isoDateInTz, isoDateCasablanca, CASABLANCA_TZ |
+| functions/lib/finance/caisseLogic.js | — | isIncoming, isOutgoing, computeTotals, computeSoldeActuel |
+| functions/lib/finance/index.js | — | repository |
+| functions/lib/finance/invoiceWorkflow.js | — | computeNextStatus, canValidate, WORKFLOW_STEPS |
+| functions/lib/finance/liquidationCalc.js | — | computeRowValue, computeRowEcart, aggregateLiquidations |
+| functions/lib/finance/repository.js | — | createRepository |
 | functions/lib/fonctions/fonctionsHistory.js | — | buildFonctionUpdate |
 | functions/lib/fonctions/fonctionsValidate.js | — | normalizeFonctionSlug, normalizeLibelle, normalizeOrdre |
 | functions/lib/forecastConfirmation.js | — | parseForecastConfirmation |
@@ -142,8 +152,17 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/productivity/pdfParser.js | — | extractPdfText, extractWeekAndCampaign, parseProductivityPdf, parseWithClaude, buildPrompt |
 | functions/lib/productivity/ranker.js | — | percentileThreshold, enrichTreatment, enrichTreatments, buildFarmSummary |
 | functions/lib/productivity/refetchPipeline.js | — | refetchProductivityReports |
+| functions/lib/qualite/brixCalc.js | — | computeBrixAverage, isBrixCompliant, computeBrixStats |
+| functions/lib/qualite/ecartAnalysis.js | — | computeEcartVolume, computeEcartPct, classifyEcart, aggregateEcarts |
+| functions/lib/qualite/expeditionCalc.js | — | computeNetWeight, computeLoadFillRate, computeExpeditionTotals |
+| functions/lib/qualite/index.js | — | — voir fichier — |
+| functions/lib/qualite/inspectionRules.js | — | computeDefectRate, classifyQuality, isBelowThreshold, computeInspectionSummary |
 | functions/lib/receptionValorisation/prixLigne.js | — | SOURCES_PRIORITE, MOTIF, cleArticle, normaliserSource, prixPondereSource, resolvePrixLigne, valoriserLignes |
 | functions/lib/receptionValorisation/receptionBdc.js | — | STATUT_RECEPTION_A_LA_CREATION, cleArticle, lignesDepuisBl, sourcesPrixDepuisBdc, resoudreMagasinDestination, valoriserItemsReception, construireItemsReception, construireMouvementReception |
+| functions/lib/rh/index.js | — | — voir fichier — |
+| functions/lib/rh/pointageCalc.js | — | computePresenceJours, computeHeuresSup, detectAnomalie, aggregateByWorker |
+| functions/lib/rh/quinzaineUtils.js | — | parseQuinzaine, getCurrentQuinzaine, getQuinzaineLabel, isDateInQuinzaine |
+| functions/lib/rh/transportConfig.js | — | getEqPrefix, computeTransportQuinzaine, getTransportFee |
 | functions/lib/sentinel/sentinelRecipients.js | — | filterSentinelRecipients |
 | functions/lib/stock/articleHistoryIndex.js | — | buildArticleHistoryIndex, sliceArticleHistory, isStockLieu, STOCK_LIEU_TYPES, canon |
 | functions/lib/stock/articleKey.js | — | canon, articleHistoryKey |

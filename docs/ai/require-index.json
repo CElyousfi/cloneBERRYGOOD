@@ -2,15 +2,43 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:99f2bc68a22cf38e",
+    "sourceFingerprint": "sha256:e0bdcf25b9c293aa",
     "stats": {
-      "targetFiles": 298,
-      "targetFilesWithDirectTests": 180,
-      "targetFilesWithTransitiveTests": 201,
-      "testFilesScanned": 278
+      "targetFiles": 317,
+      "targetFilesWithDirectTests": 194,
+      "targetFilesWithTransitiveTests": 215,
+      "testFilesScanned": 294
     }
   },
   "index": {
+    "functions/lib/achats/bdcStateValidation.js": {
+      "directTests": [
+        "functions/lib/achats/__tests__/bdcStateValidation.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/achats/__tests__/bdcStateValidation.test.js"
+      ]
+    },
+    "functions/lib/achats/fournisseurUtils.js": {
+      "directTests": [
+        "functions/lib/achats/__tests__/fournisseurUtils.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/achats/__tests__/fournisseurUtils.test.js"
+      ]
+    },
+    "functions/lib/achats/index.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "functions/lib/achats/rapprochementCalc.js": {
+      "directTests": [
+        "functions/lib/achats/__tests__/rapprochementCalc.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/achats/__tests__/rapprochementCalc.test.js"
+      ]
+    },
     "functions/lib/auth/paieAccess.js": {
       "directTests": [
         "tests/unit/paieAccess.test.js",
@@ -384,6 +412,57 @@
       ]
     },
     "functions/lib/consoBons/index.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "functions/lib/dates/isoDateInTz.js": {
+      "directTests": [
+        "functions/lib/dates/__tests__/isoDateInTz.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/dates/__tests__/isoDateInTz.test.js",
+        "functions/lib/meteo/__tests__/meteoAlertes.test.js",
+        "functions/lib/meteo/__tests__/sprayChart.test.js",
+        "functions/lib/meteo/__tests__/sprayDigest.test.js",
+        "functions/lib/netafim/__tests__/mapper.test.js",
+        "functions/lib/netafim/__tests__/rateLimiter.test.js",
+        "functions/lib/netafim/__tests__/syncBahia.test.js",
+        "functions/lib/phenology/__tests__/cronExports.test.js",
+        "functions/lib/phenology/__tests__/dailyPhenologyJob.test.js",
+        "functions/lib/stockFiles/__tests__/recordSubmission.test.js",
+        "functions/lib/stockFiles/__tests__/reminders.test.js",
+        "tests/unit/pointageSlidingWindow.test.js"
+      ]
+    },
+    "functions/lib/finance/caisseLogic.js": {
+      "directTests": [
+        "functions/lib/finance/__tests__/caisseLogic.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/finance/__tests__/caisseLogic.test.js"
+      ]
+    },
+    "functions/lib/finance/index.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "functions/lib/finance/invoiceWorkflow.js": {
+      "directTests": [
+        "functions/lib/finance/__tests__/invoiceWorkflow.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/finance/__tests__/invoiceWorkflow.test.js"
+      ]
+    },
+    "functions/lib/finance/liquidationCalc.js": {
+      "directTests": [
+        "functions/lib/finance/__tests__/liquidationCalc.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/finance/__tests__/liquidationCalc.test.js"
+      ]
+    },
+    "functions/lib/finance/repository.js": {
       "directTests": [],
       "transitiveTests": []
     },
@@ -1246,6 +1325,42 @@
       "directTests": [],
       "transitiveTests": []
     },
+    "functions/lib/qualite/brixCalc.js": {
+      "directTests": [
+        "functions/lib/qualite/__tests__/brixCalc.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/qualite/__tests__/brixCalc.test.js"
+      ]
+    },
+    "functions/lib/qualite/ecartAnalysis.js": {
+      "directTests": [
+        "functions/lib/qualite/__tests__/ecartAnalysis.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/qualite/__tests__/ecartAnalysis.test.js"
+      ]
+    },
+    "functions/lib/qualite/expeditionCalc.js": {
+      "directTests": [
+        "functions/lib/qualite/__tests__/expeditionCalc.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/qualite/__tests__/expeditionCalc.test.js"
+      ]
+    },
+    "functions/lib/qualite/index.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "functions/lib/qualite/inspectionRules.js": {
+      "directTests": [
+        "functions/lib/qualite/__tests__/inspectionRules.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/qualite/__tests__/inspectionRules.test.js"
+      ]
+    },
     "functions/lib/receptionValorisation/prixLigne.js": {
       "directTests": [
         "functions/lib/receptionValorisation/__tests__/prixLigne.test.js",
@@ -1262,6 +1377,34 @@
       ],
       "transitiveTests": [
         "functions/lib/receptionValorisation/__tests__/receptionBdc.test.js"
+      ]
+    },
+    "functions/lib/rh/index.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "functions/lib/rh/pointageCalc.js": {
+      "directTests": [
+        "functions/lib/rh/__tests__/pointageCalc.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/rh/__tests__/pointageCalc.test.js"
+      ]
+    },
+    "functions/lib/rh/quinzaineUtils.js": {
+      "directTests": [
+        "functions/lib/rh/__tests__/quinzaineUtils.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/rh/__tests__/quinzaineUtils.test.js"
+      ]
+    },
+    "functions/lib/rh/transportConfig.js": {
+      "directTests": [
+        "functions/lib/rh/__tests__/transportConfig.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/rh/__tests__/transportConfig.test.js"
       ]
     },
     "functions/lib/sentinel/sentinelRecipients.js": {
