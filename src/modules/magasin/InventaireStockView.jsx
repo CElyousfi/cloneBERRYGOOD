@@ -17,15 +17,9 @@ function InventaireStockView() {
             // de clic distincte du badge PMP). Borné à la date d'inventaire affichée.
             const [mvtDetailLine, setMvtDetailLine] = useState(null);
 
-            // Canonicalisation identique au backend (scripts/reconstruct-stock.js) :
+            // canonArt (défini au-dessus de MagFicheStockTab) aligne les deux côtés :
             // les soldes (stock_balances) sont canonicalisés (suffixe d'unité retiré),
-            // alors que le catalogue garde souvent "NOM (KG)". On aligne les deux côtés.
-            const canonArt = (a) => {
-                let s = (a == null ? '' : String(a)).toUpperCase().trim();
-                s = s.replace(/\s+/g, ' ');
-                s = s.replace(/\s*\((L|KG|G|ML|UNITE|U)\)\s*$/, '');
-                return s.trim();
-            };
+            // alors que le catalogue garde souvent "NOM (KG)".
 
             useEffect(() => {
                 fetch('/api/stock?action=get-locations').then(r => r.json())
@@ -213,7 +207,12 @@ function InventaireStockView() {
                                         <span
                                             title="Voir le détail des mouvements jusqu'à la date d'inventaire"
                                             onClick={() => setMvtDetailLine({
-                                                article: b.article_ref || b.article_nom || '',
+                                                // Le NOM d'abord : c'est la clé que portent les mouvements.
+                                                // Un article fusionné a un solde sur le docId de sa fiche
+                                                // (ex. Ref-Eng0052) que AUCUN mouvement ne porte — envoyer
+                                                // la ref d'abord vidait l'écran. Même priorité que
+                                                // get-pmp-detail (article_nom || article_ref).
+                                                article: b.article_nom || b.article_ref || '',
                                                 article_nom: b.article_nom || b.article_ref || '',
                                                 lieu_id: b.lieu_id || '',
                                                 unite: b.unite || '',

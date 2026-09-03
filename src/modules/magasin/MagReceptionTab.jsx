@@ -5,7 +5,7 @@ import { cachedFetch } from '../shared/cachedFetch.jsx';
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 
 // ===================== MAGASINIER: BONS DE RÉCEPTION (LISTE BR SAISIS) =====================
-        function MagReceptionTab({ currentProfile, profileData }) {
+        function MagReceptionTab({ currentProfile, profileData, setCurrentTab }) {
             const [receptions, setReceptions] = useState([]);
             const [loading, setLoading] = useState(true);
             const [query, setQuery] = useState('');
@@ -21,21 +21,7 @@ import { useEffect, useState } from '../shared/reactHooks.jsx';
             const [detailReception, setDetailReception] = useState(null);
             // Magasins dérivés de la config stock (get-locations) — source unique, plus de hardcode.
             const MAGASINS_BR = useStockLocations().magasins;
-            const UNITES_BR = ['kg', 'L', 'unité', 'carton', 'sac', 'bidon'];
-            const MOTIFS_RECEPTION = ['Livraison urgente', 'Don', 'Retour client', 'Échantillon', 'Régularisation stock'];
 
-            // Garde-fou destination : une valeur hors config stock (ex. BAHIA sur un bon
-            // en cours d'édition) reste proposée dans le select, avec avertissement —
-            // sinon le select contrôlé se désynchronise sans rien dire au magasinier.
-            // Pas de fallback si lib/stockDestinations.js manque : un échec visible vaut
-            // mieux qu'une destination hors config imputée silencieusement au 1er magasin.
-            const resolveDestBR = window.StockDestinations.resolveDestinationOptions;
-            const emptyForm = { date: '', ref_bl_fournisseur: '', magasin: MAGASINS_BR[0] || '', motif: '', motif_autre: '', fournisseur_nom: '', items: [{ article: '', quantite: '', unite: 'kg' }], scan_file: null, scan_preview: null };
-            const [showForm, setShowForm] = useState(false);
-            const [form, setForm] = useState(emptyForm);
-            const [submitting, setSubmitting] = useState(false);
-            const [articles, setArticles] = useState([]);
-            const [suppliers, setSuppliers] = useState([]);
             // Identité du demandeur pour le contrôle créateur (profileId = identité effective).
             const requester = { profileId: currentProfile, userId: (profileData && profileData.userId) || '' };
             const Guard = (typeof window !== 'undefined' && window.StockMovementGuard) || null;
@@ -56,71 +42,6 @@ import { useEffect, useState } from '../shared/reactHooks.jsx';
                     .catch(err => console.warn(err)).finally(() => setLoading(false));
             };
             useEffect(() => { loadReceptions(); }, [filterFerme, filterStatus]);
-            useEffect(() => {
-                cachedFetch('/api/stock?action=list-articles').then(json => { if (json.success) setArticles((json.articles || []).filter(a => a.active !== false)); }).catch(() => {});
-                cachedFetch('/api/stock?action=list-suppliers&status=valide').then(json => { if (json.success) setSuppliers(json.suppliers || []); }).catch(() => {});
-            }, []);
-
-            const updateItem = (idx, field, value) => {
-                const items = [...form.items]; items[idx] = { ...items[idx], [field]: value };
-                setForm({ ...form, items });
-            };
-            const addItem = () => setForm({ ...form, items: [...form.items, { article: '', quantite: '', unite: 'kg' }] });
-            const removeItem = (idx) => { if (form.items.length > 1) setForm({ ...form, items: form.items.filter((_, i) => i !== idx) }); };
-
-            const handleScanFile = (file) => {
-                if (!file) return;
-                if (file.size > 10 * 1024 * 1024) { alert('Fichier trop volumineux (max 10 Mo)'); return; }
-                const reader = new FileReader();
-                reader.onload = (e) => setForm(prev => ({ ...prev, scan_file: e.target.result, scan_preview: file.type.startsWith('image/') ? e.target.result : file.name }));
-                reader.readAsDataURL(file);
-            };
-            const uploadScan = async (base64) => {
-                if (!base64) return null;
-                const res = await fetch('/api/stock?action=upload-scan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ file_base64: base64, filename: 'scan_bl.jpg', contentType: 'image/jpeg' }) });
-                const json = await res.json();
-                return json.success ? json.url : null;
-            };
-
-            const handleCreate = async () => {
-                const motifFinal = form.motif === 'Autre' ? (form.motif_autre || '').trim() : form.motif;
-                if (!motifFinal) { alert('Motif obligatoire'); return; }
-                if (!form.magasin) { alert('Magasin requis'); return; }
-                const validItems = form.items.filter(i => i.article && i.quantite);
-                if (!validItems.length) { alert('Ajoutez au moins un article'); return; }
-                const negative = validItems.find(i => parseFloat(i.quantite) < 0);
-                if (negative) { alert('Quantité invalide pour ' + negative.article + ' (doit être ≥ 0)'); return; }
-                setSubmitting(true);
-                try {
-                    const scanUrl = form.scan_file ? await uploadScan(form.scan_file) : null;
-                    const res = await fetch('/api/stock?action=create-movement', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            type: 'reception',
-                            date: form.date || new Date().toISOString().split('T')[0],
-                            lieu_destination: { type: 'magasin', id: form.magasin },
-                            ferme: form.magasin,
-                            ref_bl_fournisseur: form.ref_bl_fournisseur,
-                            reception_libre: true, reception_libre_motif: motifFinal,
-                            fournisseur_nom: form.fournisseur_nom || null,
-                            scan_url: scanUrl,
-                            items: validItems.map(i => ({ article_ref: i.article, article_nom: i.article, quantite: parseFloat(i.quantite), unite: i.unite })),
-                            created_by: { profileId: currentProfile, name: profileData?.name || currentProfile, userId: profileData?.userId || '' },
-                        }),
-                    });
-                    const json = await res.json();
-                    if (json.success) {
-                        alert('Réception ' + json.numero + ' créée. En attente de valorisation Achats.');
-                        setShowForm(false); setForm(emptyForm); loadReceptions();
-                    } else {
-                        alert('Erreur: ' + (json.error || 'Echec'));
-                    }
-                } catch (e) {
-                    alert('Erreur réseau');
-                } finally {
-                    setSubmitting(false);
-                }
-            };
-
             const handleDelete = (mov) => {
                 if (!confirm('Supprimer le bon ' + mov.numero + ' ? Cette action est irréversible (le bon sera retiré des listes).')) return;
                 fetch('/api/stock?action=delete-movement', { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -301,9 +222,10 @@ import { useEffect, useState } from '../shared/reactHooks.jsx';
                                 <option value="import">Import</option>
                             </select>
                             {currentProfile === 'magasinier' && (
-                                <button onClick={() => { setForm({ ...emptyForm, date: new Date().toISOString().split('T')[0] }); setShowForm(true); }}
+                                <button onClick={() => { if (setCurrentTab) { setCurrentTab('mag_bdc_reception'); localStorage.setItem('lastTab', 'mag_bdc_reception'); } }}
+                                    title="Une réception se saisit à partir du bon de commande correspondant"
                                     style={{background:'var(--berry)',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontWeight:600,fontSize:13}}>
-                                    <i className="fa-solid fa-plus" style={{marginRight:6}}></i>Nouveau bon d'entrée
+                                    <i className="fa-solid fa-truck-ramp-box" style={{marginRight:6}}></i>Réceptionner un BDC
                                 </button>
                             )}
                         </div>
@@ -347,77 +269,6 @@ import { useEffect, useState } from '../shared/reactHooks.jsx';
                             {filtered.length === 0 && <tr><td colSpan={7} style={{textAlign:'center',color:'var(--gray-400)',padding:40}}>Aucun bon de réception trouvé.</td></tr>}
                         </tbody>
                     </table></div>
-
-                    {showForm && (
-                        <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setShowForm(false); }}>
-                            <div className="modal-content" style={{maxWidth:650,maxHeight:'90vh',overflowY:'auto'}}>
-                                <h3 style={{marginTop:0,color:'var(--berry)'}}><i className="fa-solid fa-plus-circle" style={{marginRight:8}}></i>Nouveau bon d'entrée</h3>
-                                <div style={{background:'#e8f5e9',borderRadius:8,padding:10,marginBottom:16,fontSize:12,color:'#1b5e20'}}>
-                                    <i className="fa-solid fa-info-circle" style={{marginRight:6}}></i>Saisie directe d'une entrée en stock. Sera validée immédiatement et impactera les soldes.
-                                </div>
-                                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:16}}>
-                                    <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Date</label>
-                                        <input type="date" value={form.date} onChange={e => setForm({...form, date: e.target.value})} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}} /></div>
-                                    {(() => {
-                                        const destBR = resolveDestBR(MAGASINS_BR, form.magasin);
-                                        const warnBR = destBR.warning && (destBR.options.find(o => o.value === form.magasin) || {}).horsConfig;
-                                        return (
-                                    <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Magasin destination *</label>
-                                        <select value={form.magasin} onChange={e => setForm({...form, magasin: e.target.value})} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid ' + (warnBR ? '#b45309' : '#ddd'),fontSize:13}}>
-                                            {destBR.options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                        </select>
-                                        {warnBR && <div style={{marginTop:4,fontSize:11,color:'#b45309',lineHeight:1.4}}><i className="fa-solid fa-triangle-exclamation" style={{marginRight:4}}></i>{destBR.warning}</div>}
-                                    </div>
-                                        );
-                                    })()}
-                                    <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Fournisseur</label>
-                                        <select value={form.fournisseur_nom} onChange={e => setForm({...form, fournisseur_nom: e.target.value})} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}}>
-                                            <option value="">-- Sélectionner --</option>
-                                            {suppliers.map(s => <option key={s.id} value={s.nom}>{s.nom}{s.ville ? ' ('+s.ville+')' : ''}</option>)}
-                                        </select></div>
-                                    <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Réf BL Fournisseur</label>
-                                        <input value={form.ref_bl_fournisseur} onChange={e => setForm({...form, ref_bl_fournisseur: e.target.value})} placeholder="Référence" style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}} /></div>
-                                    <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Motif / Justification *</label>
-                                        <select value={form.motif} onChange={e => setForm({...form, motif: e.target.value, motif_autre: ''})} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}}>
-                                            <option value="">-- Sélectionner --</option>
-                                            {MOTIFS_RECEPTION.map(m => <option key={m} value={m}>{m}</option>)}
-                                            <option value="Autre">Autre (à préciser)</option>
-                                        </select></div>
-                                    {form.motif === 'Autre' && (
-                                        <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Préciser le motif *</label>
-                                            <input value={form.motif_autre} onChange={e => setForm({...form, motif_autre: e.target.value})} placeholder="Précisez..." style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}} /></div>
-                                    )}
-                                </div>
-                                <div style={{marginBottom:16}}>
-                                    <label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}><i className="fa-solid fa-paperclip" style={{marginRight:4}}></i>Scanner le BL fournisseur</label>
-                                    <input type="file" accept="image/*,application/pdf" onChange={e => handleScanFile(e.target.files[0])} style={{fontSize:12}} />
-                                    {form.scan_preview && (typeof form.scan_preview === 'string' && form.scan_preview.startsWith('data:image') ? <img src={form.scan_preview} alt="Scan" style={{maxHeight:80,marginTop:6,borderRadius:6}} /> : <span style={{fontSize:11,color:'var(--green)',marginLeft:8}}><i className="fa-solid fa-check"></i> Fichier sélectionné</span>)}
-                                </div>
-                                <h4 style={{fontSize:13,marginBottom:8}}>Articles reçus</h4>
-                                <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
-                                    <thead><tr style={{background:'#f8f8f8'}}><th style={{padding:'6px 8px',textAlign:'left'}}>Article</th><th style={{padding:'6px 8px',width:80}}>Qté</th><th style={{padding:'6px 8px',width:70}}>Unité</th><th style={{width:30}}></th></tr></thead>
-                                    <tbody>
-                                        {form.items.map((it, idx) => (
-                                            <tr key={idx}>
-                                                <td><input list="articles-list-bon-entree" value={it.article} onChange={e => updateItem(idx, 'article', e.target.value)} placeholder="Article" style={{width:'100%',padding:'4px 8px',borderRadius:6,border:'1px solid #ddd',fontSize:12}} />
-                                                    <datalist id="articles-list-bon-entree">{articles.map(a => <option key={a.reference || a.nom} value={a.nom}>{a.nom}</option>)}</datalist></td>
-                                                <td><input type="number" value={it.quantite} min="0" onChange={e => updateItem(idx, 'quantite', e.target.value)} style={{width:'100%',padding:'4px 8px',borderRadius:6,border:'1px solid #ddd',fontSize:12}} /></td>
-                                                <td><select value={it.unite} onChange={e => updateItem(idx, 'unite', e.target.value)} style={{width:'100%',padding:'4px 8px',borderRadius:6,border:'1px solid #ddd',fontSize:12}}>{UNITES_BR.map(u => <option key={u} value={u}>{u}</option>)}</select></td>
-                                                <td><button onClick={() => removeItem(idx)} style={{background:'none',border:'none',cursor:'pointer',color:'#e74c3c',fontSize:13}}><i className="fa-solid fa-trash"></i></button></td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                                <button onClick={addItem} style={{marginTop:8,background:'none',border:'1px dashed #ddd',borderRadius:8,padding:'6px 16px',cursor:'pointer',fontSize:12,color:'var(--berry)'}}>+ Ajouter article</button>
-                                <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:16}}>
-                                    <button onClick={() => setShowForm(false)} disabled={submitting} style={{padding:'8px 16px',borderRadius:8,border:'1px solid #ddd',background:'#fff',cursor:submitting?'not-allowed':'pointer',fontSize:13}}>Annuler</button>
-                                    <button onClick={handleCreate} disabled={submitting} style={{padding:'8px 16px',borderRadius:8,border:'none',background:'var(--berry)',color:'#fff',cursor:submitting?'not-allowed':'pointer',fontWeight:600,fontSize:13,opacity:submitting?0.6:1}}>
-                                        {submitting ? <><i className="fa-solid fa-spinner fa-spin" style={{marginRight:6}}></i>Création...</> : 'Créer le bon d\'entrée'}
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
 
                     {detailReception && (() => {
                         const r = detailReception;

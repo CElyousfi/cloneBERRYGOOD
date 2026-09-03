@@ -11,6 +11,29 @@ import { TXN_TYPE_LABELS } from './TXN_TYPE_LABELS.jsx';
             const [actionLoading, setActionLoading] = useState(null);
             const [rejectModal, setRejectModal] = useState(null);
             const [rejectMotif, setRejectMotif] = useState('');
+            // Mode revue : un bon à la fois, navigation ← →. C'est le mode par
+            // défaut — empiler 40 cartes fait perdre le fil à la DG.
+            const [modeRevue, setModeRevue] = useState(true);
+
+            // Décision unitaire depuis la revue. Réutilise les actions existantes ;
+            // la validation UNITAIRE mouvemente le solde de façon atomique.
+            const decisionRevue = (id, decision, motifRejet) => {
+                const cfg = {
+                    valide:   { action: 'validate-transaction', body: { id } },
+                    rejete:   { action: 'reject-transaction',   body: { id, motif: motifRejet } },
+                    a_revoir: { action: 'mark-revoir-batch',    body: { ids: [id], motif: motifRejet || '' } },
+                }[decision];
+                if (!cfg) return Promise.resolve(false);
+                return fetch('/api/caisse?action=' + cfg.action, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(cfg.body),
+                }).then(r => r.json()).then(json => {
+                    if (!json.success) { alert('Erreur: ' + (json.error || 'Inconnue')); return false; }
+                    setTransactions(prev => prev.filter(t => t.id !== id));
+                    onDone();
+                    return true;
+                }).catch(err => { alert('Erreur: ' + err.message); return false; });
+            };
 
             const load = () => {
                 setLoading(true);
@@ -52,10 +75,27 @@ import { TXN_TYPE_LABELS } from './TXN_TYPE_LABELS.jsx';
                 </div>
             );
 
+            if (modeRevue && window.CaisseRevueValidation) return (
+                <window.CaisseRevueValidation
+                    transactions={transactions}
+                    caisses={caisses}
+                    onDecision={decisionRevue}
+                    onQuitter={() => setModeRevue(false)}
+                />
+            );
+
             return (
                 <div>
-                    <div style={{marginBottom:12,fontSize:13,color:'var(--gray-600)'}}>
-                        <strong>{transactions.length}</strong> transaction(s) en attente de validation
+                    <div style={{marginBottom:12,display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
+                        <span style={{fontSize:13,color:'var(--gray-600)'}}>
+                            <strong>{transactions.length}</strong> transaction(s) en attente de validation
+                        </span>
+                        {window.CaisseRevueValidation && (
+                            <button onClick={() => setModeRevue(true)}
+                                style={{padding:'7px 14px',borderRadius:8,border:'none',background:'var(--berry)',color:'white',cursor:'pointer',fontSize:12,fontWeight:600}}>
+                                <i className="fa-solid fa-layer-group" style={{marginRight:6}}></i>Revue une par une
+                            </button>
+                        )}
                     </div>
                     <div style={{display:'flex',flexDirection:'column',gap:12}}>
                         {transactions.map(tx => {

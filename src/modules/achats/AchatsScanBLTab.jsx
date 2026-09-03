@@ -69,7 +69,7 @@ import { useEffect, useState } from '../shared/reactHooks.jsx';
                             date_reception: json.analysis.date_reception || '',
                             numero_bl_fournisseur: json.analysis.numero_bl_fournisseur || '',
                             items: (json.analysis.items || []).map(it => ({
-                                article: it.article || '', quantite_recue: it.quantite_recue || '', unite: it.unite || 'kg', note: '',
+                                article: it.article || '', quantite_recue: it.quantite_recue || '', unite: it.unite || '', note: '',
                             })),
                         });
                         if (json.matched_bdc?.id) {
@@ -105,7 +105,7 @@ import { useEffect, useState } from '../shared/reactHooks.jsx';
                 const bdcData = selectedBdc || bdcList.find(b => b.id === selectedBdcId);
                 const enrichedItems = validItems.map(it => {
                     const bdcItem = (bdcData?.items || []).find(bi => bi.article && it.article && bi.article.toLowerCase().includes(it.article.toLowerCase()));
-                    return { article: it.article, quantite_commandee: bdcItem ? (parseFloat(bdcItem.quantite) || 0) : 0, quantite_recue: parseFloat(it.quantite_recue) || 0, unite: it.unite || 'kg', note: it.note || '' };
+                    return { article: it.article, quantite_commandee: bdcItem ? (parseFloat(bdcItem.quantite) || 0) : 0, quantite_recue: parseFloat(it.quantite_recue) || 0, unite: it.unite || '', note: it.note || '' };
                 });
                 setCreating(true);
                 fetch('/api/stock?action=create-bl', {

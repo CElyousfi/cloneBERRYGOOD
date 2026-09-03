@@ -1026,7 +1026,7 @@ import { useEffect, useMemo, useRef, useState } from './reactHooks.jsx';
                                 {renderTab('mag_parc', MagParcTab, { data }, 'Parc')}
                                 {renderTab('mag_bdc_liste', window.MagBonsCommandeTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Bons de Commande')}
                                 {renderTab('mag_bdc_reception', window.MagBdcReceptionTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'BDC à réceptionner')}
-                                {renderTab('mag_reception', MagReceptionTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Bons de Réception')}
+                                {renderTab('mag_reception', MagReceptionTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile), setCurrentTab }, 'Bons de Réception')}
                                 {renderTab('mag_transfert', MagTransfertTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Transfert')}
                                 {renderTab('mag_sortie', MagSortieTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Sortie')}
                                 {renderTab('mag_stock_intrants', MagStockIntrantsTab, {}, 'Stock Intrants')}

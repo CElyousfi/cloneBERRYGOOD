@@ -120,7 +120,12 @@ import { useState } from '../shared/reactHooks.jsx';
                                                     <tr style={{cursor:'pointer'}} onClick={() => setExpanded(isOpen ? null : r.caisse.id)}>
                                                         <td style={Object.assign({}, td, {fontWeight:600})}>
                                                             <i className={`fa-solid ${isOpen ? 'fa-chevron-down' : 'fa-chevron-right'}`} style={{fontSize:10,marginRight:8,color:'var(--gray-400)'}}></i>
-                                                            {r.caisse.nom || r.caisse.id}
+                                                            {/* Ces comptes n'ont pas de champ `nom` : sans repli,
+                                                                l'écran affiche l'identifiant technique
+                                                                (« compte_client_iraqi_mohamed »). */}
+                                                            {(r.caisse.nom && String(r.caisse.nom).trim())
+                                                                || String(r.caisse.id || '').replace('compte_client_', '').split('_').filter(Boolean).join(' ').toUpperCase()
+                                                                || r.caisse.id}
                                                         </td>
                                                         <td style={tdR}>{formatMAD(r.totals.totalVendu)}</td>
                                                         <td style={Object.assign({}, tdR, {color:'var(--green)'})}>{formatMAD(r.totals.totalEncaisse)}</td>
