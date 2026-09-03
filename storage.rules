@@ -34,6 +34,28 @@ service firebase.storage {
       allow create: if request.auth != null;
       allow update, delete: if false;
     }
+    // États d'émargement des heures supplémentaires SIGNÉS par les chefs de
+    // ferme, déposés par la RH — une pièce par ferme et par quinzaine. Dépôt
+    // CLIENT-DIRECT create-only (chemin unique horodaté), pas d'overwrite ni de
+    // delete côté client. Taille (<25 Mo) et MIME (PDF/image) NE SONT PAS
+    // vérifiés ici — peu fiables en upload resumable mobile — mais côté Cloud
+    // Function (action hs-emargement-submit), qui supprime l'objet refusé avant
+    // tout enregistrement de lien.
+    //
+    // LECTURE INTERDITE — et surtout PAS `if request.auth != null` comme
+    // scans/** ci-dessus. Ce namespace n'est JAMAIS lu par le SDK côté client :
+    // le front passe exclusivement par l'action hs-emargement-url, qui renvoie
+    // une URL signée V4 générée avec les credentials admin, APRÈS le gate de
+    // rôle rh/dg/admin de primesManagement. Ouvrir la lecture à tout compte
+    // authentifié annulerait silencieusement ce gate : un magasinier, un
+    // caporal ou un chef de ferme pourrait lister puis télécharger les états
+    // signés — noms d'ouvriers, heures accordées, signatures. Ne PAS re-copier
+    // le bloc scans/** ici.
+    match /rh_emargements/{path=**} {
+      allow read: if false;
+      allow create: if request.auth != null;
+      allow update, delete: if false;
+    }
     // PDF des bons de commande (générés à la soumission, joints à la notif
     // WhatsApp de validation). Lecture+écriture authentifiée.
     match /bdc_pdfs/{path=**} {

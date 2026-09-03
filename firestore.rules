@@ -313,6 +313,20 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Heures supplémentaires par quinzaine — montants accordés (PAIE), états
+    // d'émargement signés, et sous-collection `history` (piste d'audit des
+    // saisies de montants). La collection tombait déjà dans le deny-all par
+    // défaut ; on la déclare EXPLICITEMENT, comme ouvriers_registry ci-dessus,
+    // pour que le caractère CF-only soit lisible dans ce fichier. Lecture ET
+    // écriture exclusivement via la Cloud Function gated primesManagement
+    // (/api/primes, rôle RH/DG vérifié serveur). `{document=**}` couvre la
+    // sous-collection history, qu'un match sur le seul document laisserait
+    // hors de portée de cette déclaration.
+    match /rh_heures_sup/{periode}/{document=**} {
+      allow read: if false;
+      allow write: if false;
+    }
+
     // Référentiel des fonctions (libellé + ordre d'affichage + prime de
     // référence). Lecture seule pour tout user authentifié (groupement UI de
     // l'onglet Primes Fixes). Écriture via Cloud Function uniquement (plus tard).

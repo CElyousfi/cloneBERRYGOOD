@@ -155,6 +155,7 @@ const COMPONENT_SENTINELS = {
   "CampagneAnalytiqueTab.js": "window.CampagneAnalytiqueTab",
   "CampagneBudgetTab.js": "window.CampagneBudgetTab",
   "MagStockFilesTab.js": "window.MagStockFilesTab",
+  "HsEmargementFooter.js": "window.HsEmargementFooter",
 };
 if (fs.existsSync(COMPONENTS_DIR)) {
   const jsxFiles = fs.readdirSync(COMPONENTS_DIR).filter((f) => f.endsWith(".jsx"));

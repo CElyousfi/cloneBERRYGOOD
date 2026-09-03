@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Deploy Smart Berry depuis main.
 #
-# Deux chemins, volontairement différents :
+# Trois cibles, deux modèles d'exécution volontairement différents :
 #   - functions → déclenche le workflow GitHub `deploy-prod.yml` (Workload Identity
 #     Federation, aucun credential local). Le run démarre dès le déclenchement : il n'y a
 #     PAS d'approbation de run côté GitHub (les required reviewers d'environment sont
@@ -9,25 +9,36 @@
 #     le prompt de permission local sur ce script — et la protection de `main` (PR + CI
 #     verte) garantit ce qui peut être déployé. Runbook : docs/deploy-wif-prod.md
 #   - hosting   → deploy local via FIREBASE_TOKEN (transitoire, bascule WIF au backlog).
+#   - rules     → deploy local via FIREBASE_TOKEN, comme hosting : `firestore.rules` ET
+#     `storage.rules` partent ENSEMBLE (`--only firestore:rules,storage`), parce que
+#     firebase.json les déclare tous les deux et qu'il n'existe pas de chemin sanctionné
+#     pour n'en publier qu'un. Le workflow CI refuse explicitement toute cible autre que
+#     functions : les règles ne peuvent donc PAS passer par le chemin CI.
+#     ⚠️ Un deploy de règles REMPLACE les règles en vigueur. Firebase conserve bien les
+#     rulesets publiés, mais sans lien avec le commit d'origine : le rollback fiable
+#     passe donc par un redéploiement depuis git. Le script affiche ce qui part.
 #
 # Pré-requis :
 #   - Être sur un checkout propre de `main` (règle CLAUDE.md : deploy depuis main uniquement).
-#   - Chemin hosting seulement : .env (gitignored) contient FIREBASE_TOKEN=...
+#   - Chemins hosting et rules : .env (gitignored) contient FIREBASE_TOKEN=...
 #     (généré une fois via `firebase login:ci`).
 #   - Chemin functions seulement : `gh` installé et authentifié (`gh auth login`).
 #
 # Usage :
 #   scripts/deploy.sh hosting               # frontend seul (local, token)
 #   scripts/deploy.sh functions             # backend seul (déclenche le CI)
+#   scripts/deploy.sh rules                 # firestore.rules + storage.rules (local, token)
 #   scripts/deploy.sh functions --dry-run   # simulation CI (dry_run=true)
 #   scripts/deploy.sh hosting --dry-run     # validation sans déployer
-# Tout argument après la cible est transmis tel quel à `firebase deploy` (chemin hosting).
+#   scripts/deploy.sh rules --dry-run       # validation sans déployer
+# Tout argument après la cible est transmis tel quel à `firebase deploy`
+# (chemins hosting et rules).
 set -euo pipefail
 
 ONLY="${1:-}"
 if [ -z "$ONLY" ]; then
   echo "🛑 ERREUR : cible manquante." >&2
-  echo "   Usage : scripts/deploy.sh hosting   |   scripts/deploy.sh functions" >&2
+  echo "   Usage : scripts/deploy.sh hosting   |   scripts/deploy.sh functions   |   scripts/deploy.sh rules" >&2
   exit 1
 fi
 shift || true   # le reste ("$@") est transmis à firebase deploy (ex. --dry-run)
@@ -36,13 +47,32 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 WANTS_FUNCTIONS=0
 WANTS_HOSTING=0
-case "$ONLY" in *functions*) WANTS_FUNCTIONS=1 ;; esac
-case "$ONLY" in *hosting*) WANTS_HOSTING=1 ;; esac
-
-if [ "$WANTS_FUNCTIONS" -eq 0 ] && [ "$WANTS_HOSTING" -eq 0 ]; then
-  echo "🛑 ERREUR : cible '$ONLY' non reconnue (attendu : 'hosting' ou 'functions[:nom]')." >&2
-  exit 1
-fi
+WANTS_RULES=0
+# Reconnaissance par SEGMENT, pas par sous-chaîne. `--only` accepte une liste séparée
+# par des virgules : on la découpe et on classe chaque segment sur une correspondance
+# EXACTE (ou un préfixe explicite `<cible>:<nom>`). Une détection par sous-chaîne fait
+# qu'une cible en attrape une autre — `functions:rulesEngine` contient « rules » et
+# tomberait sur le refus « rules se déploie SEUL », un refus abusif avec un message
+# trompeur. Corollaire assumé : un segment inconnu est refusé, il n'est plus rattrapé
+# par un match approximatif.
+IFS=',' read -r -a ONLY_PARTS <<< "$ONLY"
+for part in "${ONLY_PARTS[@]}"; do
+  case "$part" in
+    functions|functions:*) WANTS_FUNCTIONS=1 ;;
+    hosting|hosting:*) WANTS_HOSTING=1 ;;
+    rules) WANTS_RULES=1 ;;
+    *)
+      echo "🛑 ERREUR : cible '$part' non reconnue (attendu : 'hosting', 'functions[:nom]' ou 'rules')." >&2
+      case "$part" in
+        firestore|firestore:*|storage|storage:*)
+          echo "   → les règles se déploient avec la cible 'rules' : elle envoie" >&2
+          echo "     firestore:rules ET storage ensemble (cf. en-tête de ce script)." >&2
+          ;;
+      esac
+      exit 1
+      ;;
+  esac
+done
 
 # === Cible mixte 'hosting,functions' : REFUS EXPLICITE ===
 # Les deux chemins n'ont plus le même modèle d'exécution : hosting est synchrone et local,
@@ -52,12 +82,29 @@ fi
 # se déployer — soit exactement l'inverse de l'ordre imposé par CLAUDE.md (functions d'abord, hosting
 # ensuite, pour que le nouveau frontend ne parle jamais à un ancien backend). Plutôt que de
 # masquer ce décalage, on refuse et on impose les deux commandes dans le bon ordre.
-if [ "$WANTS_FUNCTIONS" -eq 1 ] && [ "$WANTS_HOSTING" -eq 1 ]; then
+if [ "$WANTS_FUNCTIONS" -eq 1 ] && [ "$WANTS_HOSTING" -eq 1 ] && [ "$WANTS_RULES" -eq 0 ]; then
   echo "🛑 ERREUR : cible mixte '$ONLY' refusée depuis la bascule du deploy functions vers le CI." >&2
   echo "   functions = run GitHub asynchrone (le deploy se termine hors de ce terminal) ;" >&2
   echo "   hosting   = deploy local synchrone. Les mélanger publierait le frontend AVANT le backend." >&2
   echo "" >&2
   echo "   → Fais les deux séparément, dans cet ordre (CLAUDE.md : functions d'abord) :" >&2
+  echo "       scripts/deploy.sh functions      # puis attendre la FIN du run CI" >&2
+  echo "       scripts/deploy.sh hosting" >&2
+  exit 1
+fi
+
+# === Cible mixte avec 'rules' : REFUS EXPLICITE ===
+# Même principe que ci-dessus, pour une raison en plus : un deploy de règles remplace
+# les règles de sécurité en vigueur et doit être décidé, vu et vérifié SEUL. Le noyer
+# dans un deploy hosting ou functions le rend invisible dans la sortie, et rend le
+# rollback ambigu si quelque chose casse ensuite.
+if [ "$WANTS_RULES" -eq 1 ] && { [ "$WANTS_FUNCTIONS" -eq 1 ] || [ "$WANTS_HOSTING" -eq 1 ]; }; then
+  echo "🛑 ERREUR : cible mixte '$ONLY' refusée — 'rules' se déploie SEUL." >&2
+  echo "   Un deploy de règles remplace les règles de sécurité en vigueur : il doit être" >&2
+  echo "   décidé et vérifié pour lui-même, pas embarqué dans un deploy frontend/backend." >&2
+  echo "" >&2
+  echo "   → Fais les cibles séparément :" >&2
+  echo "       scripts/deploy.sh rules" >&2
   echo "       scripts/deploy.sh functions      # puis attendre la FIN du run CI" >&2
   echo "       scripts/deploy.sh hosting" >&2
   exit 1
@@ -102,8 +149,15 @@ echo "[deploy] branche : $(git -C "$ROOT" rev-parse --abbrev-ref HEAD) @ $(git -
 # prise ici. Le `|| true` est délibéré — une panne réseau, un `gh` absent ou un ADC
 # expiré ne doit JAMAIS empêcher un deploy (le script affiche alors « information
 # indisponible »). Détail de la collecte : scripts/deploy-context.js.
-node "$ROOT/scripts/deploy-context.js" "$ONLY" || true
-echo ""
+#
+# Cible 'rules' exclue : deploy-context.js ne connaît que deux sources (runs CI pour
+# functions, releases Hosting pour le reste). Sur 'rules' il retomberait sur la release
+# hosting et annoncerait un « dernier déploiement » qui n'a RIEN à voir avec les règles
+# en vigueur — un faux repère est pire qu'une absence. Bloc dédié plus bas.
+if [ "$WANTS_RULES" -eq 0 ]; then
+  node "$ROOT/scripts/deploy-context.js" "$ONLY" || true
+  echo ""
+fi
 
 # ============================================================================
 # CHEMIN FUNCTIONS — déclenchement du workflow GitHub (Workload Identity Federation)
@@ -169,10 +223,11 @@ if [ "$WANTS_FUNCTIONS" -eq 1 ]; then
 fi
 
 # ============================================================================
-# CHEMIN HOSTING — inchangé (deploy local via FIREBASE_TOKEN)
+# CHEMINS LOCAUX (hosting, rules) — deploy synchrone via FIREBASE_TOKEN
 # ============================================================================
 # Le token CI évite l'expiration du token de session interactif. Transitoire : la bascule
 # du hosting vers WIF est un follow-up au backlog (cf. docs/deploy-wif-prod.md §7).
+# Les règles empruntent le même chemin : le workflow CI n'accepte que `functions`.
 
 # Charger FIREBASE_TOKEN depuis .env
 if [ -f "$ROOT/.env" ]; then
@@ -180,14 +235,58 @@ if [ -f "$ROOT/.env" ]; then
   set -a; . "$ROOT/.env"; set +a
 fi
 
-# Check conditionnel à la cible hosting : un deploy functions n'a plus besoin de token,
-# il échouerait ici pour rien.
+# Check conditionnel aux cibles locales : un deploy functions n'a plus besoin de token,
+# il échouerait ici pour rien (il a déjà quitté le script ci-dessus).
 if [ -z "${FIREBASE_TOKEN:-}" ]; then
-  echo "ERREUR : FIREBASE_TOKEN absent de .env (requis pour le deploy hosting)."
+  echo "ERREUR : FIREBASE_TOKEN absent de .env (requis pour le deploy $ONLY)."
   echo "Génère-le une fois :  firebase login:ci"
   echo "Puis ajoute dans .env :  FIREBASE_TOKEN=<le_token>"
   exit 1
 fi
+
+# ============================================================================
+# CHEMIN RULES — firestore.rules + storage.rules, ensemble
+# ============================================================================
+if [ "$WANTS_RULES" -eq 1 ]; then
+  RULES_ONLY="firestore:rules,storage"
+  echo "[deploy] Transparence — déploiement des RÈGLES de sécurité."
+  echo "[deploy] ⚠️  'firestore:rules' ET 'storage' partent ENSEMBLE (--only $RULES_ONLY) :"
+  echo "         firebase.json déclare les deux, il n'y a pas de chemin sanctionné pour"
+  echo "         n'en publier qu'un seul."
+  echo "[deploy] ⚠️  Un deploy de règles REMPLACE les règles en vigueur en production."
+  echo "         Firebase CONSERVE les rulesets publiés (console Firestore → Règles), mais"
+  echo "         sans lien avec le commit d'origine : le rollback fiable consiste donc à"
+  echo "         redéployer depuis git. Relis ce qui part avant de confirmer."
+  echo "[deploy] Fichiers envoyés (depuis $ROOT) :"
+  for rules_file in firestore.rules storage.rules; do
+    if [ -f "$ROOT/$rules_file" ]; then
+      rules_last="$(git -C "$ROOT" log -1 --format='%h %ad %s' --date=short -- "$rules_file" 2>/dev/null || true)"
+      echo "           - $rules_file  ($(wc -l < "$ROOT/$rules_file" | tr -d ' ') lignes)"
+      if [ -n "$rules_last" ]; then
+        echo "               dernier commit : $rules_last"
+      fi
+    else
+      echo "           - $rules_file  ⚠️  ABSENT du checkout — firebase refusera le deploy."
+    fi
+  done
+  # Pas de diff « prod vs HEAD » : contrairement aux functions (runs CI) et au hosting
+  # (message de release), rien ne trace côté Firebase QUEL commit a produit les règles
+  # en vigueur. On affiche donc ce qui part, pas un écart qu'on ne sait pas calculer.
+  echo "[deploy] (Aucun écart « prod ↔ HEAD » affichable : Firebase ne trace pas le commit"
+  echo "         d'origine des règles en vigueur. Ce qui est listé ci-dessus est ce qui part.)"
+  echo ""
+  echo "[deploy] cible : --only $RULES_ONLY  projet : $PROJECT  (via CI token)  args : ${*:-aucun}"
+  # --config : même raison que sur le chemin hosting — scoper firebase sur $ROOT, sinon
+  # il résout firebase.json (et donc les chemins de règles) depuis le cwd de l'appelant.
+  firebase --config "$ROOT/firebase.json" deploy --only "$RULES_ONLY" --project "$PROJECT" --token "$FIREBASE_TOKEN" --non-interactive "$@"
+  # Pas de smoke test : les règles ne changent pas le rendu de l'app, et le smoke
+  # hosting ne prouverait rien sur un accès Firestore refusé/autorisé.
+  exit 0
+fi
+
+# ============================================================================
+# CHEMIN HOSTING — inchangé
+# ============================================================================
 
 echo "[deploy] cible : --only $ONLY  projet : $PROJECT  (via CI token)  args : ${*:-aucun}"
 # Message de release Hosting = « <sha> <sujet du commit> ». C'est la SEULE trace
