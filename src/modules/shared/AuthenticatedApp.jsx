@@ -29,7 +29,9 @@ const AchatsReceptionsValoriserTab = React.lazy(() => import('../achats/AchatsRe
 const AchatsScanBLTab = React.lazy(() => import('../achats/AchatsScanBLTab.jsx').then(m => ({ default: m.AchatsScanBLTab })));
 const AchatsScanFacturesTab = React.lazy(() => import('../achats/AchatsScanFacturesTab.jsx').then(m => ({ default: m.AchatsScanFacturesTab })));
 const AchatsVentePlastiqueTab = React.lazy(() => import('../achats/AchatsVentePlastiqueTab.jsx').then(m => ({ default: m.AchatsVentePlastiqueTab })));
-import { AdminConsoleTab } from '../admin/AdminConsoleTab.jsx';
+// Rendu conditionnellement comme un onglet, mais hors de `renderTab` : il
+// echappait donc au chargement differe des 112 autres. Meme traitement ici.
+const AdminConsoleTab = React.lazy(() => import('../admin/AdminConsoleTab.jsx').then(m => ({ default: m.AdminConsoleTab })));
 const DGAdoptionTab = React.lazy(() => import('../admin/DGAdoptionTab.jsx').then(m => ({ default: m.DGAdoptionTab })));
 const DGMeetingCRTab = React.lazy(() => import('../admin/DGMeetingCRTab.jsx').then(m => ({ default: m.DGMeetingCRTab })));
 const DGParametresTab = React.lazy(() => import('../admin/DGParametresTab.jsx').then(m => ({ default: m.DGParametresTab })));
@@ -51,7 +53,9 @@ const AgroHarvestPredictionTab = React.lazy(() => import('../agronomie/AgroHarve
 const AgroIrrigationTab = React.lazy(() => import('../agronomie/AgroIrrigationTab.jsx').then(m => ({ default: m.AgroIrrigationTab })));
 const AgroParcellesTab = React.lazy(() => import('../agronomie/AgroParcellesTab.jsx').then(m => ({ default: m.AgroParcellesTab })));
 const AgroPhytoTab = React.lazy(() => import('../agronomie/AgroPhytoTab.jsx').then(m => ({ default: m.AgroPhytoTab })));
-import { EvolutionTab } from '../agronomie/EvolutionTab.jsx';
+// Rendu conditionnellement comme un onglet, mais hors de `renderTab` : il
+// echappait donc au chargement differe des 112 autres. Meme traitement ici.
+const EvolutionTab = React.lazy(() => import('../agronomie/EvolutionTab.jsx').then(m => ({ default: m.EvolutionTab })));
 const PlanificationTab = React.lazy(() => import('../agronomie/PlanificationTab.jsx').then(m => ({ default: m.PlanificationTab })));
 const ProductivityReportTab = React.lazy(() => import('../agronomie/ProductivityReportTab.jsx').then(m => ({ default: m.ProductivityReportTab })));
 import { __savedTab } from '../bootstrap.jsx';
@@ -160,6 +164,27 @@ import { generateMockData } from './generateMockData.jsx';
 import { getVisibleProfiles } from './getVisibleProfiles.jsx';
 import { invalidateCache } from './invalidateCache.jsx';
 import { useEffect, useMemo, useRef, useState } from './reactHooks.jsx';
+import { lazyGlobalComponent } from './lazyGlobalComponent.jsx';
+
+/* ─── ONGLETS LEGACY EN CHARGEMENT DIFFÉRÉ ───────────────────────────────
+   Ces onglets vivent encore dans public/components/ comme scripts classiques
+   publiés sur `window`. index.html les chargeait tous au démarrage — 767 Ko
+   pour des écrans qu'un utilisateur ouvre rarement. Ils sont désormais tirés
+   au premier rendu, comme les onglets modulaires.
+
+   L'ordre des sources compte : les dépendances d'abord. CampagneAnalytiqueTab
+   lit window.CampagneBudgetTab pendant son exécution, MagBCTab lit ses trois
+   dialogues. Les charger en parallèle laisserait passer un undefined. */
+const CampagneAnalytiqueTabLazy = lazyGlobalComponent('CampagneAnalytiqueTab', ['components/CampagneBudgetTab.js', 'components/PivotAnalytiqueGrid.js', 'components/CampagneAnalytiqueTab.js']);
+const MagBCTabLazy = lazyGlobalComponent('MagBCTab', ['components/BCDoublonDialog.js', 'components/ArticleConversionFields.js', 'components/MagBCScanModal.js', 'components/MagBCTab.js']);
+const ParcellesReferentielTabLazy = lazyGlobalComponent('ParcellesReferentielTab', ['components/ParcellesGroupesPanel.js', 'components/ParcellesReferentielTab.js']);
+const PrimesFixesTabLazy = lazyGlobalComponent('PrimesFixesTab', ['components/PrimesFixesTab.js']);
+const ConsoValoriseeTabLazy = lazyGlobalComponent('ConsoValoriseeTab', ['components/ConsoValoriseeTab.js']);
+const MagBdcReceptionTabLazy = lazyGlobalComponent('MagBdcReceptionTab', ['components/MagBdcReceptionTab.js']);
+const MagBonsCommandeTabLazy = lazyGlobalComponent('MagBonsCommandeTab', ['components/MagBonsCommandeTab.js']);
+const MagMappingConsoTabLazy = lazyGlobalComponent('MagMappingConsoTab', ['components/MagMappingConsoTab.js']);
+const MagStockFilesTabLazy = lazyGlobalComponent('MagStockFilesTab', ['components/MagStockFilesTab.js']);
+const ParcellesParamsTabLazy = lazyGlobalComponent('ParcellesParamsTab', ['components/ParcellesParamsTab.js']);
 
 // Main authenticated app — all hooks are safe here since this only mounts when auth is confirmed
         function AuthenticatedApp({ authUser, userProfile }) {
@@ -1021,12 +1046,12 @@ import { useEffect, useMemo, useRef, useState } from './reactHooks.jsx';
                                 {/* userRole : requis par le sous-onglet Budget (CampagneBudgetTab) pour
                                     n'ouvrir la saisie qu'aux profils DG/RH — même source que
                                     'parcelles_referentiel' ci-dessous. Le backend refuse de toute façon. */}
-                                {renderTab('campagne', window.CampagneAnalytiqueTab, { data, farmFilter, avoSubFilter, userRole: currentProfile }, 'Campagne')}
+                                {renderTab('campagne', CampagneAnalytiqueTabLazy, { data, farmFilter, avoSubFilter, userRole: currentProfile }, 'Campagne')}
                                 {renderTab('rh_equipes', EquipesTab, { data }, 'Équipes')}
                                 {renderTab('primes', PrimesTab, { data, farmFilter, avoSubFilter, initialPeriode: primesInitialPeriode, onInitialPeriodeConsumed: () => setPrimesInitialPeriode(null) }, 'Primes')}
                                 {renderTab('paie', PaieTab, { data, currentProfile }, 'Paie')}
-                                {renderTab('primes_fixes', window.PrimesFixesTab, {}, 'Primes Fixes')}
-                                {renderTab('parcelles_referentiel', window.ParcellesReferentielTab, { userRole: currentProfile }, 'Parcelles & Référentiel')}
+                                {renderTab('primes_fixes', PrimesFixesTabLazy, {}, 'Primes Fixes')}
+                                {renderTab('parcelles_referentiel', ParcellesReferentielTabLazy, { userRole: currentProfile }, 'Parcelles & Référentiel')}
                                 {renderTab('parametres', ParametresTab, { data }, 'Paramètres')}
                                 {renderTab('planification', PlanificationTab, { data }, 'Planification')}
                                 {renderTab('suivi', SuiviTab, { data }, 'Suivi')}
@@ -1048,8 +1073,8 @@ import { useEffect, useMemo, useRef, useState } from './reactHooks.jsx';
                                 {renderTab('qualite_marche_local', QualiteMarcheLocalTab, { data, userProfile: PROFILES.find(p => p.id === currentProfile) }, 'Marché Local')}
                                 {renderTab('mag_dashboard', MagDashboardStockTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Stock Dashboard')}
                                 {renderTab('mag_parc', MagParcTab, { data }, 'Parc')}
-                                {renderTab('mag_bdc_liste', window.MagBonsCommandeTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Bons de Commande')}
-                                {renderTab('mag_bdc_reception', window.MagBdcReceptionTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'BDC à réceptionner')}
+                                {renderTab('mag_bdc_liste', MagBonsCommandeTabLazy, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Bons de Commande')}
+                                {renderTab('mag_bdc_reception', MagBdcReceptionTabLazy, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'BDC à réceptionner')}
                                 {renderTab('mag_reception', MagReceptionTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile), setCurrentTab }, 'Bons de Réception')}
                                 {renderTab('mag_transfert', MagTransfertTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Transfert')}
                                 {renderTab('mag_sortie', MagSortieTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Sortie')}
@@ -1057,9 +1082,9 @@ import { useEffect, useMemo, useRef, useState } from './reactHooks.jsx';
                                 {renderTab('mag_fiche_stock', MagFicheStockTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Fiche de Stock')}
                                 {renderTab('mag_inventaire', MagInventaireTab, { currentProfile }, 'Inventaire')}
                                 {renderTab('mag_mouvements', MagMouvementsTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Mouvements')}
-                                {renderTab('mag_mapping_conso', window.MagMappingConsoTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile), authUser }, 'Mapping Parcelles Conso')}
-                                {renderTab('mag_parcelles_params', window.ParcellesParamsTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile), authUser }, 'Paramètres Parcelles')}
-                                {renderTab('mag_stock_files', window.MagStockFilesTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Soumission Fichier Stock')}
+                                {renderTab('mag_mapping_conso', MagMappingConsoTabLazy, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile), authUser }, 'Mapping Parcelles Conso')}
+                                {renderTab('mag_parcelles_params', ParcellesParamsTabLazy, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile), authUser }, 'Paramètres Parcelles')}
+                                {renderTab('mag_stock_files', MagStockFilesTabLazy, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Soumission Fichier Stock')}
                                 {renderTab('caporal_suivi', CaporalSuiviTab, { data, farmFilter, avoSubFilter, onNavigateMeteo: () => { setCurrentTab('chef_agronomie'); localStorage.setItem('lastTab', 'chef_agronomie'); } }, 'Suivi Caporal')}
                                 {renderTab('caporal_saisie', CaporalSaisieTab, { data, farmFilter, avoSubFilter }, 'Saisie Caporal')}
                                 {renderTab('caporal_tunnels', HorsRecolteSuiviTab, { data, farmFilter, avoSubFilter }, 'Tunnels')}
@@ -1108,9 +1133,9 @@ import { useEffect, useMemo, useRef, useState } from './reactHooks.jsx';
                                 {renderTab('achats_vente_plastique', AchatsVentePlastiqueTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Vente Plastique')}
                                 {renderTab('fin_factures', FinFacturesTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Factures Finance')}
                                 {renderTab('fin_paiements', FinPaiementsTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Paiements Finance')}
-                                {renderTab('mag_bc', window.MagBCTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Bons Consommation')}
-                                {renderTab('mag_bc_engrais', window.MagBCTab, { type: 'engrais', currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'BC Engrais')}
-                                {renderTab('mag_bc_phyto', window.MagBCTab, { type: 'pesticide', currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'BC Phyto')}
+                                {renderTab('mag_bc', MagBCTabLazy, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Bons Consommation')}
+                                {renderTab('mag_bc_engrais', MagBCTabLazy, { type: 'engrais', currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'BC Engrais')}
+                                {renderTab('mag_bc_phyto', MagBCTabLazy, { type: 'pesticide', currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'BC Phyto')}
                                 {renderTab('chef_agronomie', ChefAgronomieTab, { data, farmFilter: avoSubFilter || farmFilter, getAlias, getFerme, currentProfile, profileData: PROFILES.find(p => p.id === currentProfile), userProfile }, 'Agronomie Chef')}
                                 {renderTab('chef_tracking', ChefTrackingTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Suivi Commandes')}
                                 {renderTab('chef_da', ChefDATab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'DA Chef')}
@@ -1128,7 +1153,13 @@ import { useEffect, useMemo, useRef, useState } from './reactHooks.jsx';
                                 {renderTab('agro_dashboard', AgroDashboardTab, { data, getAlias }, 'Agro Dashboard')}
                                 {renderTab('agro_fertilisation', AgroFertilisationTab, { data, getAlias, getFerme }, 'Fertilisation')}
                                 {renderTab('agro_phyto', AgroPhytoTab, { data, getAlias, getFerme }, 'Phyto')}
-                                {currentTab === 'agro_conso_valorisee' && window.ConsoValoriseeTab && <TabErrorBoundary name="Engrais & Pesticides" key="conso-valorisee-eb">{React.createElement(window.ConsoValoriseeTab, { getAlias, currentProfile, fermesDispo: ['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'BAHIA', 'Avocatier'] })}</TabErrorBoundary>}
+                                {/* Seul onglet rendu hors de `renderTab` : il lui faut donc son
+                                    propre Suspense, sinon le composant différé lèverait au rendu.
+                                    La garde `&& Composant` d'origine testait la présence du global ;
+                                    elle n'a plus de sens sur un composant différé, dont l'absence
+                                    éventuelle se manifeste au chargement et tombe dans la frontière
+                                    d'erreur ci-dessous. */}
+                                {currentTab === 'agro_conso_valorisee' && <TabErrorBoundary name="Engrais & Pesticides" key="conso-valorisee-eb"><React.Suspense fallback={<div style={{padding:'32px',textAlign:'center',color:'var(--muted, #888)'}}>Chargement du module…</div>}>{React.createElement(ConsoValoriseeTabLazy, { getAlias, currentProfile, fermesDispo: ['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'BAHIA', 'Avocatier'] })}</React.Suspense></TabErrorBoundary>}
                                 {renderTab('agro_irrigation', AgroIrrigationTab, { data, getAlias, getFerme }, 'Irrigation')}
                                 {renderTab('agro_composition', AgroCompositionTab, { data }, 'Composition')}
                                 {renderTab('agro_parcelles', AgroParcellesTab, { data, getAlias, updateAlias, parcAliases, parcFermes, updateFerme }, 'Parcelles')}
@@ -1140,8 +1171,8 @@ import { useEffect, useMemo, useRef, useState } from './reactHooks.jsx';
                                 {renderTab('caisse', CaisseTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile), userProfile }, 'Gestion de Caisse')}
                                 {renderTab('coming_soon', ComingSoonTab, {}, 'Bientôt Disponible')}
                                 {currentTab === 'bug_reports' && window.BugReportsAdmin && <TabErrorBoundary name="Bugs signalés" key="bug-reports-eb">{React.createElement(window.BugReportsAdmin, { currentProfile })}</TabErrorBoundary>}
-                                {currentTab === 'evolution' && <TabErrorBoundary name="Évolutions" key="evolution-eb"><EvolutionTab key={refreshKey + '-' + currentProfile} currentProfile={currentProfile} profileData={PROFILES.find(p => p.id === currentProfile)} userProfile={userProfile} isDG={userProfile.profileId === 'dg' || currentProfile === 'dg'} /></TabErrorBoundary>}
-                                {currentTab === 'admin_users' && userProfile.role === 'admin' && <TabErrorBoundary name="Admin" key="admin-eb"><AdminConsoleTab key={refreshKey} authUser={authUser} userProfile={userProfile} /></TabErrorBoundary>}
+                                {currentTab === 'evolution' && <TabErrorBoundary name="Évolutions" key="evolution-eb"><React.Suspense fallback={<div style={{padding:'32px',textAlign:'center',color:'var(--muted, #888)'}}>Chargement du module…</div>}><EvolutionTab key={refreshKey + '-' + currentProfile} currentProfile={currentProfile} profileData={PROFILES.find(p => p.id === currentProfile)} userProfile={userProfile} isDG={userProfile.profileId === 'dg' || currentProfile === 'dg'} /></React.Suspense></TabErrorBoundary>}
+                                {currentTab === 'admin_users' && userProfile.role === 'admin' && <TabErrorBoundary name="Admin" key="admin-eb"><React.Suspense fallback={<div style={{padding:'32px',textAlign:'center',color:'var(--muted, #888)'}}>Chargement du module…</div>}><AdminConsoleTab key={refreshKey} authUser={authUser} userProfile={userProfile} /></React.Suspense></TabErrorBoundary>}
                             </div>
                         </div>
                     </div>
