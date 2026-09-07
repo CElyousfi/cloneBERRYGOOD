@@ -1,0 +1,1 @@
+import{j as n}from"../app.modular.js";function t(o){const i=window.PointageValidationView;return i?n.jsx(i,{...o}):n.jsx("div",{style:{padding:24,color:"var(--red)"},children:"Module Validation du pointage indisponible."})}export{t as PointageValidationViewWrapper};

@@ -1,0 +1,1 @@
+function n(t){return t==="comptant_virement"||t==="virement_bancaire"?"Comptant – Virement":t==="comptant_especes"||t==="caisse"?"Comptant – Espèces":t==="facilite"||t==="comptant"?"Facilité":t||"—"}export{n as f};

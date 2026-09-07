@@ -1,0 +1,1 @@
+const a=typeof window<"u"&&window.PaieUtils||{},e=a.PAIE_BAREMES_DEFAULT||{smagBrutJournalier:88.58,smagNetJournalier:82.61,joursParMois:26,tauxChargesPatronales:.1926,tauxCotisationsSalariales:.0674,paliers:[{seuilJours:624,pourcentage:5,label:"≥ 2 ans"},{seuilJours:1560,pourcentage:10,label:"≥ 5 ans"},{seuilJours:3120,pourcentage:15,label:"≥ 10 ans"}]};export{e as P};

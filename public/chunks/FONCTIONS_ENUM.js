@@ -1,0 +1,1 @@
+const e=[{key:"TRANSPORT FRUIT",label:"🚚 Transport Fruit",defaultUnite:"VOYAGES"},{key:"TRANSPORT EMBALLAGES",label:"📦 Transport Emballages",defaultUnite:"VOYAGES"},{key:"TRAX / JCB",label:"🚧 Trax / JCB",defaultUnite:"HEURE"},{key:"LOCATION TRACTEUR",label:"🚜 Location Tracteur",defaultUnite:"JOUR"}];export{e as F};

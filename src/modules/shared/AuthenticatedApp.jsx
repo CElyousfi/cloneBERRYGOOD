@@ -1,126 +1,140 @@
 /* Migré depuis public/app.jsx — extraction verbatim (non-régression).
    Module: shared | Déclaration(s): AuthenticatedApp */
-import { AchatsAnalysesFoliairesTab } from '../achats/AchatsAnalysesFoliairesTab.jsx';
-import { AchatsBDCTab } from '../achats/AchatsBDCTab.jsx';
-import { AchatsBonApportTab } from '../achats/AchatsBonApportTab.jsx';
-import { AchatsCatalogueTab } from '../achats/AchatsCatalogueTab.jsx';
-import { AchatsConsultationTab } from '../achats/AchatsConsultationTab.jsx';
-import { AchatsDATab } from '../achats/AchatsDATab.jsx';
-import { AchatsDashboardTab } from '../achats/AchatsDashboardTab.jsx';
-import { AchatsFacturesTab } from '../achats/AchatsFacturesTab.jsx';
-import { AchatsFournisseursTab } from '../achats/AchatsFournisseursTab.jsx';
-import { AchatsPaiementsTab } from '../achats/AchatsPaiementsTab.jsx';
-import { AchatsRapprochementTab } from '../achats/AchatsRapprochementTab.jsx';
-import { AchatsReceptionsValoriserTab } from '../achats/AchatsReceptionsValoriserTab.jsx';
-import { AchatsScanBLTab } from '../achats/AchatsScanBLTab.jsx';
-import { AchatsScanFacturesTab } from '../achats/AchatsScanFacturesTab.jsx';
-import { AchatsVentePlastiqueTab } from '../achats/AchatsVentePlastiqueTab.jsx';
+/* ─── ONGLETS EN CHARGEMENT DIFFÉRÉ ───────────────────────────────────────
+   Les 112 onglets sont chargés à la demande, pas au boot. `renderTab` ne rend
+   que l'onglet courant (`if (currentTab !== tabId) return null`) : les 111 autres
+   n'ont aucune raison d'être dans le bundle d'entrée. Chacun devient un chunk que
+   Vite émet séparément et que le navigateur ne va chercher qu'à l'ouverture.
+
+   `React.lazy` attend un export DEFAULT ; les modules exposent un export nommé,
+   d'où le `.then(m => ({ default: m.X }))`. React est une globale (UMD via CDN,
+   cf. index.html) et ces scripts s'exécutent avant le module : `React.lazy` est
+   donc défini au moment où ces constantes sont évaluées.
+
+   Le repli de `Suspense` et la frontière d'erreur vivent tous deux dans
+   `renderTab` — un onglet qui tarde affiche un message, un onglet qui casse
+   n'emporte pas l'application (règle 5 de CLAUDE.md). */
+const AchatsAnalysesFoliairesTab = React.lazy(() => import('../achats/AchatsAnalysesFoliairesTab.jsx').then(m => ({ default: m.AchatsAnalysesFoliairesTab })));
+const AchatsBDCTab = React.lazy(() => import('../achats/AchatsBDCTab.jsx').then(m => ({ default: m.AchatsBDCTab })));
+const AchatsBonApportTab = React.lazy(() => import('../achats/AchatsBonApportTab.jsx').then(m => ({ default: m.AchatsBonApportTab })));
+const AchatsCatalogueTab = React.lazy(() => import('../achats/AchatsCatalogueTab.jsx').then(m => ({ default: m.AchatsCatalogueTab })));
+const AchatsConsultationTab = React.lazy(() => import('../achats/AchatsConsultationTab.jsx').then(m => ({ default: m.AchatsConsultationTab })));
+const AchatsDATab = React.lazy(() => import('../achats/AchatsDATab.jsx').then(m => ({ default: m.AchatsDATab })));
+const AchatsDashboardTab = React.lazy(() => import('../achats/AchatsDashboardTab.jsx').then(m => ({ default: m.AchatsDashboardTab })));
+const AchatsFacturesTab = React.lazy(() => import('../achats/AchatsFacturesTab.jsx').then(m => ({ default: m.AchatsFacturesTab })));
+const AchatsFournisseursTab = React.lazy(() => import('../achats/AchatsFournisseursTab.jsx').then(m => ({ default: m.AchatsFournisseursTab })));
+const AchatsPaiementsTab = React.lazy(() => import('../achats/AchatsPaiementsTab.jsx').then(m => ({ default: m.AchatsPaiementsTab })));
+const AchatsRapprochementTab = React.lazy(() => import('../achats/AchatsRapprochementTab.jsx').then(m => ({ default: m.AchatsRapprochementTab })));
+const AchatsReceptionsValoriserTab = React.lazy(() => import('../achats/AchatsReceptionsValoriserTab.jsx').then(m => ({ default: m.AchatsReceptionsValoriserTab })));
+const AchatsScanBLTab = React.lazy(() => import('../achats/AchatsScanBLTab.jsx').then(m => ({ default: m.AchatsScanBLTab })));
+const AchatsScanFacturesTab = React.lazy(() => import('../achats/AchatsScanFacturesTab.jsx').then(m => ({ default: m.AchatsScanFacturesTab })));
+const AchatsVentePlastiqueTab = React.lazy(() => import('../achats/AchatsVentePlastiqueTab.jsx').then(m => ({ default: m.AchatsVentePlastiqueTab })));
 import { AdminConsoleTab } from '../admin/AdminConsoleTab.jsx';
-import { DGAdoptionTab } from '../admin/DGAdoptionTab.jsx';
-import { DGMeetingCRTab } from '../admin/DGMeetingCRTab.jsx';
-import { DGParametresTab } from '../admin/DGParametresTab.jsx';
-import { DGSignatureTab } from '../admin/DGSignatureTab.jsx';
-import { DGTasksTab } from '../admin/DGTasksTab.jsx';
-import { DGValidationsTab } from '../admin/DGValidationsTab.jsx';
-import { ParametresTab } from '../admin/ParametresTab.jsx';
+const DGAdoptionTab = React.lazy(() => import('../admin/DGAdoptionTab.jsx').then(m => ({ default: m.DGAdoptionTab })));
+const DGMeetingCRTab = React.lazy(() => import('../admin/DGMeetingCRTab.jsx').then(m => ({ default: m.DGMeetingCRTab })));
+const DGParametresTab = React.lazy(() => import('../admin/DGParametresTab.jsx').then(m => ({ default: m.DGParametresTab })));
+const DGSignatureTab = React.lazy(() => import('../admin/DGSignatureTab.jsx').then(m => ({ default: m.DGSignatureTab })));
+const DGTasksTab = React.lazy(() => import('../admin/DGTasksTab.jsx').then(m => ({ default: m.DGTasksTab })));
+const DGValidationsTab = React.lazy(() => import('../admin/DGValidationsTab.jsx').then(m => ({ default: m.DGValidationsTab })));
+const ParametresTab = React.lazy(() => import('../admin/ParametresTab.jsx').then(m => ({ default: m.ParametresTab })));
 import { TutorialMenu } from '../admin/TutorialMenu.jsx';
 import { getTutorials } from '../admin/getTutorials.jsx';
 import { useTutorialEngine } from '../admin/useTutorialEngine.jsx';
-import { AgroAvancementTab } from '../agronomie/AgroAvancementTab.jsx';
-import { AgroCompositionTab } from '../agronomie/AgroCompositionTab.jsx';
-import { AgroDashboardTab } from '../agronomie/AgroDashboardTab.jsx';
-import { AgroFarmroadTab } from '../agronomie/AgroFarmroadTab.jsx';
-import { AgroFertilisationTab } from '../agronomie/AgroFertilisationTab.jsx';
-import { AgroForecastTab } from '../agronomie/AgroForecastTab.jsx';
-import { AgroGrowthTab } from '../agronomie/AgroGrowthTab.jsx';
-import { AgroHarvestPredictionTab } from '../agronomie/AgroHarvestPredictionTab.jsx';
-import { AgroIrrigationTab } from '../agronomie/AgroIrrigationTab.jsx';
-import { AgroParcellesTab } from '../agronomie/AgroParcellesTab.jsx';
-import { AgroPhytoTab } from '../agronomie/AgroPhytoTab.jsx';
+const AgroAvancementTab = React.lazy(() => import('../agronomie/AgroAvancementTab.jsx').then(m => ({ default: m.AgroAvancementTab })));
+const AgroCompositionTab = React.lazy(() => import('../agronomie/AgroCompositionTab.jsx').then(m => ({ default: m.AgroCompositionTab })));
+const AgroDashboardTab = React.lazy(() => import('../agronomie/AgroDashboardTab.jsx').then(m => ({ default: m.AgroDashboardTab })));
+const AgroFarmroadTab = React.lazy(() => import('../agronomie/AgroFarmroadTab.jsx').then(m => ({ default: m.AgroFarmroadTab })));
+const AgroFertilisationTab = React.lazy(() => import('../agronomie/AgroFertilisationTab.jsx').then(m => ({ default: m.AgroFertilisationTab })));
+const AgroForecastTab = React.lazy(() => import('../agronomie/AgroForecastTab.jsx').then(m => ({ default: m.AgroForecastTab })));
+const AgroGrowthTab = React.lazy(() => import('../agronomie/AgroGrowthTab.jsx').then(m => ({ default: m.AgroGrowthTab })));
+const AgroHarvestPredictionTab = React.lazy(() => import('../agronomie/AgroHarvestPredictionTab.jsx').then(m => ({ default: m.AgroHarvestPredictionTab })));
+const AgroIrrigationTab = React.lazy(() => import('../agronomie/AgroIrrigationTab.jsx').then(m => ({ default: m.AgroIrrigationTab })));
+const AgroParcellesTab = React.lazy(() => import('../agronomie/AgroParcellesTab.jsx').then(m => ({ default: m.AgroParcellesTab })));
+const AgroPhytoTab = React.lazy(() => import('../agronomie/AgroPhytoTab.jsx').then(m => ({ default: m.AgroPhytoTab })));
 import { EvolutionTab } from '../agronomie/EvolutionTab.jsx';
-import { PlanificationTab } from '../agronomie/PlanificationTab.jsx';
-import { ProductivityReportTab } from '../agronomie/ProductivityReportTab.jsx';
+const PlanificationTab = React.lazy(() => import('../agronomie/PlanificationTab.jsx').then(m => ({ default: m.PlanificationTab })));
+const ProductivityReportTab = React.lazy(() => import('../agronomie/ProductivityReportTab.jsx').then(m => ({ default: m.ProductivityReportTab })));
 import { __savedTab } from '../bootstrap.jsx';
-import { CaisseTab } from '../caisse/CaisseTab.jsx';
-import { BudgetVsReelTab } from '../finance/BudgetVsReelTab.jsx';
-import { FinBDCTab } from '../finance/FinBDCTab.jsx';
-import { FinCATab } from '../finance/FinCATab.jsx';
-import { FinCarburantTab } from '../finance/FinCarburantTab.jsx';
-import { FinCodesAnalytiquesTab } from '../finance/FinCodesAnalytiquesTab.jsx';
-import { FinDashboardTab } from '../finance/FinDashboardTab.jsx';
-import { FinDeleteArticlesTab } from '../finance/FinDeleteArticlesTab.jsx';
-import { FinFacturesTab } from '../finance/FinFacturesTab.jsx';
-import { FinLiquidationsTab } from '../finance/FinLiquidationsTab.jsx';
-import { FinOjraTab } from '../finance/FinOjraTab.jsx';
-import { FinPaiementsTab } from '../finance/FinPaiementsTab.jsx';
-import { FinPlantsTab } from '../finance/FinPlantsTab.jsx';
-import { FinStockTab } from '../finance/FinStockTab.jsx';
-import { FinTelecomTab } from '../finance/FinTelecomTab.jsx';
-import { FinTresorerieTab } from '../finance/FinTresorerieTab.jsx';
-import { FinVirementsTab } from '../finance/FinVirementsTab.jsx';
-import { FinanceMarcheLocalTab } from '../finance/FinanceMarcheLocalTab.jsx';
-import { MagDashboardStockTab } from '../magasin/MagDashboardStockTab.jsx';
-import { MagFicheStockTab } from '../magasin/MagFicheStockTab.jsx';
-import { MagInventaireTab } from '../magasin/MagInventaireTab.jsx';
-import { MagMouvementsTab } from '../magasin/MagMouvementsTab.jsx';
-import { MagParcTab } from '../magasin/MagParcTab.jsx';
-import { MagReceptionTab } from '../magasin/MagReceptionTab.jsx';
-import { MagSortieTab } from '../magasin/MagSortieTab.jsx';
-import { MagStockIntrantsTab } from '../magasin/MagStockIntrantsTab.jsx';
-import { MagTransfertTab } from '../magasin/MagTransfertTab.jsx';
-import { ChefAgronomieTab } from '../qualite/ChefAgronomieTab.jsx';
-import { ChefDATab } from '../qualite/ChefDATab.jsx';
-import { ChefTrackingTab } from '../qualite/ChefTrackingTab.jsx';
-import { ChefValidationBonsTab } from '../qualite/ChefValidationBonsTab.jsx';
-import { ChefValidationsTab } from '../qualite/ChefValidationsTab.jsx';
-import { DQRDailyTab } from '../qualite/DQRDailyTab.jsx';
-import { QualiteBonsApportTab } from '../qualite/QualiteBonsApportTab.jsx';
-import { QualiteBrixTab } from '../qualite/QualiteBrixTab.jsx';
-import { QualiteDashboardTab } from '../qualite/QualiteDashboardTab.jsx';
-import { QualiteEcartsTab } from '../qualite/QualiteEcartsTab.jsx';
-import { QualiteExpeditionsTab } from '../qualite/QualiteExpeditionsTab.jsx';
-import { QualiteHistoriqueTab } from '../qualite/QualiteHistoriqueTab.jsx';
-import { QualiteInspectionsTab } from '../qualite/QualiteInspectionsTab.jsx';
-import { QualiteLiquidationsTab } from '../qualite/QualiteLiquidationsTab.jsx';
-import { QualiteMarcheLocalTab } from '../qualite/QualiteMarcheLocalTab.jsx';
-import { QualitePFQInterneTab } from '../qualite/QualitePFQInterneTab.jsx';
-import { QualiteProductionTab } from '../qualite/QualiteProductionTab.jsx';
-import { QualiteReconciliationTab } from '../qualite/QualiteReconciliationTab.jsx';
-import { QualiteSuiviCalibreTab } from '../qualite/QualiteSuiviCalibreTab.jsx';
-import { QualiteValidationBonsTab } from '../qualite/QualiteValidationBonsTab.jsx';
-import { CaporalHistoriqueTab } from '../recolte/CaporalHistoriqueTab.jsx';
-import { CaporalSaisieTab } from '../recolte/CaporalSaisieTab.jsx';
-import { CaporalSuiviTab } from '../recolte/CaporalSuiviTab.jsx';
-import { CoutRecolteTab } from '../recolte/CoutRecolteTab.jsx';
-import { HorsRecolteSuiviTab } from '../recolte/HorsRecolteSuiviTab.jsx';
-import { HorsRecolteTab } from '../recolte/HorsRecolteTab.jsx';
-import { PrimesTab } from '../recolte/PrimesTab.jsx';
-import { RecolteTab } from '../recolte/RecolteTab.jsx';
-import { EquipesTab } from '../rh/EquipesTab.jsx';
-import { PaieTab } from '../rh/PaieTab.jsx';
-import { PointageDiversTab } from '../rh/PointageDiversTab.jsx';
-import { PointageTab } from '../rh/PointageTab.jsx';
-import { PointageValidationViewWrapper } from '../rh/PointageValidationViewWrapper.jsx';
-import { QuinzaineTab } from '../rh/QuinzaineTab.jsx';
-import { SuiviPointageTab } from '../rh/SuiviPointageTab.jsx';
-import { SuiviTab } from '../rh/SuiviTab.jsx';
-import { SecurityEnvoisWATab } from '../securite/SecurityEnvoisWATab.jsx';
-import { SecurityIncidentsTab } from '../securite/SecurityIncidentsTab.jsx';
-import { SecurityRegistreTab } from '../securite/SecurityRegistreTab.jsx';
-import { SecurityScanRegistreTab } from '../securite/SecurityScanRegistreTab.jsx';
-import { SecurityTunnelsTab } from '../securite/SecurityTunnelsTab.jsx';
-import { IrrigationIntelligenceTab } from '../technique/IrrigationIntelligenceTab.jsx';
-import { MeteoTab } from '../technique/MeteoTab.jsx';
-import { StationnaireAnalyseTab } from '../technique/StationnaireAnalyseTab.jsx';
-import { StationnaireHistoriqueTab } from '../technique/StationnaireHistoriqueTab.jsx';
-import { StationnaireImportScanTab } from '../technique/StationnaireImportScanTab.jsx';
-import { StationnaireIrrigationTab } from '../technique/StationnaireIrrigationTab.jsx';
+const CaisseTab = React.lazy(() => import('../caisse/CaisseTab.jsx').then(m => ({ default: m.CaisseTab })));
+const BudgetVsReelTab = React.lazy(() => import('../finance/BudgetVsReelTab.jsx').then(m => ({ default: m.BudgetVsReelTab })));
+const FinBDCTab = React.lazy(() => import('../finance/FinBDCTab.jsx').then(m => ({ default: m.FinBDCTab })));
+const FinCATab = React.lazy(() => import('../finance/FinCATab.jsx').then(m => ({ default: m.FinCATab })));
+const FinCarburantTab = React.lazy(() => import('../finance/FinCarburantTab.jsx').then(m => ({ default: m.FinCarburantTab })));
+const FinCodesAnalytiquesTab = React.lazy(() => import('../finance/FinCodesAnalytiquesTab.jsx').then(m => ({ default: m.FinCodesAnalytiquesTab })));
+const FinDashboardTab = React.lazy(() => import('../finance/FinDashboardTab.jsx').then(m => ({ default: m.FinDashboardTab })));
+const FinDeleteArticlesTab = React.lazy(() => import('../finance/FinDeleteArticlesTab.jsx').then(m => ({ default: m.FinDeleteArticlesTab })));
+const FinFacturesTab = React.lazy(() => import('../finance/FinFacturesTab.jsx').then(m => ({ default: m.FinFacturesTab })));
+const FinLiquidationsTab = React.lazy(() => import('../finance/FinLiquidationsTab.jsx').then(m => ({ default: m.FinLiquidationsTab })));
+const FinOjraTab = React.lazy(() => import('../finance/FinOjraTab.jsx').then(m => ({ default: m.FinOjraTab })));
+const FinPaiementsTab = React.lazy(() => import('../finance/FinPaiementsTab.jsx').then(m => ({ default: m.FinPaiementsTab })));
+const FinPlantsTab = React.lazy(() => import('../finance/FinPlantsTab.jsx').then(m => ({ default: m.FinPlantsTab })));
+const FinStockTab = React.lazy(() => import('../finance/FinStockTab.jsx').then(m => ({ default: m.FinStockTab })));
+const FinTelecomTab = React.lazy(() => import('../finance/FinTelecomTab.jsx').then(m => ({ default: m.FinTelecomTab })));
+const FinTresorerieTab = React.lazy(() => import('../finance/FinTresorerieTab.jsx').then(m => ({ default: m.FinTresorerieTab })));
+const FinVirementsTab = React.lazy(() => import('../finance/FinVirementsTab.jsx').then(m => ({ default: m.FinVirementsTab })));
+const FinanceMarcheLocalTab = React.lazy(() => import('../finance/FinanceMarcheLocalTab.jsx').then(m => ({ default: m.FinanceMarcheLocalTab })));
+const MagDashboardStockTab = React.lazy(() => import('../magasin/MagDashboardStockTab.jsx').then(m => ({ default: m.MagDashboardStockTab })));
+const MagFicheStockTab = React.lazy(() => import('../magasin/MagFicheStockTab.jsx').then(m => ({ default: m.MagFicheStockTab })));
+const MagInventaireTab = React.lazy(() => import('../magasin/MagInventaireTab.jsx').then(m => ({ default: m.MagInventaireTab })));
+const MagMouvementsTab = React.lazy(() => import('../magasin/MagMouvementsTab.jsx').then(m => ({ default: m.MagMouvementsTab })));
+const MagParcTab = React.lazy(() => import('../magasin/MagParcTab.jsx').then(m => ({ default: m.MagParcTab })));
+const MagReceptionTab = React.lazy(() => import('../magasin/MagReceptionTab.jsx').then(m => ({ default: m.MagReceptionTab })));
+const MagSortieTab = React.lazy(() => import('../magasin/MagSortieTab.jsx').then(m => ({ default: m.MagSortieTab })));
+const MagStockIntrantsTab = React.lazy(() => import('../magasin/MagStockIntrantsTab.jsx').then(m => ({ default: m.MagStockIntrantsTab })));
+const MagTransfertTab = React.lazy(() => import('../magasin/MagTransfertTab.jsx').then(m => ({ default: m.MagTransfertTab })));
+const ChefAgronomieTab = React.lazy(() => import('../qualite/ChefAgronomieTab.jsx').then(m => ({ default: m.ChefAgronomieTab })));
+const ChefDATab = React.lazy(() => import('../qualite/ChefDATab.jsx').then(m => ({ default: m.ChefDATab })));
+const ChefTrackingTab = React.lazy(() => import('../qualite/ChefTrackingTab.jsx').then(m => ({ default: m.ChefTrackingTab })));
+const ChefValidationBonsTab = React.lazy(() => import('../qualite/ChefValidationBonsTab.jsx').then(m => ({ default: m.ChefValidationBonsTab })));
+const ChefValidationsTab = React.lazy(() => import('../qualite/ChefValidationsTab.jsx').then(m => ({ default: m.ChefValidationsTab })));
+const DQRDailyTab = React.lazy(() => import('../qualite/DQRDailyTab.jsx').then(m => ({ default: m.DQRDailyTab })));
+const QualiteBonsApportTab = React.lazy(() => import('../qualite/QualiteBonsApportTab.jsx').then(m => ({ default: m.QualiteBonsApportTab })));
+const QualiteBrixTab = React.lazy(() => import('../qualite/QualiteBrixTab.jsx').then(m => ({ default: m.QualiteBrixTab })));
+const QualiteDashboardTab = React.lazy(() => import('../qualite/QualiteDashboardTab.jsx').then(m => ({ default: m.QualiteDashboardTab })));
+const QualiteEcartsTab = React.lazy(() => import('../qualite/QualiteEcartsTab.jsx').then(m => ({ default: m.QualiteEcartsTab })));
+const QualiteExpeditionsTab = React.lazy(() => import('../qualite/QualiteExpeditionsTab.jsx').then(m => ({ default: m.QualiteExpeditionsTab })));
+const QualiteHistoriqueTab = React.lazy(() => import('../qualite/QualiteHistoriqueTab.jsx').then(m => ({ default: m.QualiteHistoriqueTab })));
+const QualiteInspectionsTab = React.lazy(() => import('../qualite/QualiteInspectionsTab.jsx').then(m => ({ default: m.QualiteInspectionsTab })));
+const QualiteLiquidationsTab = React.lazy(() => import('../qualite/QualiteLiquidationsTab.jsx').then(m => ({ default: m.QualiteLiquidationsTab })));
+const QualiteMarcheLocalTab = React.lazy(() => import('../qualite/QualiteMarcheLocalTab.jsx').then(m => ({ default: m.QualiteMarcheLocalTab })));
+const QualitePFQInterneTab = React.lazy(() => import('../qualite/QualitePFQInterneTab.jsx').then(m => ({ default: m.QualitePFQInterneTab })));
+const QualiteProductionTab = React.lazy(() => import('../qualite/QualiteProductionTab.jsx').then(m => ({ default: m.QualiteProductionTab })));
+const QualiteReconciliationTab = React.lazy(() => import('../qualite/QualiteReconciliationTab.jsx').then(m => ({ default: m.QualiteReconciliationTab })));
+const QualiteSuiviCalibreTab = React.lazy(() => import('../qualite/QualiteSuiviCalibreTab.jsx').then(m => ({ default: m.QualiteSuiviCalibreTab })));
+const QualiteValidationBonsTab = React.lazy(() => import('../qualite/QualiteValidationBonsTab.jsx').then(m => ({ default: m.QualiteValidationBonsTab })));
+const CaporalHistoriqueTab = React.lazy(() => import('../recolte/CaporalHistoriqueTab.jsx').then(m => ({ default: m.CaporalHistoriqueTab })));
+const CaporalSaisieTab = React.lazy(() => import('../recolte/CaporalSaisieTab.jsx').then(m => ({ default: m.CaporalSaisieTab })));
+const CaporalSuiviTab = React.lazy(() => import('../recolte/CaporalSuiviTab.jsx').then(m => ({ default: m.CaporalSuiviTab })));
+const CoutRecolteTab = React.lazy(() => import('../recolte/CoutRecolteTab.jsx').then(m => ({ default: m.CoutRecolteTab })));
+const HorsRecolteSuiviTab = React.lazy(() => import('../recolte/HorsRecolteSuiviTab.jsx').then(m => ({ default: m.HorsRecolteSuiviTab })));
+const HorsRecolteTab = React.lazy(() => import('../recolte/HorsRecolteTab.jsx').then(m => ({ default: m.HorsRecolteTab })));
+const PrimesTab = React.lazy(() => import('../recolte/PrimesTab.jsx').then(m => ({ default: m.PrimesTab })));
+const RecolteTab = React.lazy(() => import('../recolte/RecolteTab.jsx').then(m => ({ default: m.RecolteTab })));
+const EquipesTab = React.lazy(() => import('../rh/EquipesTab.jsx').then(m => ({ default: m.EquipesTab })));
+const PaieTab = React.lazy(() => import('../rh/PaieTab.jsx').then(m => ({ default: m.PaieTab })));
+const PointageDiversTab = React.lazy(() => import('../rh/PointageDiversTab.jsx').then(m => ({ default: m.PointageDiversTab })));
+const PointageTab = React.lazy(() => import('../rh/PointageTab.jsx').then(m => ({ default: m.PointageTab })));
+const PointageValidationViewWrapper = React.lazy(() => import('../rh/PointageValidationViewWrapper.jsx').then(m => ({ default: m.PointageValidationViewWrapper })));
+const QuinzaineTab = React.lazy(() => import('../rh/QuinzaineTab.jsx').then(m => ({ default: m.QuinzaineTab })));
+const SuiviPointageTab = React.lazy(() => import('../rh/SuiviPointageTab.jsx').then(m => ({ default: m.SuiviPointageTab })));
+const SuiviTab = React.lazy(() => import('../rh/SuiviTab.jsx').then(m => ({ default: m.SuiviTab })));
+const SecurityEnvoisWATab = React.lazy(() => import('../securite/SecurityEnvoisWATab.jsx').then(m => ({ default: m.SecurityEnvoisWATab })));
+const SecurityIncidentsTab = React.lazy(() => import('../securite/SecurityIncidentsTab.jsx').then(m => ({ default: m.SecurityIncidentsTab })));
+const SecurityRegistreTab = React.lazy(() => import('../securite/SecurityRegistreTab.jsx').then(m => ({ default: m.SecurityRegistreTab })));
+const SecurityScanRegistreTab = React.lazy(() => import('../securite/SecurityScanRegistreTab.jsx').then(m => ({ default: m.SecurityScanRegistreTab })));
+const SecurityTunnelsTab = React.lazy(() => import('../securite/SecurityTunnelsTab.jsx').then(m => ({ default: m.SecurityTunnelsTab })));
+const IrrigationIntelligenceTab = React.lazy(() => import('../technique/IrrigationIntelligenceTab.jsx').then(m => ({ default: m.IrrigationIntelligenceTab })));
+const MeteoTab = React.lazy(() => import('../technique/MeteoTab.jsx').then(m => ({ default: m.MeteoTab })));
+const StationnaireAnalyseTab = React.lazy(() => import('../technique/StationnaireAnalyseTab.jsx').then(m => ({ default: m.StationnaireAnalyseTab })));
+const StationnaireHistoriqueTab = React.lazy(() => import('../technique/StationnaireHistoriqueTab.jsx').then(m => ({ default: m.StationnaireHistoriqueTab })));
+const StationnaireImportScanTab = React.lazy(() => import('../technique/StationnaireImportScanTab.jsx').then(m => ({ default: m.StationnaireImportScanTab })));
+const StationnaireIrrigationTab = React.lazy(() => import('../technique/StationnaireIrrigationTab.jsx').then(m => ({ default: m.StationnaireIrrigationTab })));
 import { fetchMeteoblueData } from '../technique/fetchMeteoblueData.jsx';
 import { transformMeteoblueData } from '../technique/transformMeteoblueData.jsx';
 import { AVO_SUB_FARMS } from './AVO_SUB_FARMS.jsx';
-import { ComingSoonTab } from './ComingSoonTab.jsx';
-import { DashboardAssocieTab } from './DashboardAssocieTab.jsx';
-import { DashboardTab } from './DashboardTab.jsx';
+const ComingSoonTab = React.lazy(() => import('./ComingSoonTab.jsx').then(m => ({ default: m.ComingSoonTab })));
+const DashboardAssocieTab = React.lazy(() => import('./DashboardAssocieTab.jsx').then(m => ({ default: m.DashboardAssocieTab })));
+const DashboardTab = React.lazy(() => import('./DashboardTab.jsx').then(m => ({ default: m.DashboardTab })));
 import { FARMS } from './FARMS.jsx';
 import { FARM_NAMES } from './FARM_NAMES.jsx';
 import { InstallGuide } from './InstallGuide.jsx';
@@ -705,7 +719,17 @@ import { useEffect, useMemo, useRef, useState } from './reactHooks.jsx';
             const renderTab = (tabId, Component, props, label) => {
                 if (currentTab !== tabId) return null;
                 if (!Component) return null;
-                return <TabErrorBoundary name={label || tabId} key={tabId + '-eb'}><Component key={refreshKey} {...props} /></TabErrorBoundary>;
+                // Ordre volontaire : la frontière d'erreur ENVELOPPE le Suspense.
+                // Un chunk qui échoue à se charger rejette pendant le rendu — c'est
+                // l'ErrorBoundary qui doit l'attraper, pas le Suspense, sinon
+                // l'onglet resterait bloqué sur son message de chargement.
+                return (
+                    <TabErrorBoundary name={label || tabId} key={tabId + '-eb'}>
+                        <React.Suspense fallback={<div style={{padding:'32px',textAlign:'center',color:'var(--muted, #888)'}}>Chargement du module…</div>}>
+                            <Component key={refreshKey} {...props} />
+                        </React.Suspense>
+                    </TabErrorBoundary>
+                );
             };
 
             return (

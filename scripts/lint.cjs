@@ -40,13 +40,26 @@ for (const f of files) {
   if (!fs.existsSync(full)) continue;
   const src = fs.readFileSync(full, 'utf8');
   const isModule = f.endsWith('.mjs') || /^\s*(import|export)\s/m.test(src);
+  const OPTS = {
+    allowReturnOutsideFunction: true,
+    // Les widgets scriptable/ tournent dans l'app iOS
+    // Scriptable, qui autorise l'await de premier niveau.
+    allowAwaitOutsideFunction: true,
+    plugins: PLUGINS,
+  };
   try {
-    parser.parse(src, { sourceType: isModule ? 'module' : 'script',
-                        allowReturnOutsideFunction: true,
-                        // Les widgets scriptable/ tournent dans l'app iOS
-                        // Scriptable, qui autorise l'await de premier niveau.
-                        allowAwaitOutsideFunction: true,
-                        plugins: PLUGINS });
+    try {
+      parser.parse(src, Object.assign({ sourceType: isModule ? 'module' : 'script' }, OPTS));
+    } catch (premier) {
+      // L'heuristique ci-dessus cherche `import`/`export` en DÉBUT de ligne :
+      // vraie sur du source, fausse sur un bundle minifié où tout tient sur
+      // quelques lignes (`export{a as b}`, `import("./chunks/X.js")`). Le
+      // linter ne juge que la validité syntaxique — un fichier qui parse dans
+      // l'un des deux modes est valide. On retente donc en module avant de
+      // conclure, plutôt que d'exclure les artefacts générés de l'analyse.
+      if (isModule) throw premier;
+      parser.parse(src, Object.assign({ sourceType: 'module' }, OPTS));
+    }
   } catch (e) {
     const where = `${f}:${e.loc ? e.loc.line : '?'}`;
     if (KNOWN[f]) { known.push(`${where} — ${KNOWN[f]}`); continue; }

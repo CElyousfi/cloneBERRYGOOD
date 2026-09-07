@@ -1,0 +1,1 @@
+function e(u){const c={};u.forEach(t=>{if(!t.batchNumber)return;if(!c[t.batchNumber]){c[t.batchNumber]={...t};return}const r=c[t.batchNumber];Object.entries(t).forEach(([b,n])=>{n!=null&&n!==""&&n!==0&&(r[b]==null||r[b]===""||r[b]===0)&&(r[b]=n)})});const a=u.filter(t=>!t.batchNumber);return[...Object.values(c),...a]}export{e as d};
