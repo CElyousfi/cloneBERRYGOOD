@@ -109,9 +109,18 @@ function walk(url, out) {
 
   // 3. Volume de contenu comparable. Un écran qui rend 10x moins de mots n'a pas
   //    « un léger écart » : il a perdu une section entière.
+  //
+  //    Sauf si le MONOLITHE a lui-même consigné une erreur sur cet écran : un
+  //    onglet tombé en ErrorBoundary rend un message de quelques mots, et ce
+  //    n'est pas une référence de volume. Depuis que le tree modulaire corrige
+  //    des plantages que le monolithe (figé) conserve, ce cas est attendu — le
+  //    modulaire rend PLUS, et c'est le but. On le signale sans en faire un
+  //    écart.
+  const ameliorations = [];
   for (const [k, m] of mm) {
     const l = lm.get(k);
     if (!l || l.crash || m.crash || !l.words || !m.words) continue;
+    if ((l.errs || []).length && !(m.errs || []).length && m.words > l.words) { ameliorations.push(k); continue; }
     const ratio = m.words / l.words;
     if (ratio < 0.5 || ratio > 2) {
       problems.push(`volume de rendu divergent : ${k} (monolithe ${l.words} mots, modulaire ${m.words})`);
@@ -124,6 +133,10 @@ function walk(url, out) {
   console.log('  monolithe :', stat(legacy));
   console.log('  modulaire :', stat(modular));
   console.log('  rapports bruts :', TMP);
+  if (ameliorations.length) {
+    console.log(`  ${ameliorations.length} écran(s) où le monolithe plante et le modulaire rend :`);
+    ameliorations.forEach((k) => console.log('     +', k));
+  }
 
   if (problems.length) {
     console.log(`\n🔴 ${problems.length} écart(s) :`);
