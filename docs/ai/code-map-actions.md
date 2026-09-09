@@ -1,5 +1,5 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:b490933bb8c758d7 -->
+<!-- sourceFingerprint: sha256:6e1247a78c17f654 -->
 # Code Map — Actions backend (394)
 
 Chaque action `?action=<nom>` des Cloud Functions, avec son emplacement exact et le handler `exports.xxx` qui la sert — à consulter AVANT toute recherche dans functions/index.js.
@@ -11,7 +11,7 @@ Chaque action `?action=<nom>` des Cloud Functions, avec son emplacement exact et
 | analyse-irrigation | functions/src/modules/magasin/magasin.stock.actions5.js:114 | magasin.stock.actions5.js | POST |
 | anciennete-cumul | functions/pointageService.actions3.js:425 | pointageService.actions3.js | — |
 | apply-encaissements | functions/src/modules/caisse/caisse.js:369 | caisseManagement | POST |
-| approve-bdc-change | functions/src/modules/magasin/magasin.stock.actions1.js:459 | magasin.stock.actions1.js | POST |
+| approve-bdc-change | functions/src/modules/magasin/magasin.stock.actions1.js:469 | magasin.stock.actions1.js | POST |
 | assign-campagne-parcelle | functions/pointageService.actions3.js:701 | pointageService.actions3.js | — |
 | audit-dqr | functions/emailService.actions1.js:364 | emailService.actions1.js | — |
 | avance-regulariser | functions/src/modules/caisse/caisse.js:1571 | caisseManagement | POST |
@@ -53,12 +53,12 @@ Chaque action `?action=<nom>` des Cloud Functions, avec son emplacement exact et
 | create-article | functions/src/modules/magasin/magasin.stock.actions3.js:168 | magasin.stock.actions3.js | POST |
 | create-bc | functions/src/modules/magasin/magasin.stock.actions2.js:14 | magasin.stock.actions2.js | POST |
 | create-bdc | functions/src/modules/magasin/magasin.stock.actions1.js:119 | magasin.stock.actions1.js | POST |
-| create-bl | functions/src/modules/magasin/magasin.stock.actions1.js:727 | magasin.stock.actions1.js | POST |
+| create-bl | functions/src/modules/magasin/magasin.stock.actions1.js:737 | magasin.stock.actions1.js | POST |
 | create-caisse | functions/src/modules/caisse/caisse.js:270 | caisseManagement | POST |
 | create-consultation | functions/src/modules/magasin/magasin.stock.actions3.js:794 | magasin.stock.actions3.js | POST |
-| create-da | functions/src/modules/magasin/magasin.stock.actions1.js:611 | magasin.stock.actions1.js | POST |
+| create-da | functions/src/modules/magasin/magasin.stock.actions1.js:621 | magasin.stock.actions1.js | POST |
 | create-demande-virement | functions/src/modules/magasin/magasin.stock.actions3.js:881 | magasin.stock.actions3.js | POST |
-| create-facture | functions/src/modules/magasin/magasin.stock.actions1.js:991 | magasin.stock.actions1.js | POST |
+| create-facture | functions/src/modules/magasin/magasin.stock.actions1.js:1001 | magasin.stock.actions1.js | POST |
 | create-fonction | functions/src/modules/rh/rh.paie.js:896 | fonctionsManagement | POST |
 | create-manual-expedition | functions/emailService.actions1.js:331 | emailService.actions1.js | POST |
 | create-measurement | functions/src/modules/agronomie/agronomie.js:642 | growthTracking | POST |
@@ -76,7 +76,7 @@ Chaque action `?action=<nom>` des Cloud Functions, avec son emplacement exact et
 | delete | functions/src/modules/recolte/recolte.forecast.js:1289 | ecarts | POST |
 | delete | functions/src/modules/securite/securite.js:161 | authApi | POST |
 | delete-bc | functions/src/modules/magasin/magasin.stock.actions2.js:405 | magasin.stock.actions2.js | POST |
-| delete-bdc | functions/src/modules/magasin/magasin.stock.actions1.js:316 | magasin.stock.actions1.js | POST |
+| delete-bdc | functions/src/modules/magasin/magasin.stock.actions1.js:326 | magasin.stock.actions1.js | POST |
 | delete-code-analytique | functions/src/modules/magasin/magasin.stock.actions3.js:774 | magasin.stock.actions3.js | POST |
 | delete-measurement | functions/src/modules/agronomie/agronomie.js:670 | growthTracking | POST |
 | delete-movement | functions/src/modules/magasin/magasin.stock.actions5.js:966 | magasin.stock.actions5.js | POST |
@@ -190,22 +190,22 @@ Chaque action `?action=<nom>` des Cloud Functions, avec son emplacement exact et
 | list-analyses-foliaires | functions/src/modules/magasin/magasin.stock.actions3.js:1076 | magasin.stock.actions3.js | — |
 | list-article-creation-requests | functions/src/modules/magasin/magasin.stock.actions3.js:358 | magasin.stock.actions3.js | — |
 | list-articles | functions/src/modules/magasin/magasin.stock.actions2.js:999 | magasin.stock.actions2.js | — |
-| list-bc | functions/src/modules/magasin/magasin.stock.actions1.js:1116 | magasin.stock.actions1.js | — |
+| list-bc | functions/src/modules/magasin/magasin.stock.actions1.js:1126 | magasin.stock.actions1.js | — |
 | list-bc-scan-aliases | functions/src/modules/magasin/magasin.stock.actions4.js:1017 | magasin.stock.actions4.js | — |
 | list-bc-scan-parcelle-aliases | functions/src/modules/magasin/magasin.stock.actions4.js:1070 | magasin.stock.actions4.js | — |
 | list-bdc | functions/src/modules/magasin/magasin.stock.actions1.js:85 | magasin.stock.actions1.js | — |
-| list-bdc-change-requests | functions/src/modules/magasin/magasin.stock.actions1.js:448 | magasin.stock.actions1.js | — |
-| list-bl | functions/src/modules/magasin/magasin.stock.actions1.js:712 | magasin.stock.actions1.js | — |
+| list-bdc-change-requests | functions/src/modules/magasin/magasin.stock.actions1.js:458 | magasin.stock.actions1.js | — |
+| list-bl | functions/src/modules/magasin/magasin.stock.actions1.js:722 | magasin.stock.actions1.js | — |
 | list-bugs | functions/src/modules/admin/admin.js:268 | bugReports | — |
 | list-bugs | functions/src/modules/admin/admin.js:289 | bugReports | — |
 | list-caisses | functions/src/modules/caisse/caisse.js:263 | caisseManagement | — |
 | list-codes-analytiques | functions/src/modules/magasin/magasin.stock.actions3.js:753 | magasin.stock.actions3.js | — |
 | list-config | functions/src/modules/agronomie/agronomie.js:609 | growthTracking | GET |
 | list-consultations | functions/src/modules/magasin/magasin.stock.actions3.js:784 | magasin.stock.actions3.js | — |
-| list-da | functions/src/modules/magasin/magasin.stock.actions1.js:594 | magasin.stock.actions1.js | — |
+| list-da | functions/src/modules/magasin/magasin.stock.actions1.js:604 | magasin.stock.actions1.js | — |
 | list-delete-requests | functions/src/modules/magasin/magasin.stock.actions3.js:301 | magasin.stock.actions3.js | — |
 | list-demandes-virement | functions/src/modules/magasin/magasin.stock.actions3.js:872 | magasin.stock.actions3.js | — |
-| list-factures | functions/src/modules/magasin/magasin.stock.actions1.js:980 | magasin.stock.actions1.js | — |
+| list-factures | functions/src/modules/magasin/magasin.stock.actions1.js:990 | magasin.stock.actions1.js | — |
 | list-fonctions | functions/src/modules/rh/rh.paie.js:945 | fonctionsManagement | — |
 | list-measurements | functions/src/modules/agronomie/agronomie.js:595 | growthTracking | GET |
 | list-movements | functions/src/modules/magasin/magasin.stock.actions5.js:728 | magasin.stock.actions5.js | — |
@@ -217,8 +217,8 @@ Chaque action `?action=<nom>` des Cloud Functions, avec son emplacement exact et
 | me | functions/src/modules/securite/securite.js:18 | authApi | — |
 | merge-articles | functions/src/modules/magasin/magasin.stock.actions3.js:433 | magasin.stock.actions3.js | POST |
 | migrate-auto-validate | functions/src/modules/magasin/magasin.stock.actions6.js:158 | magasin.stock.actions6.js | POST |
-| migrate-bdc-direct-dg | functions/src/modules/magasin/magasin.stock.actions1.js:274 | magasin.stock.actions1.js | POST |
-| migrate-bdc-mode-paiement | functions/src/modules/magasin/magasin.stock.actions1.js:394 | magasin.stock.actions1.js | POST |
+| migrate-bdc-direct-dg | functions/src/modules/magasin/magasin.stock.actions1.js:284 | magasin.stock.actions1.js | POST |
+| migrate-bdc-mode-paiement | functions/src/modules/magasin/magasin.stock.actions1.js:404 | magasin.stock.actions1.js | POST |
 | migrate-config | functions/src/modules/recolte/recolte.production.js:1062 | horsRecolteService | POST |
 | mo-analytique-variete | functions/pointageService.actions2.js:339 | pointageService.actions2.js | — |
 | my-tasks | functions/src/modules/admin/admin.js:619 | tasks | — |
@@ -227,7 +227,7 @@ Chaque action `?action=<nom>` des Cloud Functions, avec son emplacement exact et
 | paie-fichier-save | functions/pointageService.actions3.js:494 | pointageService.actions3.js | POST |
 | parcelles-campagne-list | functions/pointageService.actions2.js:849 | pointageService.actions2.js | — |
 | parcelles-params-list | functions/pointageService.actions3.js:670 | pointageService.actions3.js | — |
-| pending-validations | functions/src/modules/magasin/magasin.stock.actions1.js:541 | magasin.stock.actions1.js | — |
+| pending-validations | functions/src/modules/magasin/magasin.stock.actions1.js:551 | magasin.stock.actions1.js | — |
 | pending-validations | functions/src/modules/magasin/magasin.stock.actions2.js:513 | magasin.stock.actions2.js | — |
 | pending-validations | functions/src/modules/magasin/magasin.stock.actions6.js:257 | magasin.stock.actions6.js | — |
 | periods | functions/src/modules/rh/rh.paie.js:245 | ojra | — |
@@ -270,12 +270,12 @@ Chaque action `?action=<nom>` des Cloud Functions, avec son emplacement exact et
 | reject | functions/src/modules/rh/rh.pointage.js:503 | validation | — |
 | reject-movement | functions/src/modules/magasin/magasin.stock.actions5.js:876 | magasin.stock.actions5.js | POST |
 | reject-transaction | functions/src/modules/caisse/caisse.js:704 | caisseManagement | POST |
-| remind-bdc | functions/src/modules/magasin/magasin.stock.actions1.js:412 | magasin.stock.actions1.js | POST |
+| remind-bdc | functions/src/modules/magasin/magasin.stock.actions1.js:422 | magasin.stock.actions1.js | POST |
 | reprocess-dqr | functions/emailService.actions3.js:13 | emailService.actions3.js | POST |
 | reprocess-email | functions/src/modules/magasin/magasin.stock.js:38 | stockManagement | POST |
 | reprocess-pfq | functions/emailService.actions2.js:496 | emailService.actions2.js | POST |
 | request-article-creation | functions/src/modules/magasin/magasin.stock.actions3.js:322 | magasin.stock.actions3.js | POST |
-| request-bdc-change | functions/src/modules/magasin/magasin.stock.actions1.js:423 | magasin.stock.actions1.js | POST |
+| request-bdc-change | functions/src/modules/magasin/magasin.stock.actions1.js:433 | magasin.stock.actions1.js | POST |
 | request-delete-article | functions/src/modules/magasin/magasin.stock.actions3.js:253 | magasin.stock.actions3.js | POST |
 | rescan-plant-invoice | functions/emailService.actions3.js:381 | emailService.actions3.js | POST |
 | reset-email-cursor | functions/src/modules/magasin/magasin.stock.js:31 | stockManagement | POST |
@@ -311,8 +311,8 @@ Chaque action `?action=<nom>` des Cloud Functions, avec son emplacement exact et
 | scan-plant-invoice | functions/emailService.actions3.js:520 | emailService.actions3.js | POST |
 | seed-campagne | functions/src/modules/magasin/magasin.js:53 | mappingConsoManagement | — |
 | seed-defaults | functions/src/modules/caisse/caisse.js:1132 | caisseManagement | POST |
-| send-bdc | functions/src/modules/magasin/magasin.stock.actions1.js:343 | magasin.stock.actions1.js | POST |
-| send-bdc-email | functions/src/modules/magasin/magasin.stock.actions1.js:494 | magasin.stock.actions1.js | POST |
+| send-bdc | functions/src/modules/magasin/magasin.stock.actions1.js:353 | magasin.stock.actions1.js | POST |
+| send-bdc-email | functions/src/modules/magasin/magasin.stock.actions1.js:504 | magasin.stock.actions1.js | POST |
 | send-welcome | functions/src/modules/admin/admin.js:1331 | whatsappAdmin | POST |
 | send-welcome-all | functions/src/modules/admin/admin.js:1350 | whatsappAdmin | POST |
 | set-checkpoints | functions/src/modules/agronomie/agronomie.js:623 | growthTracking | POST |
@@ -328,7 +328,7 @@ Chaque action `?action=<nom>` des Cloud Functions, avec son emplacement exact et
 | stock-file-download-url | functions/src/modules/magasin/magasin.stock.actions4.js:665 | magasin.stock.actions4.js | — |
 | stock-file-history | functions/src/modules/magasin/magasin.stock.actions4.js:631 | magasin.stock.actions4.js | — |
 | stock-file-submit | functions/src/modules/magasin/magasin.stock.actions4.js:576 | magasin.stock.actions4.js | POST |
-| stock-levels | functions/src/modules/magasin/magasin.stock.actions1.js:939 | magasin.stock.actions1.js | — |
+| stock-levels | functions/src/modules/magasin/magasin.stock.actions1.js:949 | magasin.stock.actions1.js | — |
 | store-email | functions/emailService.actions3.js:774 | emailService.actions3.js | POST |
 | submit-bdc | functions/src/modules/magasin/magasin.stock.actions1.js:205 | magasin.stock.actions1.js | POST |
 | submit-bug | functions/src/modules/admin/admin.js:180 | bugReports | — |
@@ -362,11 +362,11 @@ Chaque action `?action=<nom>` des Cloud Functions, avec son emplacement exact et
 | update-article | functions/src/modules/magasin/magasin.stock.actions3.js:14 | magasin.stock.actions3.js | POST |
 | update-bc-date | functions/src/modules/magasin/magasin.stock.actions2.js:334 | magasin.stock.actions2.js | POST |
 | update-bdc | functions/src/modules/magasin/magasin.stock.actions1.js:164 | magasin.stock.actions1.js | POST |
-| update-bdc-virement | functions/src/modules/magasin/magasin.stock.actions1.js:378 | magasin.stock.actions1.js | POST |
+| update-bdc-virement | functions/src/modules/magasin/magasin.stock.actions1.js:388 | magasin.stock.actions1.js | POST |
 | update-bug-status | functions/src/modules/admin/admin.js:268 | bugReports | — |
 | update-caisse | functions/src/modules/caisse/caisse.js:284 | caisseManagement | POST |
 | update-config | functions/src/modules/admin/admin.js:1254 | whatsappAdmin | POST |
-| update-da | functions/src/modules/magasin/magasin.stock.actions1.js:631 | magasin.stock.actions1.js | POST |
+| update-da | functions/src/modules/magasin/magasin.stock.actions1.js:641 | magasin.stock.actions1.js | POST |
 | update-expedition | functions/emailService.actions1.js:277 | emailService.actions1.js | POST |
 | update-fonction | functions/src/modules/rh/rh.paie.js:918 | fonctionsManagement | POST |
 | update-identite | functions/src/modules/rh/rh.paie.js:514 | primesManagement | POST |
@@ -382,14 +382,14 @@ Chaque action `?action=<nom>` des Cloud Functions, avec son emplacement exact et
 | upload-scan | functions/src/modules/magasin/magasin.stock.actions5.js:193 | magasin.stock.actions5.js | POST |
 | upload-scan-analyse | functions/src/modules/magasin/magasin.stock.actions4.js:34 | magasin.stock.actions4.js | POST |
 | upload-times | functions/pointageService.actions2.js:785 | pointageService.actions2.js | — |
-| upload-virement-avis | functions/src/modules/magasin/magasin.stock.actions1.js:386 | magasin.stock.actions1.js | POST |
+| upload-virement-avis | functions/src/modules/magasin/magasin.stock.actions1.js:396 | magasin.stock.actions1.js | POST |
 | validate | functions/src/modules/rh/rh.pointage.js:440 | validation | — |
 | validate-alias | functions/src/modules/magasin/magasin.js:106 | mappingConsoManagement | — |
-| validate-bdc | functions/src/modules/magasin/magasin.stock.actions1.js:331 | magasin.stock.actions1.js | POST |
+| validate-bdc | functions/src/modules/magasin/magasin.stock.actions1.js:341 | magasin.stock.actions1.js | POST |
 | validate-delete-article | functions/src/modules/magasin/magasin.stock.actions3.js:265 | magasin.stock.actions3.js | POST |
 | validate-divers | functions/src/modules/rh/rh.pointage.js:206 | pointageValidation | — |
 | validate-equipe | functions/src/modules/rh/rh.pointage.js:178 | pointageValidation | — |
-| validate-facture | functions/src/modules/magasin/magasin.stock.actions1.js:1067 | magasin.stock.actions1.js | POST |
+| validate-facture | functions/src/modules/magasin/magasin.stock.actions1.js:1077 | magasin.stock.actions1.js | POST |
 | validate-movement | functions/src/modules/magasin/magasin.stock.actions5.js:761 | magasin.stock.actions5.js | POST |
 | validate-norm-change | functions/src/modules/recolte/recolte.production.js:959 | horsRecolteService | POST |
 | validate-transaction | functions/src/modules/caisse/caisse.js:669 | caisseManagement | POST |

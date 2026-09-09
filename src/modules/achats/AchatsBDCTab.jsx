@@ -132,6 +132,28 @@ import { useEffect, useState } from '../shared/reactHooks.jsx';
             const [editMode, setEditMode] = useState(null); // null or bdc id being edited
             const [editForm, setEditForm] = useState(null);
             const [justCreated, setJustCreated] = useState(null); // { id, numero } after creation
+            // Id du BDC dont la soumission est EN COURS. Deux chemins y mènent
+            // (bannière de création, popup détail) et aucun n'était gardé : la
+            // génération du PDF + son upload prennent plusieurs secondes sans rien
+            // afficher, l'utilisateur recliquait, et le second POST recevait « Seul
+            // un BDC en brouillon ou rejeté peut être soumis » — alors que le
+            // premier avait réussi. Même motif que `submittingReception` plus bas.
+            const [submittingBdc, setSubmittingBdc] = useState(null);
+
+            // Un BDC soumis avec succès l'annonce, WhatsApp compris : le backend
+            // renvoie `notification` ({sent, failed, recipients}) quand il le sait.
+            // Un ancien backend ne le renvoie pas — on n'invente rien dans ce cas.
+            const decrireSoumission = (json, pdfError) => {
+                const n = json && json.notification;
+                let msg = 'BDC soumis pour validation.';
+                if (n) {
+                    if (n.recipients === 0) msg += '\n\n⚠️ Aucun destinataire WhatsApp trouvé : le validateur n\'a pas de numéro renseigné. Il ne sera PAS notifié.';
+                    else if (n.sent === 0) msg += '\n\n⚠️ WhatsApp NON envoyé (' + n.failed + ' échec' + (n.failed > 1 ? 's' : '') + '). Le validateur ne sera pas notifié — prévenez-le autrement.';
+                    else msg += '\n\nWhatsApp envoyé à ' + n.sent + ' destinataire' + (n.sent > 1 ? 's' : '') + '.';
+                }
+                if (pdfError) msg += '\n\nLe PDF n\'a pas pu être joint (' + pdfError + ') — vous pourrez le renvoyer plus tard.';
+                return msg;
+            };
 
             const selectSupplier = (id) => { const s = suppliers.find(x => x.id === id); if (s) setForm(f => ({ ...f, supplier_id: id, fournisseur: { nom: s.nom, ice: s.ice || '', adresse: s.adresse || '', ville: s.ville || '', tel: s.tel || '', email: s.email || '' } })); };
             const selectDA = (daId) => {
@@ -192,30 +214,47 @@ import { useEffect, useState } from '../shared/reactHooks.jsx';
             };
 
             const handleSubmit = async (id) => {
+                if (submittingBdc) return;
                 if (!confirm('Soumettre ce BDC pour validation ?')) return;
-                const { pdf_url, error: pdfError } = await uploadBdcPdf(id);
+                setSubmittingBdc(id);
                 try {
+                    const { pdf_url, error: pdfError } = await uploadBdcPdf(id);
                     const r = await fetch('/api/stock?action=submit-bdc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, pdf_url, submitted_by: { profileId: currentProfile, name: profileData?.name || currentProfile } }) });
                     const json = await r.json();
                     if (json.success) {
-                        if (pdfError) alert('BDC soumis, mais le PDF n\'a pas pu être joint (' + pdfError + '). Le DG recevra une notification sans document — vous pourrez le renvoyer plus tard.');
-                        loadBdc(); if (bdcDetail) openDetail(id);
+                        alert(decrireSoumission(json, pdfError));
+                    } else {
+                        // « Seul un BDC en brouillon ou rejeté » : le BDC est DÉJÀ parti
+                        // (soumission précédente) et l'écran montrait un statut périmé.
+                        // On ne laisse pas l'utilisateur sur ce statut faux.
+                        const deja = /brouillon ou rejet/i.test(json.error || '');
+                        alert(deja ? 'Ce BDC a déjà été soumis — le statut affiché n\'était plus à jour. Il est rafraîchi.' : 'Erreur: ' + (json.error || 'Echec'));
                     }
-                    else alert('Erreur: ' + (json.error || 'Echec'));
+                    loadBdc(); if (selectedBdc === id) openDetail(id);
                 } catch (_) { alert('Erreur réseau'); }
+                finally { setSubmittingBdc(null); }
             };
             const handleSubmitDirect = async (id) => {
-                const bdcForPdf = (justCreated && justCreated.id === id) ? buildBdcForPdf(id, justCreated.numero) : id;
-                const { pdf_url, error: pdfError } = await uploadBdcPdf(bdcForPdf);
+                if (submittingBdc) return;
+                setSubmittingBdc(id);
                 try {
+                    const bdcForPdf = (justCreated && justCreated.id === id) ? buildBdcForPdf(id, justCreated.numero) : id;
+                    const { pdf_url, error: pdfError } = await uploadBdcPdf(bdcForPdf);
                     const r = await fetch('/api/stock?action=submit-bdc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, pdf_url, submitted_by: { profileId: currentProfile, name: profileData?.name || currentProfile } }) });
                     const json = await r.json();
                     if (json.success) {
-                        if (pdfError) alert('BDC soumis, mais le PDF n\'a pas pu être joint (' + pdfError + '). Le DG recevra une notification sans document — vous pourrez le renvoyer plus tard.');
-                        setShowForm(false); setJustCreated(null); loadBdc();
+                        // Le formulaire se fermait sans un mot : rien ne disait que la
+                        // soumission avait eu lieu. On le dit, WhatsApp compris.
+                        alert(decrireSoumission(json, pdfError));
+                        setShowForm(false); setJustCreated(null);
+                    } else {
+                        const deja = /brouillon ou rejet/i.test(json.error || '');
+                        alert(deja ? 'Ce BDC a déjà été soumis.' : 'Erreur: ' + (json.error || 'Echec'));
+                        if (deja) { setShowForm(false); setJustCreated(null); }
                     }
-                    else alert('Erreur: ' + (json.error || 'Echec'));
+                    loadBdc();
                 } catch (_) { alert('Erreur réseau'); }
+                finally { setSubmittingBdc(null); }
             };
             const handleSend = (id) => { if (!confirm('Marquer ce BDC comme envoyé au fournisseur ?')) return; fetch('/api/stock?action=send-bdc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, sent_by: { profileId: currentProfile, name: profileData?.name || currentProfile } }) }).then(r => r.json()).then(json => { if (json.success) { loadBdc(); if (bdcDetail) openDetail(id); } else alert('Erreur: ' + (json.error || 'Echec')); }).catch(() => alert('Erreur réseau')); };
 
@@ -585,7 +624,7 @@ import { useEffect, useState } from '../shared/reactHooks.jsx';
                                     <td onClick={e => e.stopPropagation()}>{window.ScanAttachmentButton ? <window.ScanAttachmentButton entityType="purchase_orders" entityId={b.id} scanUrl={b.scan_url} scanPath={b.scan_path} uploadedBy={{ profileId: currentProfile, name: profileData?.name || currentProfile }} onUploaded={() => loadBdc()} compact /> : null}</td>
                                     <td onClick={e => e.stopPropagation()} style={{whiteSpace:'nowrap'}}>
                                         <div style={{display:'flex',gap:12,alignItems:'center'}}>
-                                        {(b.status === 'brouillon' || b.status === 'rejete') && <button onClick={() => handleSubmit(b.id)} title={b.status === 'rejete' ? 'Resoumettre' : 'Soumettre'} style={{background:'none',border:'none',cursor:'pointer',color:'var(--blue)',fontSize:13}}><i className="fa-solid fa-paper-plane"></i></button>}
+                                        {(b.status === 'brouillon' || b.status === 'rejete') && <button onClick={() => handleSubmit(b.id)} disabled={submittingBdc === b.id} title={b.status === 'rejete' ? 'Resoumettre' : 'Soumettre'} style={{background:'none',border:'none',cursor: submittingBdc === b.id ? 'wait' : 'pointer',color:'var(--blue)',fontSize:13}}><i className={submittingBdc === b.id ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-paper-plane'}></i></button>}
                                         {(b.status === 'brouillon' || currentProfile === 'achats' || currentProfile === 'admin') && <button onClick={() => handleDeleteBdc(b.id, b.status)} title={b.status === 'brouillon' ? 'Supprimer' : 'Supprimer (BDC validé)'} style={{background:'none',border:'none',cursor:'pointer',color:'#e74c3c',fontSize:13}}><i className="fa-solid fa-trash"></i></button>}
                                         {currentProfile === 'achats' && ((isModeVirement(b.mode_paiement) && b.status === 'virement_signe') || (!isModeVirement(b.mode_paiement) && b.status === 'valide_dg')) && <button onClick={() => handleSend(b.id)} title="Envoyer" style={{background:'none',border:'none',cursor:'pointer',color:'var(--green)',fontSize:13}}><i className="fa-solid fa-truck"></i></button>}
                                         <button onClick={() => startDuplicate(b)} title="Dupliquer" style={{background:'none',border:'none',cursor:'pointer',color:'var(--berry)',fontSize:13}}><i className="fa-solid fa-copy"></i></button>
@@ -708,8 +747,8 @@ import { useEffect, useState } from '../shared/reactHooks.jsx';
                                         </div>
                                         <div style={{display:'flex', gap:8, justifyContent:'flex-end'}}>
                                             <button onClick={() => { setShowForm(false); setJustCreated(null); }} style={{padding:'8px 16px', borderRadius:8, border:'1px solid #ddd', background:'#fff', cursor:'pointer', fontSize:13}}>Fermer</button>
-                                            <button onClick={() => handleSubmitDirect(justCreated.id)} style={{padding:'8px 20px', borderRadius:8, border:'none', background:'var(--berry)', color:'#fff', cursor:'pointer', fontWeight:700, fontSize:13}}>
-                                                <i className="fa-solid fa-paper-plane" style={{marginRight:6}}></i>Soumettre pour validation
+                                            <button onClick={() => handleSubmitDirect(justCreated.id)} disabled={submittingBdc === justCreated.id} style={{padding:'8px 20px', borderRadius:8, border:'none', background:'var(--berry)', color:'#fff', cursor: submittingBdc === justCreated.id ? 'wait' : 'pointer', opacity: submittingBdc === justCreated.id ? 0.7 : 1, fontWeight:700, fontSize:13}}>
+                                                <i className={submittingBdc === justCreated.id ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-paper-plane'} style={{marginRight:6}}></i>{submittingBdc === justCreated.id ? 'Envoi en cours (PDF + WhatsApp)…' : 'Soumettre pour validation'}
                                             </button>
                                         </div>
                                     </div>
@@ -873,7 +912,7 @@ import { useEffect, useState } from '../shared/reactHooks.jsx';
                                 </div>
                                 <div style={{display:'flex',gap:8,marginTop:16,flexWrap:'wrap'}}>
                                     {(bdcDetail.bdc.status === 'brouillon' || bdcDetail.bdc.status === 'rejete') && <button onClick={() => startEdit(bdcDetail.bdc)} style={{padding:'8px 16px',borderRadius:8,border:'1.5px solid var(--berry)',background:'var(--berry-pale)',color:'var(--berry)',cursor:'pointer',fontWeight:600,fontSize:13}}><i className="fa-solid fa-pen" style={{marginRight:6}}></i>Modifier</button>}
-                                    {(bdcDetail.bdc.status === 'brouillon' || bdcDetail.bdc.status === 'rejete') && <button onClick={() => handleSubmit(selectedBdc)} style={{padding:'8px 16px',borderRadius:8,border:'none',background:'var(--blue)',color:'#fff',cursor:'pointer',fontWeight:600,fontSize:13}}><i className="fa-solid fa-paper-plane" style={{marginRight:6}}></i>{bdcDetail.bdc.status === 'rejete' ? 'Resoumettre pour validation' : 'Soumettre pour validation'}</button>}
+                                    {(bdcDetail.bdc.status === 'brouillon' || bdcDetail.bdc.status === 'rejete') && <button onClick={() => handleSubmit(selectedBdc)} disabled={submittingBdc === selectedBdc} style={{padding:'8px 16px',borderRadius:8,border:'none',background:'var(--blue)',color:'#fff',cursor: submittingBdc === selectedBdc ? 'wait' : 'pointer',opacity: submittingBdc === selectedBdc ? 0.7 : 1,fontWeight:600,fontSize:13}}><i className={submittingBdc === selectedBdc ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-paper-plane'} style={{marginRight:6}}></i>{submittingBdc === selectedBdc ? 'Envoi en cours…' : (bdcDetail.bdc.status === 'rejete' ? 'Resoumettre pour validation' : 'Soumettre pour validation')}</button>}
                                     {(bdcDetail.bdc.status === 'brouillon' || currentProfile === 'achats' || currentProfile === 'admin') && <button onClick={() => handleDeleteBdc(selectedBdc, bdcDetail.bdc.status)} style={{padding:'8px 16px',borderRadius:8,border:'1.5px solid #e74c3c',background:'rgba(231,76,60,0.08)',color:'#e74c3c',cursor:'pointer',fontWeight:600,fontSize:13}}><i className="fa-solid fa-trash" style={{marginRight:6}}></i>Supprimer</button>}
                                     {currentProfile === 'achats' && ((isModeVirement(bdcDetail.bdc.mode_paiement) && bdcDetail.bdc.status === 'virement_signe') || (!isModeVirement(bdcDetail.bdc.mode_paiement) && bdcDetail.bdc.status === 'valide_dg')) && <button onClick={() => handleSend(selectedBdc)} style={{padding:'8px 16px',borderRadius:8,border:'none',background:'var(--green)',color:'#fff',cursor:'pointer',fontWeight:600,fontSize:13}}><i className="fa-solid fa-truck" style={{marginRight:6}}></i>Marquer envoyé</button>}
                                     {['valide_dg','envoye','virement_lance','virement_signe'].includes(bdcDetail.bdc.status) && !bdcDetail.bdc.pending_change_request && (

@@ -247,7 +247,7 @@ module.exports = async function stockActions1(ctx) {
           ? _items.slice(0, 3).map(_itemLabel).join(", ") + (_items.length > 3 ? ` (+${_items.length - 3} autres)` : "")
           : "—";
         const fournisseurNom = _clean((current.fournisseur && current.fournisseur.nom) || "") || "—";
-        dispatchNotification({
+        const dispatchPromise = dispatchNotification({
           type: useDocTemplate ? "bdc_submit_doc" : "bdc_submit",
           profiles: skipChef ? ["dg"] : [bdcWorkflow.chefProfileForFerme(current.ferme)].filter(Boolean),
           ferme: skipChef ? null : current.ferme,
@@ -263,8 +263,18 @@ module.exports = async function stockActions1(ctx) {
           },
           relatedDoc: `purchase_orders/${id}`,
           ...(useDocTemplate ? { document: { link: bdcPdfUrl, filename: `BDC_${current.numero || id}.pdf` } } : {}),
-        }).catch(err => console.error("WhatsApp dispatch error:", err));
-        return res.json({ success: true });
+        })
+          // dispatchNotification renvoie déjà { sent, failed, recipients } — on le
+          // jetait. Un DG sans numéro, un template non approuvé ou un token expiré
+          // étaient donc indiscernables d'un envoi réussi : l'écran disait
+          // « soumis » et personne n'était prévenu. Le résultat est ATTENDU et
+          // renvoyé au client, qui l'affiche. Le statut du BDC est déjà écrit à ce
+          // stade : un échec WhatsApp ne remet pas la soumission en cause, il la
+          // documente.
+          .then(r => { const w = (r && r.whatsapp) || {}; return { sent: w.sent || 0, failed: w.failed || 0, recipients: w.recipients || 0 }; })
+          .catch(err => { console.error("WhatsApp dispatch error:", err); return { sent: 0, failed: 1, recipients: 0, error: String(err && err.message || err) }; });
+        const notification = await dispatchPromise;
+        return res.json({ success: true, notification });
       }
 
 
