@@ -113,7 +113,7 @@ function FinTelecomTab({ data }) {
                         <KPICard icon="fa-phone" iconClass="orange" value={(telecom.totalMois/1000).toFixed(1)} label="Total Mois (K DH)" />
                         <KPICard icon="fa-chart-line" iconClass="blue" value={(telecom.totalCampagne/1000).toFixed(0)} label="Total Campagne (K DH)" />
                         <KPICard icon="fa-sim-card" iconClass="green" value={telecom.nbLignes} label="Nombre de Lignes" />
-                        <KPICard icon="fa-calculator" iconClass="berry" value={telecom.coutMoyenLigne.toLocaleString('fr-FR')} label="Coût Moyen / Ligne (DH)" />
+                        <KPICard icon="fa-calculator" iconClass="berry" value={(telecom.coutMoyenLigne || 0).toLocaleString('fr-FR')} label="Coût Moyen / Ligne (DH)" />
                     </div>
 
                     {/* ===== CONSOMMATION PAR LIGNE + EVOLUTION ===== */}

@@ -264,7 +264,7 @@ function FinCarburantTab({ data }) {
                         <KPICard icon="fa-gas-pump" iconClass="orange" value={(carb.totalMois/1000).toFixed(1)} label="Total Mois (K DH)" onClick={() => setExpandedKPI(expandedKPI === 'carburant' ? null : 'carburant')} />
                         <KPICard icon="fa-chart-line" iconClass="blue" value={(carb.totalCampagne/1000).toFixed(0)} label="Total Carburants (K DH)" onClick={() => setExpandedKPI(expandedKPI === 'campagne' ? null : 'campagne')} />
                         <KPICard icon="fa-road" iconClass="green" value={(carb.totalPeages/1000).toFixed(1)} label="Total Péages (K DH)" onClick={() => setExpandedKPI(expandedKPI === 'peages' ? null : 'peages')} />
-                        <KPICard icon="fa-droplet" iconClass="berry" value={carb.prixMoyenLitre.toFixed(2)} label="Prix Moyen / Litre (DH)" onClick={() => setExpandedKPI(expandedKPI === 'prix' ? null : 'prix')} />
+                        <KPICard icon="fa-droplet" iconClass="berry" value={(carb.prixMoyenLitre || 0).toFixed(2)} label="Prix Moyen / Litre (DH)" onClick={() => setExpandedKPI(expandedKPI === 'prix' ? null : 'prix')} />
                     </div>
 
                     {/* ===== DÉTAIL KPI CARBURANT PAR MOIS ===== */}
@@ -449,7 +449,7 @@ function FinCarburantTab({ data }) {
                                         <div style={{fontSize: 11, color: 'var(--gray-500)'}}>L/100km (moyenne)</div>
                                     </div>
                                     <div style={{textAlign: 'center', padding: 12}}>
-                                        <div style={{fontSize: 22, fontWeight: 700, color: 'var(--green)'}}>{carb.suiviKm.kmTotal.toLocaleString('fr-FR')}</div>
+                                        <div style={{fontSize: 22, fontWeight: 700, color: 'var(--green)'}}>{((carb.suiviKm && carb.suiviKm.kmTotal) || 0).toLocaleString('fr-FR')}</div>
                                         <div style={{fontSize: 11, color: 'var(--gray-500)'}}>km parcourus (campagne)</div>
                                     </div>
                                     <div style={{textAlign: 'center', padding: 12}}>

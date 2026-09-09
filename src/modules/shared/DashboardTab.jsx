@@ -351,7 +351,7 @@ function DashboardTab({ data, farmFilter, avoSubFilter, onNavigateMeteo, current
                                 <div style={{padding:'16px 20px',background:'linear-gradient(135deg, #c0392b 0%, #922b21 100%)',borderRadius:'16px 16px 0 0',color:'white',display:'flex',justifyContent:'space-between',alignItems:'center',position:'sticky',top:0,zIndex:1}}>
                                     <div>
                                         <div style={{fontSize:16,fontWeight:700}}><i className="fa-solid fa-clock-rotate-left" style={{marginRight:8}}></i>{sansSortiePopup.equipeNom} — {sansSortiePopup.jourLabel}</div>
-                                        <div style={{fontSize:11,opacity:0.85,marginTop:2}}>{sansSortiePopup.workers.length} ouvrier{sansSortiePopup.workers.length !== 1 ? 's' : ''} sans entrée/sortie complète</div>
+                                        <div style={{fontSize:11,opacity:0.85,marginTop:2}}>{(sansSortiePopup.workers || []).length} ouvrier{(sansSortiePopup.workers || []).length !== 1 ? 's' : ''} sans entrée/sortie complète</div>
                                     </div>
                                     <button onClick={() => setSansSortiePopup(null)} style={{background:'rgba(255,255,255,0.2)',border:'none',color:'white',fontSize:16,cursor:'pointer',borderRadius:8,width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center'}}>
                                         <i className="fa-solid fa-xmark"></i>
@@ -369,7 +369,7 @@ function DashboardTab({ data, farmFilter, avoSubFilter, onNavigateMeteo, current
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {sansSortiePopup.workers.map((w, wi) => (
+                                            {(sansSortiePopup.workers || []).map((w, wi) => (
                                                 <tr key={wi} style={{borderBottom:'1px solid var(--gray-100)'}}>
                                                     <td style={{fontFamily:'monospace',fontSize:10,padding:'7px 10px',color:'var(--gray-400)'}}>{w.matricule}</td>
                                                     <td style={{fontWeight:600,padding:'7px 10px'}}>{w.nom || w.matricule}</td>

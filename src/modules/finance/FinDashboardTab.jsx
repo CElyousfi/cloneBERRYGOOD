@@ -293,7 +293,7 @@ function FinDashboardTab({ data, farmFilter, onNavigateMeteo }) {
                     )}
 
                     {/* Nouveaux Ouvriers Banner */}
-                    {nouveauxData && nouveauxData.summary.totalQuinzaine > 0 && (
+                    {nouveauxData && nouveauxData.summary && nouveauxData.summary.totalQuinzaine > 0 && (
                         <div style={{marginBottom:16}}>
                             <div onClick={() => setShowNouveaux(!showNouveaux)} style={{padding:'12px 20px', background:'linear-gradient(135deg, #2D8B4E 0%, #1a6b35 100%)', borderRadius: showNouveaux ? '10px 10px 0 0' : '10px', color:'white', cursor:'pointer', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
                                 <div style={{display:'flex', alignItems:'center', gap:12}}>
