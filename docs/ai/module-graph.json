@@ -31,15 +31,15 @@
         "file": "functions/index.js"
       },
       {
-        "commits": 18,
+        "commits": 17,
         "file": "functions/pointageService.js"
       },
       {
-        "commits": 18,
+        "commits": 17,
         "file": "public/components/CampagneAnalytiqueTab.js"
       },
       {
-        "commits": 18,
+        "commits": 17,
         "file": "public/components/CampagneAnalytiqueTab.jsx"
       },
       {
@@ -745,16 +745,9 @@
       },
       "gitCoupling": [
         {
-          "coCommits": 18,
+          "coCommits": 17,
           "domain": null,
           "file": "public/components/CampagneAnalytiqueTab.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 10,
-          "domain": null,
-          "file": "tests/unit/campagneAnalytiquePivot.test.js",
           "note": "probabilistic",
           "windowDays": 90
         },
@@ -766,6 +759,13 @@
           "windowDays": 90
         },
         {
+          "coCommits": 9,
+          "domain": null,
+          "file": "tests/unit/campagneAnalytiquePivot.test.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
           "coCommits": 8,
           "domain": null,
           "file": "functions/lib/paie/__tests__/coutOuvrierCampagne.test.js",
@@ -773,7 +773,7 @@
           "windowDays": 90
         },
         {
-          "coCommits": 6,
+          "coCommits": 5,
           "domain": null,
           "file": "functions/pointageService.js",
           "note": "probabilistic",

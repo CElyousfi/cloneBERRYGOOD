@@ -9,6 +9,7 @@ import { clearCachedProfile } from './clearCachedProfile.jsx';
 import { loadCachedProfile } from './loadCachedProfile.jsx';
 import { useEffect, useRef, useState } from './reactHooks.jsx';
 import { saveCachedProfile } from './saveCachedProfile.jsx';
+import { sbLoad } from './sbLoad.jsx';
 
 // Auth wrapper component
         function App() {
@@ -117,6 +118,16 @@ import { saveCachedProfile } from './saveCachedProfile.jsx';
                 const unsub = firebaseAuth.onAuthStateChanged(async (user) => {
                     if (user) {
                         setAuthUser(user);
+                        // Le référentiel Smart Berry (noms de parcelles, ha, culture SB)
+                        // est chargé par bootstrap.jsx AU BOOT — avant toute session, donc
+                        // sans jeton, donc 401 (sb-referentiel-list est exemptée du 403 de
+                        // profil, pas de l'authentification). L'échec est avalé et rien ne
+                        // le retentait : window.SB_PARCELLE_REF restait vide toute la
+                        // session. Conséquence documentée côté backend : libellés BEE ONE
+                        // bruts partout, et une parcelle dont la culture SB diverge
+                        // disparaît sous un filtre Culture. On recharge dès qu'un jeton
+                        // existe — `currentUser` est posé ici, le wrapper fetch l'attache.
+                        sbLoad();
                         const meResult = await fetchMe(user);
                         applyDecision(user, meResult);
                     } else {
