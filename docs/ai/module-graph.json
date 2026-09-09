@@ -31,16 +31,16 @@
         "file": "functions/index.js"
       },
       {
-        "commits": 19,
-        "file": "public/components/CampagneAnalytiqueTab.js"
-      },
-      {
-        "commits": 19,
-        "file": "public/components/CampagneAnalytiqueTab.jsx"
+        "commits": 18,
+        "file": "functions/pointageService.js"
       },
       {
         "commits": 18,
-        "file": "functions/pointageService.js"
+        "file": "public/components/CampagneAnalytiqueTab.js"
+      },
+      {
+        "commits": 18,
+        "file": "public/components/CampagneAnalytiqueTab.jsx"
       },
       {
         "commits": 15,
@@ -745,7 +745,7 @@
       },
       "gitCoupling": [
         {
-          "coCommits": 19,
+          "coCommits": 18,
           "domain": null,
           "file": "public/components/CampagneAnalytiqueTab.js",
           "note": "probabilistic",

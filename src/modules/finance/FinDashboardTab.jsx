@@ -155,7 +155,7 @@ function FinDashboardTab({ data, farmFilter, onNavigateMeteo }) {
                 return total;
             })() : null;
             const liveCALocal = marcheLocalBons ? marcheLocalBons.reduce((s, b) => s + (parseFloat(b.totalDH) || ((parseFloat(b.poidsLot)||0) * (parseFloat(b.prixDH)||0))), 0) : null;
-            const liveMO = moAnalytique ? moAnalytique.totaux.total : null;
+            const liveMO = (moAnalytique && moAnalytique.totaux) ? moAnalytique.totaux.total : null;
             const liveEngrais = ccSummary ? ccSummary.total_engrais_ttc : null;
             const livePesticides = ccSummary ? ccSummary.total_pesticides_ttc : null;
 

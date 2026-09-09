@@ -36,6 +36,14 @@ import { SimpleAreaChart } from '../shared/SimpleAreaChart.jsx';
             }
 
             const { varieties, lastActual, todayPartial, todayIsComplete, prediction, history, alerts, confidence, mape, gddRef, calibrationOffset, correlationTable, serreCurrent, weatherJ1, weatherJ2, weatherJ3, ma5 } = predData;
+            // Même garde que `!predData` ci-dessus, un niveau plus bas. Un payload
+            // sans `prediction` complète (modèle sans données du jour, calcul en
+            // cours) faisait tomber l'onglet en ErrorBoundary sur `prediction.today`
+            // au lieu d'afficher le message prévu pour ce cas.
+            if (!prediction || !prediction.today || !prediction.tomorrow || !prediction.j2) {
+                return React.createElement('div', { style: { textAlign: 'center', padding: '60px 20px', color: '#999' } }, 'Prédictions indisponibles pour le moment.');
+            }
+
 
             // Helper: format kg
             const fmtKg = (v) => v != null ? v.toLocaleString('fr-FR') + ' kg' : '—';

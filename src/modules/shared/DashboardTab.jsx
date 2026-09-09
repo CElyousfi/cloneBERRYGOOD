@@ -630,7 +630,7 @@ function DashboardTab({ data, farmFilter, avoSubFilter, onNavigateMeteo, current
 
                     {(() => {
                         if (!nouveauxData) return null;
-                        const filteredWorkers = farmFilter ? nouveauxData.workers.filter(w => w.ferme === farmFilter && matchSub(w)) : nouveauxData.workers;
+                        const filteredWorkers = farmFilter ? (nouveauxData.workers || []).filter(w => w.ferme === farmFilter && matchSub(w)) : (nouveauxData.workers || []);
                         if (filteredWorkers.length === 0) return null;
                         const today = new Date().toISOString().slice(0, 10);
                         const filteredToday = filteredWorkers.filter(w => w.firstDate === today).length;
