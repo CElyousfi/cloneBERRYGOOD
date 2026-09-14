@@ -7,6 +7,15 @@ const { NOT_HANDLED } = require("./pointageService.dispatch");
 module.exports = async function pointageServiceActions2(ctx) {
   const { req, res, action, dateParam, _fermeFilter, _cultureFilter, _keepPointage, _keepCulture, _keepCueillette, getPointageRowsForDate, getPointageRowsForDateRange, getPointageRowsForPeriode, getWorkerHistory, getCueilletteRows, db } = ctx;
 
+  // Corps VERBATIM : ces noms venaient du scope englobant de l'ancien monolithe
+  // pointageRH avant l'eclatement (commit 8a7284c). require() PAREsseux (pas en
+  // haut de fichier) car pointageService.part1.js require CE fichier pour
+  // construire __actions -- un require en tete de fichier recevrait un exports
+  // encore vide (cycle). Les 5 fetchers gates (getPointageRowsForDate etc.)
+  // restent EXCLUS d'ici : ils viennent de ctx (version filtree ferme/culture,
+  // voir pointageService.js), jamais de la version brute de part1.
+  const { HS_SEUIL_MINUTES, JOURS_FERIES_FALLBACK, POINTAGE_FERMES, REFERENTIEL_FAMILLES, REFERENTIEL_TTL_MS, USE_MIRROR, _getCueilletteRows, _getPointageRowsForDate, _getPointageRowsForDateRange, _getPointageRowsForPeriode, _getWorkerHistory, _qtkWarned, _refMap, _refTachesCache, _refTachesCacheAt, _referentielCache, _referentielLoadedAt, _supMapLastGood, admin, aggregateParcellesFromMirror, archiveDocRef, buildHalfToPeriode, buildHeuresSup, buildParCulture, buildPeriodeCampagne, campagneBudget, campagneBudgetCulture, campagneCourante, campagneExport, campagneOf, classifyType, computeAllowedMatricules, computeChargCond, computeDurationOvertime, consoAccessControl, consoBons, cors, countDistinctByFermeType, coutOuvrier, coutQuinzaineSnap, db_firestore, dedupeWorkersByMatricule, defaultPeriode, defaultPeriodeForCampagne, deriveFerme, detectFramboiseSubType, enrichRowsWithHaRef, fetchBrParcelleSupMap, fetchDetailFromMirror, fetchPostesFixesFromMirror, fetchSummaryFromMirror, fichierPaieStore, filterArchivedParFerme, filterArchivedParJour, filterArchivedRowsByFerme, filterByFermeField, filterMirrorRowsByCulture, filterMirrorRowsByFerme, filterPresenceRowsByAllowed, filterProdRowsByFerme, filterReposWorkersArchived, filterRowsByExactDates, findJourApres, findJourAvant, functions, getAvailableDates, getExcludedFonctionsHS, getJoursFeries, getPointageMeta, getPool, getSyncStatus, halfKey, invalidateReferentielCache, isSansEquipe, isValidCampagneLabel, loadReferentielCache, loadReferentielTaches, mapMirrorRowToDetail, mergeReferentiel, parcelleGroupSeedHa, parcelleGroupSplit, parcelleGroupValidate, pointageCacheKey, pool, quantiteToKg, recomposeArchivedTotals, recomposeProdTotalKg, referentielOperationsConnues, resolveCallerProfile, resolveFamily, resolveFermeFromParcelle, resolveHolidayPeriode, resolveMyrtilleVariete, resolvePointageRHAccess, resolveVariete, shouldExcludeWorkerDay, splitCompositeLabel, sql, sqlConfig, syncPointageFromProd, verifyAuth, warmRefTaches, withCache } = require("./pointageService.part1");
+
 
       // ------ HEURES-SUP: durée travaillée + dépassement 8h30 par quinzaine ------
       if (action === "heures-sup") {

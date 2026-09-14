@@ -231,14 +231,13 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
 
       const db = USE_MIRROR ? null : await getPool();
 
-
-      return res.status(400).json({ success: false, error: "Unknown action: " + action });
-
       const __ctx = { req, res, action, dateParam, _fermeFilter, _cultureFilter, _keepPointage, _keepCulture, _keepCueillette, getPointageRowsForDate, getPointageRowsForDateRange, getPointageRowsForPeriode, getWorkerHistory, getCueilletteRows, db };
       for (const __handle of __actions) {
         const __r = await __handle(__ctx);
         if (__r !== NOT_HANDLED) return __r;
       }
+
+      return res.status(400).json({ success: false, error: "Unknown action: " + action });
 
     } catch (err) {
       console.error("Erreur pointageRH:", err);
