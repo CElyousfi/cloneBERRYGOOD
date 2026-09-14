@@ -405,7 +405,11 @@ exports.meteoSprayDigestTrigger = functions
 // Modèle ML: outdoor → indoor avec calibration auto
 // =============================================
 
-const METEOBLUE_API_KEY = "sWtaJy9XrwE6TAcB";
+// 2026-09-14 (production readiness) : sorti du code vers une variable d'env,
+// comme les autres clés externes de l'app (WA_TOKEN, NETAFIM_ADMIN_SECRET,
+// FARMROAD_API_KEY...). Provisionner en prod :
+//   firebase functions:secrets:set METEOBLUE_API_KEY
+const METEOBLUE_API_KEY = process.env.METEOBLUE_API_KEY;
 exports.fuel = functions
   .region("europe-west1")
   .runWith({ timeoutSeconds: 30, memory: "256MB" })
