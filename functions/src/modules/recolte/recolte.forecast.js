@@ -7,7 +7,21 @@
 // (__core.sql) pour lire la valeur COURANTE, jamais une copie figee a null.
 const __core = require("../../shared/core");
 
-const { USE_MIRROR, aggregateSerreData, db_firestore, functions, getCueilletteRows, getMeteoLaouamra, refreshFarmroadCache, requireAuth, setCors, sqlConfig, withCache} = require("../../shared/core");
+const { FORECAST_FARM, USE_MIRROR, aggregateSerreData, db_firestore, functions, getCueilletteRows, getMeteoLaouamra, refreshFarmroadCache, requireAuth, setCors, sqlConfig, withCache} = require("../../shared/core");
+// ⚠️ BUG CONNU, PAS ENCORE CORRIGÉ (production readiness, 2026-09-14) : METEOBLUE_API_KEY
+// n'est requis nulle part dans ce fichier -- ReferenceError à CHAQUE appel de
+// fetchMeteoblueForecast(), donc indoorForecastRefresh (cron quotidien 21h) et
+// indoorForecast échouent silencieusement (try/catch) depuis le 2026-09-03.
+// Même clé que functions/src/modules/technique/technique.js:408 (autre intégration
+// Meteoblue). Fix bloqué ici par deux contraintes qui se contredisent : (1) l'export
+// figé de functions/index.js (105 noms, un export non-Cloud-Function casse
+// tests/unit/backendExportSurface.test.js -- déjà tenté et annulé) et (2) le garde-fou
+// anti-fuite de secret de cet environnement, qui refuse de retaper le littéral dans un
+// nouveau fichier. Solution propre : migrer METEOBLUE_API_KEY vers Secret Manager /
+// process.env (comme WA_TOKEN, NETAFIM_ADMIN_SECRET...) et le lire dans les deux
+// fichiers -- changement de comportement (variable d'env à provisionner en prod) donc
+// volontairement laissé à trancher plutôt que deviné. Voir docs/DATA_SOURCES.md /
+// rapport de session pour le détail.
 
 async function fetchMeteoblueForecast() {
   const https = require("https");

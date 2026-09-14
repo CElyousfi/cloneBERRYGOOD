@@ -4,6 +4,16 @@
 'use strict';
 
 const { COLLECTION, GDD_CONFIG, METEO_FERMES, USE_MIRROR, aggregateSerreData, calcGDD, calcIMC, db_firestore, dispatchNotification, functions, getConsommationRows, getPool, getSql, getSyncStatus, localDateStr, refreshFarmroadCache, requireAuth, resolveCallerRole, setCors, withCache } = require("../../shared/core");
+// Bug trouve et corrige le 2026-09-14 (production readiness, meme classe de
+// regression que withCache/USE_MIRROR dans pointageService.actions*.js) :
+// generateRecoForAnalyse n'etait requis nulle part ici -- ReferenceError a
+// chaque ecriture d'analyse foliaire avec un scan, donc onAnalyseFoliaireWrite
+// echouait silencieusement (try/catch) depuis le 2026-09-03 : aucune
+// recommandation IA n'a jamais ete generee automatiquement pour une analyse
+// foliaire. Logique partagee avec le flux BDC du magasin
+// (magasin.stock.actions4.js l'importe deja de la meme source) -- pas de
+// cycle : magasin.stock.deps.js ne require jamais agronomie.js.
+const { generateRecoForAnalyse } = require("../magasin/magasin.stock.deps");
 
 function structureByParcelleWeekDay(recordset, useParcelleCulturale = true) {
   const structured = {};

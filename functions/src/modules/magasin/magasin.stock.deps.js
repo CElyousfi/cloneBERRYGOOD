@@ -640,7 +640,14 @@ Données manquantes ou incohérentes, explicitement.
   let response = null;
   let lastError = null;
   const claudeStart = Date.now();
-  console.log(`generateRecoForAnalyse START id=${id} scanPdf=${scanPdfSent} scanImg=${scanImageSent} photo=${!!photoImg}`);
+  // 2026-09-14 (production readiness) : `photoImg` n'a jamais existé dans cette
+  // version — nom laissé par un refactor antérieur qui a généralisé un flag
+  // photo unique en compteur multi-photos (terrainPhotoCount, cf. ligne 499).
+  // ReferenceError SYSTÉMATIQUE ici → generateRecoForAnalyse ne générait plus
+  // AUCUNE recommandation IA depuis le 2026-09-03 (le contrat "never throws"
+  // de la fonction avalait l'erreur et renvoyait success:false), pour ses DEUX
+  // appelants (BDC magasin ET, une fois câblé, analyses foliaires agronomie).
+  console.log(`generateRecoForAnalyse START id=${id} scanPdf=${scanPdfSent} scanImg=${scanImageSent} photo=${!!terrainPhotoCount}`);
   await writeProgress({
     state: "calling_llm",
     updated_at: Date.now(),
@@ -672,7 +679,7 @@ Données manquantes ou incohérentes, explicitement.
     message,
     model: response.model || "claude",
     generated_at: Date.now(),
-    has_photo: !!photoImg,
+    has_photo: !!terrainPhotoCount,
     has_scan: !!(scanPdfSent || scanImageSent),
     scan_format: scanPdfSent ? "pdf" : scanImageSent ? "image" : null,
   };

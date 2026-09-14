@@ -15,6 +15,15 @@ module.exports = async function pointageServiceActions2(ctx) {
   // restent EXCLUS d'ici : ils viennent de ctx (version filtree ferme/culture,
   // voir pointageService.js), jamais de la version brute de part1.
   const { HS_SEUIL_MINUTES, JOURS_FERIES_FALLBACK, POINTAGE_FERMES, REFERENTIEL_FAMILLES, REFERENTIEL_TTL_MS, USE_MIRROR, _getCueilletteRows, _getPointageRowsForDate, _getPointageRowsForDateRange, _getPointageRowsForPeriode, _getWorkerHistory, _qtkWarned, _refMap, _refTachesCache, _refTachesCacheAt, _referentielCache, _referentielLoadedAt, _supMapLastGood, admin, aggregateParcellesFromMirror, archiveDocRef, buildHalfToPeriode, buildHeuresSup, buildParCulture, buildPeriodeCampagne, campagneBudget, campagneBudgetCulture, campagneCourante, campagneExport, campagneOf, classifyType, computeAllowedMatricules, computeChargCond, computeDurationOvertime, consoAccessControl, consoBons, cors, countDistinctByFermeType, coutOuvrier, coutQuinzaineSnap, db_firestore, dedupeWorkersByMatricule, defaultPeriode, defaultPeriodeForCampagne, deriveFerme, detectFramboiseSubType, enrichRowsWithHaRef, fetchBrParcelleSupMap, fetchDetailFromMirror, fetchPostesFixesFromMirror, fetchSummaryFromMirror, fichierPaieStore, filterArchivedParFerme, filterArchivedParJour, filterArchivedRowsByFerme, filterByFermeField, filterMirrorRowsByCulture, filterMirrorRowsByFerme, filterPresenceRowsByAllowed, filterProdRowsByFerme, filterReposWorkersArchived, filterRowsByExactDates, findJourApres, findJourAvant, functions, getAvailableDates, getExcludedFonctionsHS, getJoursFeries, getPointageMeta, getPool, getSyncStatus, halfKey, invalidateReferentielCache, isSansEquipe, isValidCampagneLabel, loadReferentielCache, loadReferentielTaches, mapMirrorRowToDetail, mergeReferentiel, parcelleGroupSeedHa, parcelleGroupSplit, parcelleGroupValidate, pointageCacheKey, pool, quantiteToKg, recomposeArchivedTotals, recomposeProdTotalKg, referentielOperationsConnues, resolveCallerProfile, resolveFamily, resolveFermeFromParcelle, resolveHolidayPeriode, resolveMyrtilleVariete, resolvePointageRHAccess, resolveVariete, shouldExcludeWorkerDay, splitCompositeLabel, sql, sqlConfig, syncPointageFromProd, verifyAuth, warmRefTaches, withCache } = require("./pointageService.part1");
+  // Idem, mais depuis pointageService.part2.js (memes contraintes de cycle :
+  // part1.js require() ce fichier pour construire __actions, donc PAS de
+  // require top-level de part2.js non plus). Bug trouve et corrige le
+  // 2026-09-14 (production readiness) en meme temps que withCache/USE_MIRROR
+  // ci-dessus -- meme classe de regression (8a7284c), noms restes libres apres
+  // l'eclatement. Detecte par un passage ESLint no-undef sur tout functions/,
+  // pas manuellement -- confirme qu'aucune autre occurrence du meme bug ne
+  // trainait ailleurs dans les fichiers actions1-4.js.
+  const { computeCampagneAnalytiqueDetail, computeCampagneCoutOuvrier, getSubmittedFermes, getSnapshotData, projectSbReferentielForCaller } = require("./pointageService.part2");
 
 
       // ------ HEURES-SUP: durée travaillée + dépassement 8h30 par quinzaine ------

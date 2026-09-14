@@ -492,7 +492,7 @@ exports.analyzeEmail = functions
           console.log(`analyzeEmail: Skipping email ${emailId} — PFQ parsing returned no receiptNumber`);
           summary = "Email détecté comme PFQ mais parsing échoué (pas de receiptNumber)";
           await emailRef.update({ category: "quality_inspection_failed", analysis: { summary }, analyzedAt: new Date().toISOString() });
-          return res.json({ success: true, emailId, category: "quality_inspection_failed", summary });
+          return null;
         }
 
         // Build expedition document
