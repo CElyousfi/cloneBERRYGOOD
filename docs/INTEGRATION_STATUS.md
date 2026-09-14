@@ -6,7 +6,40 @@
 > réelles sur `whatsapp_logs` (1 964 documents), `config/whatsapp`, et les 124
 > collections racine du projet.
 
-## WhatsApp — 🔴 5 templates cassés depuis des semaines, en silence
+## WhatsApp — 🟢 CORRIGÉ le 2026-09-14, vérifié par envoi réel
+
+Cause confirmée par un envoi de test réel contre l'API Meta (réponse brute
+complète, pas une supposition) :
+```
+error_data.details: "Param text cannot have new-line/tab characters or more than 4 consecutive spaces"
+```
+`sendTemplateMessage`, `sendTemplateMessageWithDocument` et
+`sendTemplateMessageWithImage` (`functions/whatsappService.js`) ne
+nettoyaient les paramètres qu'avec `.trim()` — les sauts de ligne internes
+(volontaires, pour la mise en forme du digest) passaient tels quels. Corrigé
+en appliquant `toSingleLine()` (déjà utilisé par `general_alert`, jamais
+généralisé) aux 3 fonctions d'envoi. Testé en conditions réelles après
+correctif : `meteo_alerte_7j` et `production_digest_v2` livrent maintenant
+(`waMessageId` réel retourné par Meta — 2 messages de test envoyés au
+numéro déjà configuré, préfixés `[TEST FIX]`). Le correctif est centralisé
+dans le transport donc couvre aussi `meteo_spray_digest`/`_img` et
+`meteo_alerte_7j_img` sans changement supplémentaire.
+
+Un test existant (`functions/lib/meteo/__tests__/whatsappImage.test.js`)
+codifiait par erreur l'ancien comportement (« body inchangé », assertion sur
+le texte multi-ligne intact) — corrigé pour asserter le texte aplati et
+l'absence de `\n`/tab dans tout param envoyé.
+
+**Reste à vérifier de votre côté** : la mise en forme visuelle du digest
+change (plus de sauts de ligne dans le corps du message WhatsApp lui-même —
+seul le texte statique du template garde ses retours à la ligne). Si le
+digest quotidien devient difficile à lire en une seule ligne, la solution
+propre serait de resoumettre ces templates à Meta avec plusieurs variables
+({{1}}..{{n}}, une par ligne) plutôt qu'une seule variable multi-ligne — un
+changement de contenu qui nécessite une nouvelle approbation Meta,
+volontairement hors périmètre de ce correctif.
+
+### Avant correctif (référence)
 
 **Ce qui marche** : `config/whatsapp` existe, `enabled: true`, `access_token`
 et `phone_number_id` renseignés. Les templates suivants livrent réellement

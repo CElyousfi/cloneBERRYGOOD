@@ -65,10 +65,19 @@ async function sendTemplateMessage(to, templateName, bodyParams = [], lang, toNa
   const language = lang || config.default_language || "fr";
   const components = [];
   if (bodyParams.length > 0) {
-    // Meta rejects empty string params with error 131008. Replace any empty/null/undefined
-    // value with "—" as a defensive last line of defense before sending to the API.
+    // Meta rejects empty string params with error 131008, AND rejects any param
+    // containing '\n'/tab/4+ consecutive spaces with error 132018 ("Param text
+    // cannot have new-line/tab characters or more than 4 consecutive spaces") —
+    // confirmed 2026-09-14 against the live API: 559 failed sends across 5
+    // templates (production_digest_v2, meteo_spray_digest[_img],
+    // meteo_alerte_7j[_img]) that were all passing rich multi-line params.
+    // toSingleLine() collapses every whitespace run (incl. newlines/tabs) to one
+    // space — applied HERE, centrally, so no future caller can reintroduce this
+    // by forgetting to pre-sanitize (general_alert already did this correctly
+    // via its own toSingleLine() call before this point; this makes it apply
+    // unconditionally to every param, every template).
     const sanitized = bodyParams.map(text => {
-      const str = String(text ?? "").trim();
+      const str = toSingleLine(text ?? "");
       return { type: "text", text: str || "—" };
     });
     components.push({ type: "body", parameters: sanitized });
@@ -321,8 +330,12 @@ async function sendTemplateMessageWithDocument(to, templateName, mediaIdOrRef, f
     },
   ];
   if (bodyParams.length > 0) {
+    // Voir le commentaire équivalent dans sendTemplateMessage : Meta rejette
+    // aussi tout param contenant '\n'/tab/4+ espaces (erreur 132018) sur les
+    // variantes DOCUMENT/IMAGE — mêmes gabarits _img concernés par la panne
+    // du 2026-09-14 (meteo_alerte_7j_img, meteo_spray_digest_img).
     const sanitized = bodyParams.map(text => {
-      const str = String(text ?? "").trim();
+      const str = toSingleLine(text ?? "");
       return { type: "text", text: str || "—" };
     });
     components.push({ type: "body", parameters: sanitized });
@@ -414,8 +427,12 @@ async function sendTemplateMessageWithImage(to, templateName, mediaIdOrRef, body
     },
   ];
   if (bodyParams.length > 0) {
+    // Voir le commentaire équivalent dans sendTemplateMessage : Meta rejette
+    // aussi tout param contenant '\n'/tab/4+ espaces (erreur 132018) sur les
+    // variantes DOCUMENT/IMAGE — mêmes gabarits _img concernés par la panne
+    // du 2026-09-14 (meteo_alerte_7j_img, meteo_spray_digest_img).
     const sanitized = bodyParams.map(text => {
-      const str = String(text ?? "").trim();
+      const str = toSingleLine(text ?? "");
       return { type: "text", text: str || "—" };
     });
     components.push({ type: "body", parameters: sanitized });

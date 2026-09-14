@@ -91,7 +91,7 @@ test('uploadMedia : un PNG part en multipart avec le bon MIME', async () => {
   }
 });
 
-test('sendTemplateMessageWithImage : header image(media_id), body inchangé', async () => {
+test('sendTemplateMessageWithImage : header image(media_id), body aplati sur une ligne', async () => {
   logs.length = 0;
   const f = stubFetch();
   try {
@@ -112,9 +112,19 @@ test('sendTemplateMessageWithImage : header image(media_id), body inchangé', as
     assert.equal(header.parameters[0].type, 'image');
     assert.deepEqual(header.parameters[0].image, { id: 'MEDIA-PNG-1' });
 
+    // Régression du 2026-09-14 (production readiness) : Meta rejette tout param
+    // contenant '\n'/tab/4+ espaces avec l'erreur #132018 ("Param text cannot
+    // have new-line/tab characters or more than 4 consecutive spaces") —
+    // confirmé en direct contre l'API réelle, 559 envois échoués sur 5
+    // templates dont meteo_spray_digest_img. whatsappService aplatit donc
+    // chaque param via toSingleLine() avant envoi ; PARAMS reste volontairement
+    // multi-ligne en entrée pour couvrir exactement ce cas.
     const bodyComp = body.template.components.find((c) => c.type === 'body');
-    assert.deepEqual(bodyComp.parameters.map((p) => p.text), PARAMS);
-    bodyComp.parameters.forEach((p) => assert.equal(p.type, 'text'));
+    assert.deepEqual(bodyComp.parameters.map((p) => p.text), PARAMS.map((p) => whatsapp.toSingleLine(p)));
+    bodyComp.parameters.forEach((p) => {
+      assert.equal(p.type, 'text');
+      assert.ok(!/[\n\t]/.test(p.text), 'aucun param envoyé à Meta ne doit contenir de saut de ligne/tab');
+    });
   } finally {
     f.restore();
   }
