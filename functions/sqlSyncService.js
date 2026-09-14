@@ -1,6 +1,19 @@
 /**
  * sqlSyncService.js
  *
+ * ⚠️ NE PAS SUPPRIMER — SOURCE DE DONNÉES OPÉRATIONNELLE DE LA FERME, PAS DU
+ * LEGACY. Ce fichier synchronise le SQL Server de la ferme (pointage horaire
+ * des ouvriers, consommation, cueillette) vers des collections Firestore
+ * "miroir" (`sql_mirror_*`). Firebase/Firestore EST le backend applicatif —
+ * ce module est l'intégration qui l'alimente, pas un second backend
+ * concurrent. Le supprimer coupe l'arrivée du pointage, de la cueillette et
+ * de la consommation : les écrans continuent de s'afficher avec les
+ * dernières données synchronisées, gelées, SANS erreur visible tant que la
+ * détection de staleness (voir plus bas) n'a pas alerté.
+ *
+ * Détail des tables lues, collections écrites, planning de synchro, et
+ * dépendances par écran : voir docs/INTEGRATION_SQL_MIRROR.md.
+ *
  * Phase 0: Replication probe — detect SQL reporting DB refresh frequency
  * Phase 1: Hourly sync SQL → Firestore mirror collections
  */

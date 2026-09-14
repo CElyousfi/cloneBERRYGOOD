@@ -4,6 +4,42 @@ import { parcelleConfig } from '../agronomie/parcelleConfig.jsx';
 import { meteoFermes } from '../technique/meteoFermes.jsx';
 import { FARMS } from './FARMS.jsx';
 
+/**
+ * Chantier "production readiness" (docs/DATA_SOURCES.md), Phase 3a — drapeau
+ * D'INSPECTION UNIQUEMENT, pas un flag produit. Quand actif, generateMockData
+ * calcule tout normalement (rien de la logique interne ne change) mais son
+ * retour est vidé clé par clé — [] pour un tableau, {} pour un objet, 0 pour
+ * un nombre, '' pour une chaîne, null reste null. Sert à distinguer, écran par
+ * écran, ce qui a une vraie source Firestore (l'écran affiche un état vide
+ * propre) de ce qui n'affichait qu'une valeur fabriquée (l'écran se vide aussi
+ * silencieusement — c'est le signal recherché).
+ * Activation : `?emptyMockData=1` dans l'URL, ou `localStorage.sb_flag_empty_mock_data = '1'`.
+ */
+function isEmptyMockDataFlagActive() {
+    if (typeof window === 'undefined') return false;
+    try {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('emptyMockData') === '1') return true;
+        return !!(window.localStorage && window.localStorage.getItem('sb_flag_empty_mock_data') === '1');
+    } catch (_) {
+        return false;
+    }
+}
+
+/** Vide UNE valeur en gardant son type de base. Pas de récursion : chaque clé
+ * du retour de generateMockData est déjà un domaine complet (tableau, objet,
+ * nombre...) — la vider à ce niveau suffit à vider l'écran qui la consomme. */
+function emptyLike(v) {
+    if (v === null || v === undefined) return v;
+    if (Array.isArray(v)) return [];
+    if (typeof v === 'function') return v;
+    if (typeof v === 'number') return 0;
+    if (typeof v === 'string') return '';
+    if (typeof v === 'boolean') return false;
+    if (typeof v === 'object') return {};
+    return v;
+}
+
 // ===================== MOCK DATA =====================
         function generateMockData(farm) {
             const operations = ['Taille', 'Palissage', 'Désherbage', 'Fertigation', 'Traitement phyto', 'Tuteurage', 'Paillage', 'Irrigation'];
@@ -1097,7 +1133,14 @@ import { FARMS } from './FARMS.jsx';
                 return 'Framboise';
             };
 
-            return { effectif, topOps, recolteData, recolteParJour, horsRecolteDetail, pointageJour, quinzaineData, weeklyTrend, parcellesMap, parcelleDetail, equipes, suiviModifs, qualiteInspections, blocIds, qualiteHistorique, qualiteBrix, pfqHistory, weeklyRanking, expeditions, stockEmballages, stockIntrants, parcAuto, cpcData, cpcVarietes, cpcCharges, totalHa, totalCA, totalCAExport, totalCALocal, totalKgExport, totalChargesGlobales, cfDea, ebeParVariete, ebeFramboise, resultatAvantImpot, resultatParMois, caDetail, carburant, finStock, liquidations, parcelleConfig, normesProductivite, horsRecolteParTunnel, ouvriersMatricule, primesConfig, meteoData, agroData, transportConfig, avocatierConfig, varieteCultureMap, getCultureForVariete, getCoutTransport, quinzaineOrder };
+            const result = { effectif, topOps, recolteData, recolteParJour, horsRecolteDetail, pointageJour, quinzaineData, weeklyTrend, parcellesMap, parcelleDetail, equipes, suiviModifs, qualiteInspections, blocIds, qualiteHistorique, qualiteBrix, pfqHistory, weeklyRanking, expeditions, stockEmballages, stockIntrants, parcAuto, cpcData, cpcVarietes, cpcCharges, totalHa, totalCA, totalCAExport, totalCALocal, totalKgExport, totalChargesGlobales, cfDea, ebeParVariete, ebeFramboise, resultatAvantImpot, resultatParMois, caDetail, carburant, finStock, liquidations, parcelleConfig, normesProductivite, horsRecolteParTunnel, ouvriersMatricule, primesConfig, meteoData, agroData, transportConfig, avocatierConfig, varieteCultureMap, getCultureForVariete, getCoutTransport, quinzaineOrder };
+
+            if (isEmptyMockDataFlagActive()) {
+                const emptied = {};
+                Object.keys(result).forEach(k => { emptied[k] = emptyLike(result[k]); });
+                return emptied;
+            }
+            return result;
         }
 
 export { generateMockData };
