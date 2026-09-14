@@ -2,6 +2,7 @@
    Module: magasin | Déclaration(s): MagSortieTab */
 import { cachedFetch } from '../shared/cachedFetch.jsx';
 import { useEffect, useState } from '../shared/reactHooks.jsx';
+import { useStockLocations } from './useStockLocations.jsx';
 
 // ===================== MAGASINIER: SORTIE TAB =====================
         function MagSortieTab({ currentProfile, profileData }) {

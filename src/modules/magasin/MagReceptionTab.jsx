@@ -3,6 +3,7 @@
 import { CanevaImportSub } from '../caisse/CanevaImportSub.jsx';
 import { cachedFetch } from '../shared/cachedFetch.jsx';
 import { useEffect, useState } from '../shared/reactHooks.jsx';
+import { useStockLocations } from './useStockLocations.jsx';
 
 // ===================== MAGASINIER: BONS DE RÉCEPTION (LISTE BR SAISIS) =====================
         function MagReceptionTab({ currentProfile, profileData, setCurrentTab }) {

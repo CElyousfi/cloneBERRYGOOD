@@ -178,13 +178,24 @@ import { useState } from '../shared/reactHooks.jsx';
                         await jsonRef.put(jsonBlob);
                         console.log('Excel + JSON sauvegardés dans Storage');
                     } catch(err) { console.warn('Storage upload skipped:', err.message); }
-                    _lastImportTs = Date.now();
+                    // 2026-09-14 (production readiness) : `_lastImportTs` n'était jamais déclarée
+                    // (même dans le monolithe public/app.jsx:18645 — inoffensif là-bas car un
+                    // script classique en mode non-strict crée juste une variable globale
+                    // implicite). Un module ES est TOUJOURS en mode strict : cette même ligne y
+                    // levait un ReferenceError à CHAQUE import PFQ réussi, empêchant la mise à
+                    // jour de app_settings/pfq_import_meta et tout le bloc "Transport Fruit" qui
+                    // suit de s'exécuter. Variable jamais relue ailleurs (write-only, ici comme
+                    // dans le monolithe) — déclarée localement, comportement net inchangé.
+                    let _lastImportTs = Date.now();
                     try {
                         await firebase.firestore().collection('app_settings').doc('pfq_import_meta').set({
                             lastImportTime: Date.now(),
                             lastImportCount: deduped.length,
                             lastImportFile: file.name,
-                            lastImportBy: profileData?.name || currentProfile || 'unknown',
+                            // profileData/currentProfile n'existent pas dans ce composant (props
+                            // réelles : userProfile) -- même régression, corrigée avec le champ
+                            // réel (cf. AuthenticatedApp.jsx : userProfile.displayName/.profileId).
+                            lastImportBy: userProfile?.displayName || userProfile?.profileId || 'unknown',
                         });
                     } catch(e) { console.warn('Meta update skipped:', e); }
                     // --- Transport Fruit : auto-incrémenter Pointage Divers depuis (date, matricule, N-V) ---

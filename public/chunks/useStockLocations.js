@@ -1,0 +1,1 @@
+const o={magasins:["F1","F2","F5","F6"],stations:[],parcelles:{},loading:!0};function n(){return typeof window<"u"&&typeof window.useStockLocations=="function"?window.useStockLocations():o}export{n as u};

@@ -2,6 +2,7 @@
    Module: magasin | Déclaration(s): MagTransfertTab */
 import { cachedFetch } from '../shared/cachedFetch.jsx';
 import { useEffect, useState } from '../shared/reactHooks.jsx';
+import { useStockLocations } from './useStockLocations.jsx';
 
 // ===================== MAGASINIER: TRANSFERT TAB =====================
         function MagTransfertTab({ currentProfile, profileData }) {
