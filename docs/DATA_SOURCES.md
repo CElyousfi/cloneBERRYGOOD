@@ -68,17 +68,17 @@
 | cpcVarietes | FinDashboardTab.jsx | Non trouvée | hardcoded | **Domaine argent.** Instantané figé « au 31/12/2025 ». |
 | cpcCharges | FinDashboardTab.jsx | Non trouvée | hardcoded | **Domaine argent.** |
 | totalHa | FinDashboardTab.jsx | Non trouvée | hardcoded | Littéral `54.8`. |
-| totalCA | *aucun* | n/a — réimplémenté ailleurs en vrai | hardcoded | Clé morte : `FinCATab.jsx`/`FinanceMarcheLocalTab.jsx` calculent déjà leur **propre** `totalCA` réel depuis les liquidations/marché local live — implémentation réelle déjà existante, sous un autre nom de variable. |
-| totalCAExport | FinDashboardTab.jsx | Non trouvée | hardcoded | **Domaine argent.** Littéral `3 937 610`. |
-| totalCALocal | FinDashboardTab.jsx | Non trouvée | hardcoded | **Domaine argent.** Littéral `142 466`. |
-| totalKgExport | FinDashboardTab.jsx | Non trouvée | hardcoded | Littéral `59 451`. |
+| totalCA | *aucun (data.caDetail existe, sans lecteur)* | **Oui, câblé (2026-09-14)** — `liquidations` (export) + `pfq_interne`/`bons_marche_local` (local), via `computeCADetail.jsx` extrait tel quel de `FinCATab.jsx` (mêmes 6 tests unitaires que la logique de production). | **réel** | Correction du 2026-09-14 : première caractérisation trop rapide, corrigée après relecture — `pfq_interne` (1 933 docs réels, `typeVente` Export/Marché Local) avait été manquée. |
+| totalCAExport | FinDashboardTab.jsx | **Oui, câblé** — mêmes sources. **Nuance** : `FinDashboardTab.jsx` a déjà son propre fetch live (`liveCAExport`, calcul simplifié sans répartition Maravilla/Yazmin par variété) qui prend PRIORITÉ dès qu'il répond ; `data.totalCAExport` n'est visible que pendant la fenêtre de chargement — les deux convergent au même total (la répartition ne fait que redistribuer, jamais changer la somme), donc pas de risque de chiffre différent affiché. | **réel** | Vérifié mathématiquement équivalent aux deux implémentations. |
+| totalCALocal | FinDashboardTab.jsx | Idem (repli de `liveCALocal`). | **réel** | |
+| totalKgExport | FinDashboardTab.jsx | **Oui, câblé** — celui-ci N'A PAS de variante live locale à `FinDashboardTab.jsx` (utilisé directement, ex. ligne 1039) : le câblage a un effet visible réel, pas seulement pendant le chargement. | **réel** | |
 | totalChargesGlobales | *aucun* | Non trouvée | hardcoded | Clé morte. Littéral `9 684 565`. |
 | cfDea | FinDashboardTab.jsx | Non trouvée | hardcoded | **Domaine argent** (amortissement). Littéral `1 669 000`. |
 | ebeParVariete | FinDashboardTab.jsx | Non trouvée | hardcoded | **Domaine argent.** |
 | ebeFramboise | FinDashboardTab.jsx | Non trouvée | hardcoded | **Domaine argent.** Littéral `-1 423 086`. |
 | resultatAvantImpot | FinDashboardTab.jsx | Non trouvée | hardcoded | **Domaine argent.** Littéral `-1 671 304`. |
 | resultatParMois | FinDashboardTab.jsx | Non trouvée | hardcoded | **Domaine argent.** |
-| caDetail | *aucun* | n/a — réimplémenté ailleurs en vrai | hardcoded | Clé morte : `FinCATab.jsx` calcule son **propre** `caDetail` réel depuis liquidations + marché local live. |
+| caDetail | *aucun* | **Oui, câblé** — même `computeCADetail.jsx` que `totalCA`. Reste une clé morte (aucun écran ne lit encore `data.caDetail` — `FinCATab.jsx` calcule le sien localement), mais n'est plus du hardcode : même calcul réel, juste pas encore branché en lecture. | **réel** | |
 | carburant | *aucun* | Oui — Cloud Function `exports.fuel`, collection `fuel_transactions` | hardcoded | Mock forcé à `null` par design (commentaire : « Loaded from API in FinCarburantTab »). Déjà fetché en live par l'écran, hors `AuthenticatedApp`. |
 | finStock | FinStockTab.jsx | Non trouvée sous cette forme agrégée (le magasin a du stock par article, granularité différente) | hardcoded | Seul consommateur réel. |
 | liquidations | *aucun* | Oui — collections `liquidations` + `liquidation_forecasts` | hardcoded | Clé morte, mais avec un remplacement **déjà réel et déjà en production** : `QualiteLiquidationsTab.jsx` et `FinLiquidationsTab.jsx` maintiennent leur propre state `liquidations` depuis l'API live. **Domaine argent**, gros historique littéral. |
@@ -96,15 +96,36 @@
 
 ## Synthèse
 
+> Mise à jour 2026-09-14 (post-accès Firestore) : la première passe de ce
+> document classait plusieurs domaines « pas de source trouvée » sur la seule
+> base d'une recherche dans le CODE. Un accès Firestore en lecture a ensuite
+> permis de lister les 124 collections réellement présentes en base — certaines
+> (`pfq_interne`, 1 933 docs ; `rh_cout_quinzaine`) n'étaient référencées par
+> AUCUN chemin de code que la recherche initiale avait suivi. Conclusion : pour
+> ce dépôt, « pas de source trouvée dans le code » ne veut pas dire « la donnée
+> n'existe pas » — les deux doivent être vérifiés avant de conclure.
+
 - **Réel, déjà câblé** : `agroData`, `agroApiStatus`, `weeklyRanking`,
-  `transportConfig` — 4, comme annoncé.
-- **Generated (`Math.random()`)** : `effectif`, `topOps`, `recolteData`,
-  `recolteParJour`, `horsRecolteDetail`, `pointageJour`, `quinzaineData`,
-  `weeklyTrend`, `parcellesMap`, `parcelleDetail`, `equipes`, `suiviModifs`,
-  `qualiteHistorique`, `qualiteBrix`, `pfqHistory`, `ouvriersMatricule` — 16.
-- **Hardcoded (littéral/seed fixe)** : les 31 restants.
+  `transportConfig`, `normesProductivite`, `primesConfig.joursFeries` (partiel),
+  `totalCA`, `totalCAExport`, `totalCALocal`, `totalKgExport`, `caDetail` — 11.
+- **Generated (`Math.random()`)**, non encore câblé : `effectif`, `topOps`,
+  `recolteData`, `recolteParJour`, `horsRecolteDetail`, `pointageJour`,
+  `quinzaineData`, `weeklyTrend`, `parcellesMap`, `parcelleDetail`, `equipes`,
+  `qualiteHistorique`, `pfqHistory`, `ouvriersMatricule` — 14.
+- **Hardcoded, non encore câblé** : les ~26 restants (dont `qualiteBrix` —
+  ranchAvg/brixPFQ calculables depuis `expeditions`, mais `poolAvg` est un
+  repère externe Driscoll's sans source interne).
+- **Confirmé absent après re-vérification élargie** (au-delà de la recherche
+  code initiale — collections candidates inspectées une à une) : `suiviModifs`
+  (9 collections pointage/audit vérifiées, aucune ne correspond), `parcAuto`,
+  `stockEmballages`/`stockIntrants` (données brutes existent, catégorisation
+  incohérente). `avocatierConfig` et `parcelleConfig` : sources partielles
+  réelles trouvées (1 à 35 documents selon la collection) mais aucune assez
+  complète pour remplacer le domaine sans reconstruire un référentiel — décision
+  à prendre, pas un « non trouvé ».
 - **Aucun domaine marqué `unknown`** — chaque clé a pu être classée
-  formellement (source trouvée ou recherche négative documentée).
+  formellement (source trouvée ou recherche négative documentée, code ET
+  Firestore).
 
 ### Pistes de câblage 3b, par facilité/impact
 

@@ -162,6 +162,8 @@ import { TabErrorBoundary } from './TabErrorBoundary.jsx';
 import { cachedFetch } from './cachedFetch.jsx';
 import { generateMockData } from './generateMockData.jsx';
 import { adaptNormesProductivite } from '../agronomie/normesProductiviteAdapter.jsx';
+import { computeCADetail } from '../finance/computeCADetail.jsx';
+import { loadBonsFromFirestore } from './loadBonsFromFirestore.jsx';
 import { getVisibleProfiles } from './getVisibleProfiles.jsx';
 import { invalidateCache } from './invalidateCache.jsx';
 import { useEffect, useMemo, useRef, useState } from './reactHooks.jsx';
@@ -321,6 +323,42 @@ const ParcellesParamsTabLazy = lazyGlobalComponent('ParcellesParamsTab', ['compo
                         }
                     })
                     .catch(() => { setAgroApiStatus('error'); });
+            }, []);
+
+            // CA (totalCA/totalCAExport/totalCALocal/totalKgExport) — mêmes 3
+            // sources et même calcul (computeCADetail.jsx) que FinCATab.jsx, pour que
+            // le Dashboard n'affiche jamais un chiffre différent de l'onglet Finance.
+            // Voir docs/DATA_SOURCES.md. null tant que non chargé -> mock encore
+            // affiché le temps du 1er fetch (domaine argent : mieux vaut le seed
+            // hardcodé une fraction de seconde qu'un flash à 0 DH trompeur).
+            const [caRawData, setCaRawData] = useState(null);
+            React.useEffect(() => {
+                Promise.all([
+                    cachedFetch('/api/email-analysis?action=liquidations'),
+                    cachedFetch('/api/email-analysis?action=expeditions&limit=2000'),
+                    (async () => {
+                        const allBons = [];
+                        try {
+                            const prodBons = await loadBonsFromFirestore();
+                            prodBons.filter(b => b.typeVente === 'Marché Local').forEach(b => allBons.push(b));
+                        } catch (e) { /* voir FinCATab.jsx : même repli silencieux */ }
+                        try {
+                            if (typeof firebase !== 'undefined' && firebase.firestore) {
+                                const snap = await firebase.firestore().collection('bons_marche_local').get();
+                                snap.forEach(d => allBons.push({ id: d.id, ...d.data(), source: 'firestore' }));
+                            }
+                        } catch (e) { /* idem */ }
+                        return allBons;
+                    })(),
+                ]).then(([liqJson, expJson, bons]) => {
+                    if (liqJson && liqJson.success) {
+                        setCaRawData({
+                            liquidations: (liqJson.liquidations || []).filter(l => l.rows && l.rows.length > 0),
+                            expeditions: (expJson && expJson.success) ? (expJson.expeditions || []) : [],
+                            marcheLocalBons: bons,
+                        });
+                    }
+                }).catch(() => {});
             }, []);
 
             // Jours fériés Maroc (Firestore: app_settings/jours_feries, via
@@ -642,6 +680,19 @@ const ParcellesParamsTabLazy = lazyGlobalComponent('ParcellesParamsTab', ['compo
                 mockData.normesProductivite = normesProductivite;
                 mockData.normesProductiviteSource = normesProductiviteSource;
 
+                // Override totalCA/totalCAExport/totalCALocal/totalKgExport depuis
+                // computeCADetail (voir docs/DATA_SOURCES.md). cpcVarietes/ebe*/
+                // resultat*/cfDea restent hardcoded : pas de méthodologie comptable
+                // confirmée pour ces lignes-là (charges par variété, amortissement...).
+                if (caRawData) {
+                    const ca = computeCADetail(caRawData);
+                    mockData.totalCA = ca.totalCA;
+                    mockData.totalCAExport = ca.totalExport;
+                    mockData.totalCALocal = ca.totalLocal;
+                    mockData.totalKgExport = ca.totalKgExport;
+                    mockData.caDetail = ca.caDetail;
+                }
+
                 // Override primesConfig.joursFeries depuis app_settings/jours_feries
                 // (voir docs/DATA_SOURCES.md) — le reste de primesConfig (tranches,
                 // primeCaporal, primeChargement) n'a pas de source confirmée, reste
@@ -707,7 +758,7 @@ const ParcellesParamsTabLazy = lazyGlobalComponent('ParcellesParamsTab', ['compo
                 }
 
                 return mockData;
-            }, [farmFilter, agroApiData, agroApiStatus, weeklyQRData, weeklyBerryFilter, transportPrimesOverride, normesApiData, joursFeriesData]);
+            }, [farmFilter, agroApiData, agroApiStatus, weeklyQRData, weeklyBerryFilter, transportPrimesOverride, normesApiData, joursFeriesData, caRawData]);
             const isChef = currentProfile.startsWith('chef_');
 
             const isDGUser = userProfile.profileId === 'dg';
