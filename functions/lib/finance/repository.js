@@ -17,7 +17,6 @@
 /**
  * @typedef {Object} FinanceRepositoryDeps
  * @property {FirebaseFirestore.Firestore} db - Firestore instance (injected)
- * @property {Function} [getSupabaseAdmin] - Supabase admin client getter (injected, optional)
  * @property {Function} [isEnabled] - Feature flag checker (injected)
  */
 
@@ -28,7 +27,7 @@
  * @param {FinanceRepositoryDeps} deps
  */
 function createRepository(deps) {
-  const { db, getSupabaseAdmin, isEnabled = () => false } = deps;
+  const { db, isEnabled = () => false } = deps;
 
   return {
     /**
