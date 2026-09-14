@@ -323,6 +323,21 @@ const ParcellesParamsTabLazy = lazyGlobalComponent('ParcellesParamsTab', ['compo
                     .catch(() => { setAgroApiStatus('error'); });
             }, []);
 
+            // Jours fériés Maroc (Firestore: app_settings/jours_feries, via
+            // /api/pointage-validation?action=jours-feries — source unique déjà
+            // utilisée ailleurs, ex. JourFerieSub.jsx qui la préfère déjà à
+            // data.primesConfig.joursFeries quand disponible). Voir
+            // docs/DATA_SOURCES.md. null tant que non chargé -> mock encore
+            // présent le temps du 1er fetch, jamais d'écran vide sur ce champ
+            // précis (calendrier RH, faible risque à afficher les fériés
+            // hardcodés une fraction de seconde avant le vrai calendrier).
+            const [joursFeriesData, setJoursFeriesData] = useState(null);
+            React.useEffect(() => {
+                cachedFetch('/api/pointage-validation?action=jours-feries')
+                    .then(json => { if (json && json.success && Array.isArray(json.holidays) && json.holidays.length > 0) setJoursFeriesData(json.holidays); })
+                    .catch(() => {});
+            }, []);
+
             // Normes de productivité hors-récolte (Firestore: normes-productivite,
             // via /api/hors-recolte-suivi?action=get-normes — repli hardcoded CÔTÉ
             // SERVEUR si la collection est vide, avec source:'hardcoded' explicite ;
@@ -627,6 +642,14 @@ const ParcellesParamsTabLazy = lazyGlobalComponent('ParcellesParamsTab', ['compo
                 mockData.normesProductivite = normesProductivite;
                 mockData.normesProductiviteSource = normesProductiviteSource;
 
+                // Override primesConfig.joursFeries depuis app_settings/jours_feries
+                // (voir docs/DATA_SOURCES.md) — le reste de primesConfig (tranches,
+                // primeCaporal, primeChargement) n'a pas de source confirmée, reste
+                // tel quel pour l'instant.
+                if (joursFeriesData) {
+                    mockData.primesConfig = { ...mockData.primesConfig, joursFeries: joursFeriesData };
+                }
+
                 // Override weeklyRanking with real Weekly Quality Report data
                 const filteredWQR = (weeklyQRData || []).filter(r => r.berry === weeklyBerryFilter);
                 if (filteredWQR.length > 0) {
@@ -684,7 +707,7 @@ const ParcellesParamsTabLazy = lazyGlobalComponent('ParcellesParamsTab', ['compo
                 }
 
                 return mockData;
-            }, [farmFilter, agroApiData, agroApiStatus, weeklyQRData, weeklyBerryFilter, transportPrimesOverride, normesApiData]);
+            }, [farmFilter, agroApiData, agroApiStatus, weeklyQRData, weeklyBerryFilter, transportPrimesOverride, normesApiData, joursFeriesData]);
             const isChef = currentProfile.startsWith('chef_');
 
             const isDGUser = userProfile.profileId === 'dg';
