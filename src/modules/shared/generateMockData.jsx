@@ -893,18 +893,13 @@ function emptyLike(v) {
                 enCours: 78191.74
             };
 
-            const normesProductivite = [
-                { tache: 'Désherbage', normeTunnelsParJourParOuvrier: 4, unite: 'tunnels/jour/ouvrier' },
-                { tache: 'Nettoyage', normeTunnelsParJourParOuvrier: 5, unite: 'tunnels/jour/ouvrier' },
-                { tache: 'Aération', normeTunnelsParJourParOuvrier: 8, unite: 'tunnels/jour/ouvrier' },
-                { tache: 'Désherbage à sape', normeTunnelsParJourParOuvrier: 3, unite: 'tunnels/jour/ouvrier' },
-                { tache: 'Nivellement des pots', normeTunnelsParJourParOuvrier: 2, unite: 'tunnels/jour/ouvrier' },
-                { tache: 'Nivellement des sol', normeTunnelsParJourParOuvrier: 3, unite: 'tunnels/jour/ouvrier' },
-                { tache: 'Palissage', normeTunnelsParJourParOuvrier: 2, unite: 'tunnels/jour/ouvrier' },
-                { tache: 'Feuille du sol', normeTunnelsParJourParOuvrier: 3, unite: 'tunnels/jour/ouvrier' },
-                { tache: 'Palissage Pots', normeTunnelsParJourParOuvrier: 5, unite: 'tunnels/jour/ouvrier' },
-                { tache: 'Ramassage Ficelle', normeTunnelsParJourParOuvrier: 6, unite: 'tunnels/jour/ouvrier' },
-            ];
+            // normesProductivite retiré d'ici (chantier production readiness) : source
+            // réelle désormais /api/hors-recolte-suivi?action=get-normes, câblée dans
+            // AuthenticatedApp.jsx via normesProductiviteAdapter.jsx. Voir
+            // docs/DATA_SOURCES.md. Ne reste ici QUE si aucun override n'a encore
+            // résolu — la clé est quand même présente au retour (tableau vide) pour
+            // que .map()/.filter() côté écrans ne plantent pas avant le premier fetch.
+            const normesProductivite = [];
 
             const avocatierConfig = {
                 F2: [{ id: 'AVO-F2', nom: 'F2', culture: 'Avocat', variete: 'Hass', nbLignes: 20 }],

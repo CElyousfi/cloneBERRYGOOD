@@ -1,7 +1,7 @@
 /* Migré depuis public/app.jsx — extraction verbatim (non-régression).
    Module: admin | Déclaration(s): ParametresTab */
 import { Panel } from '../shared/Panel.jsx';
-import { useState } from '../shared/reactHooks.jsx';
+import { useEffect, useState } from '../shared/reactHooks.jsx';
 import { BaremesPaiePanel } from './BaremesPaiePanel.jsx';
 import { JoursFeriesConfigPanel } from './JoursFeriesConfigPanel.jsx';
 import { SousTraitantsConfigPanel } from './SousTraitantsConfigPanel.jsx';
@@ -13,6 +13,19 @@ function ParametresTab({ data }) {
                 return copy;
             });
             const [normes, setNormes] = useState(() => data.normesProductivite.map(n => ({...n})));
+            // data.normesProductivite arrive par fetch async (AuthenticatedApp.jsx) —
+            // au premier rendu il est encore vide, donc `normes` se resynchronise
+            // dès que la vraie liste arrive. Ne touche plus après un premier
+            // remplissage non-vide : ne pas écraser une édition en cours de saisie
+            // (ces édits ne sont de toute façon pas encore persistés, cf. TODO plus bas).
+            const [normesSynced, setNormesSynced] = useState(false);
+            useEffect(() => {
+                if (normesSynced) return;
+                if (data.normesProductivite && data.normesProductivite.length > 0) {
+                    setNormes(data.normesProductivite.map(n => ({...n})));
+                    setNormesSynced(true);
+                }
+            }, [data.normesProductivite, normesSynced]);
             const [editingCell, setEditingCell] = useState(null); // {farm, idx, field}
             const [editVal, setEditVal] = useState('');
             const [showAddTache, setShowAddTache] = useState(false);
@@ -170,8 +183,13 @@ function ParametresTab({ data }) {
                     </Panel>
 
                     <Panel title="Normes de Productivité" icon="fa-gear">
-                        <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12}}>
+                        <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12, flexWrap:'wrap', gap:8}}>
                             <div style={{fontSize:11, color:'var(--gray-400)'}}><i className="fa-solid fa-pen" style={{marginRight:4}}></i> Cliquez sur une norme pour la modifier</div>
+                            {data.normesProductiviteSource === 'hardcoded' && (
+                                <div title="Aucune norme n'est enregistrée dans Firestore (collection normes-productivite) : ces valeurs sont le repli codé en dur côté serveur, pas une configuration validée." style={{fontSize:10.5, fontWeight:700, color:'var(--orange)', background:'rgba(245,158,11,0.12)', border:'1px solid var(--orange)', borderRadius:6, padding:'3px 8px', display:'flex', alignItems:'center', gap:5}}>
+                                    <i className="fa-solid fa-triangle-exclamation"></i> Valeurs par défaut (non configurées)
+                                </div>
+                            )}
                             <button onClick={() => setShowAddTache(true)} style={{padding:'6px 14px', background:'var(--green)', color:'white', border:'none', borderRadius:8, fontSize:11, fontWeight:600, cursor:'pointer', display:'flex', alignItems:'center', gap:6}}>
                                 <i className="fa-solid fa-plus"></i> Nouvelle Tâche
                             </button>

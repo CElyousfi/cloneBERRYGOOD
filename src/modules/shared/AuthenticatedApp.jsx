@@ -161,6 +161,7 @@ import { PROFILES } from './PROFILES.jsx';
 import { TabErrorBoundary } from './TabErrorBoundary.jsx';
 import { cachedFetch } from './cachedFetch.jsx';
 import { generateMockData } from './generateMockData.jsx';
+import { adaptNormesProductivite } from '../agronomie/normesProductiviteAdapter.jsx';
 import { getVisibleProfiles } from './getVisibleProfiles.jsx';
 import { invalidateCache } from './invalidateCache.jsx';
 import { useEffect, useMemo, useRef, useState } from './reactHooks.jsx';
@@ -320,6 +321,18 @@ const ParcellesParamsTabLazy = lazyGlobalComponent('ParcellesParamsTab', ['compo
                         }
                     })
                     .catch(() => { setAgroApiStatus('error'); });
+            }, []);
+
+            // Normes de productivité hors-récolte (Firestore: normes-productivite,
+            // via /api/hors-recolte-suivi?action=get-normes — repli hardcoded CÔTÉ
+            // SERVEUR si la collection est vide, avec source:'hardcoded' explicite ;
+            // voir docs/DATA_SOURCES.md). null tant que non chargé -> état vide, pas
+            // de nombre fabriqué côté front.
+            const [normesApiData, setNormesApiData] = useState(null);
+            React.useEffect(() => {
+                cachedFetch('/api/hors-recolte-suivi?action=get-normes')
+                    .then(json => { if (json && json.success) setNormesApiData(json); })
+                    .catch(() => {});
             }, []);
 
             // Fetch Weekly Quality Reports from Firebase
@@ -607,6 +620,13 @@ const ParcellesParamsTabLazy = lazyGlobalComponent('ParcellesParamsTab', ['compo
                 }
                 mockData.agroApiStatus = agroApiStatus;
 
+                // Override normesProductivite depuis /api/hors-recolte-suivi?action=get-normes
+                // (voir docs/DATA_SOURCES.md). Pas de fetch résolu -> tableau vide, jamais le
+                // seed generateMockData (retiré de generateMockData.jsx pour ce domaine).
+                const { normesProductivite, source: normesProductiviteSource } = adaptNormesProductivite(normesApiData);
+                mockData.normesProductivite = normesProductivite;
+                mockData.normesProductiviteSource = normesProductiviteSource;
+
                 // Override weeklyRanking with real Weekly Quality Report data
                 const filteredWQR = (weeklyQRData || []).filter(r => r.berry === weeklyBerryFilter);
                 if (filteredWQR.length > 0) {
@@ -664,7 +684,7 @@ const ParcellesParamsTabLazy = lazyGlobalComponent('ParcellesParamsTab', ['compo
                 }
 
                 return mockData;
-            }, [farmFilter, agroApiData, agroApiStatus, weeklyQRData, weeklyBerryFilter, transportPrimesOverride]);
+            }, [farmFilter, agroApiData, agroApiStatus, weeklyQRData, weeklyBerryFilter, transportPrimesOverride, normesApiData]);
             const isChef = currentProfile.startsWith('chef_');
 
             const isDGUser = userProfile.profileId === 'dg';
