@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 
-const { mapPersonnelRows } = require('../../functions/rhBdpService');
+const { mapPersonnelRows } = require('../../functions/src/modules/rh/rhBdpService');
 
 // ── mapPersonnelRows ──────────────────────────────────────────────────────────
 

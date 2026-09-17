@@ -7,9 +7,9 @@
  * History is passed in by the caller and persists in whatsapp_sessions.data.history.
  */
 
-const { db } = require("./config/firebase");
-const firestoreDataService = require("./firestoreDataService");
-const forecastService = require("./forecastService");
+const { db } = require("../../../config/firebase");
+const firestoreDataService = require("../../shared/firestoreDataService");
+const forecastService = require("../recolte/forecastService");
 
 const MAX_ITERATIONS = 4;
 const MAX_HISTORY = 12; // 6 user/assistant pairs
@@ -118,7 +118,7 @@ const TOOLS = [
   },
 ];
 
-const { getTeamNameMap } = require("./equipesConfig");
+const { getTeamNameMap } = require("../rh/equipesConfig");
 const {
   PENDING_STATUSES,
   RECEIVABLE_STATUSES,
@@ -129,12 +129,12 @@ const {
   buildReceptionPayload,
   isDepuisMiseEnService,
   MISE_EN_SERVICE_LABEL,
-} = require("./lib/bdc/bdcDigest");
-const { IN_MAX_VALUES, chunkIds, groupBlsByBdcId } = require("./lib/bdc/blBatch");
+} = require("../../../lib/bdc/bdcDigest");
+const { IN_MAX_VALUES, chunkIds, groupBlsByBdcId } = require("../../../lib/bdc/blBatch");
 // Lecture seule des décisions pures du rappel BDC : même ciblage et même
 // cooldown 4 h que l'action HTTP `remind-bdc`, appliqués ICI en PRÉ-CONTRÔLE
 // pour ne jamais faire confirmer une relance qui serait refusée à l'envoi.
-const { resolveReminderTargets, reminderCooldown } = require("./lib/bdc/reminder");
+const { resolveReminderTargets, reminderCooldown } = require("../../../lib/bdc/reminder");
 const getTeamMap = () => getTeamNameMap(db);
 
 // ─────────────────────────────────────────────────────────────────────────────

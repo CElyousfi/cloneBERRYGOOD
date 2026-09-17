@@ -5,7 +5,7 @@
  * ⚠️ BEE_BERRY_GOOD = base de PRODUCTION TIERCE → LECTURE SEULE STRICTE.
  *    Uniquement des SELECT one-shot. Aucun write SQL, aucune boucle de polling.
  *
- * Pattern repris de functions/prodSyncService.js (connexion mssql read-only via
+ * Pattern repris de functions/src/modules/recolte/prodSyncService.js (connexion mssql read-only via
  * sqlConfigProd). La logique de transformation pure vit dans
  * functions/lib/bdc/mirrorSync.js (testée en isolation).
  *
@@ -21,8 +21,8 @@
 'use strict';
 
 const sql = require('mssql');
-const sqlConfigProd = require('./config/sqlConfigProd');
-const { buildMirrorDocs, buildReport } = require('./lib/bdc/mirrorSync');
+const sqlConfigProd = require('../../../config/sqlConfigProd');
+const { buildMirrorDocs, buildReport } = require('../../../lib/bdc/mirrorSync');
 
 const MIRROR_COLLECTION = 'bdc_mirror';
 

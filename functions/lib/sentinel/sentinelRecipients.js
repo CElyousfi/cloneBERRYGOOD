@@ -7,7 +7,7 @@ const { formatPhoneE164 } = require('../phone/formatPhoneE164')
  * Pure filtering/mapping logic for the Sentinel recipients endpoint.
  *
  * Reuses the same field semantics as
- * `resolveRecipientsForProfile` in functions/whatsappService.js :
+ * `resolveRecipientsForProfile` in functions/src/modules/admin/whatsappService.js :
  *   - whatsappEnabled === true
  *   - disabled !== true
  *   - whatsappPhone non-empty AND valid E.164 (Moroccan) after normalization

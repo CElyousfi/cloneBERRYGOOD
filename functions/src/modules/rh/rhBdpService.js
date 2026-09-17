@@ -17,7 +17,7 @@
 'use strict';
 
 const sql = require('mssql');
-const sqlConfigProd = require('./config/sqlConfigProd');
+const sqlConfigProd = require('../../../config/sqlConfigProd');
 
 let poolProd = null;
 async function getPoolProd() {

@@ -131,7 +131,7 @@ puis fuzzy Jaccard tokens ≥ 0.5 scopé fournisseur → propose un mapping `a_m
   🟢/🔴/🟠 propres + écarts qté/prix + alimentation PMP au prix facturé.
 
 ## 7. Liens
-- Parser factures TIMAC (source des codes) : `functions/emailService.js` `parseTimacInvoiceText` +
+- Parser factures TIMAC (source des codes) : `functions/src/modules/finance/emailService.js` `parseTimacInvoiceText` +
   `scripts/validate-timac-parser.js` (134 factures réconciliées).
 - Pipeline factures complet : `docs/spec-workflow-achats.md` (à compléter — étape 4).
 - PMP au prix facturé (slot `facture` priorité max) : `docs/spec-valorisation-pmp.md` §8.

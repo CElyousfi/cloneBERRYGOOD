@@ -583,7 +583,7 @@ test('partEcoulee — accepte un Date autant qu\'une chaîne ISO', () => {
 
 test('partEcoulee — le libellé À SLASH du backend vaut celui à tiret', () => {
   // RÉGRESSION (colonne « Budget idéal » absente en preview) : le backend sert
-  // `2026/2027` (functions/pointageService.js), CampagneUtils.debutCampagne
+  // `2026/2027` (functions/src/modules/rh/pointageService.js), CampagneUtils.debutCampagne
   // n'accepte que le tiret → partEcoulee renvoyait null → la 4e sous-colonne
   // n'était jamais concaténée. C'est le format de la PROD qu'on teste ici.
   const slash = CR.partEcoulee({ campagne: '2025/2026', today: '2025-12-31', utils: CU });

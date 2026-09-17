@@ -112,7 +112,7 @@ module.exports = async function stockActions4(ctx) {
       if (action === "import-analyse-agq" && req.method === "POST") {
         const { pdf_base64, filename, source_email, created_by } = req.body;
         if (!pdf_base64) return res.status(400).json({ success: false, error: "pdf_base64 requis" });
-        const { parseAgqPdf } = require("../../../agqParser");
+        const { parseAgqPdf } = require("../agronomie/agqParser");
         const pdfBuffer = Buffer.from(pdf_base64.replace(/^data:application\/pdf;base64,/, ""), "base64");
 
         let parsed;

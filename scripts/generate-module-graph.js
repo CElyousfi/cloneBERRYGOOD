@@ -332,25 +332,22 @@ function collectFingerprintSources(root) {
     sources.push({ path: 'functions/lib/__entries__', content: JSON.stringify(entries) });
   }
 
-  // functions/*.js racine (services, hors index.js) : liste des noms trackés seulement
-  // On utilise git ls-files pour exclure les fichiers gitignorés (ex. test-whatsapp.js)
-  // qui varieraient par machine et rendraient le fingerprint non déterministe.
-  const functionsRootDir = path.join(root, 'functions');
-  if (fs.existsSync(functionsRootDir)) {
-    let rootServices;
+  // functions/src/**/*.js (modules métier et services) : liste des chemins
+  // trackés seulement — git ls-files exclut les fichiers gitignorés, qui
+  // varieraient par machine et rendraient le fingerprint non déterministe.
+  const functionsSrcDir = path.join(root, 'functions/src');
+  if (fs.existsSync(functionsSrcDir)) {
+    let services;
     try {
-      rootServices = execSync(`git -C "${root}" ls-files functions/`, { encoding: 'utf8' })
+      services = execSync(`git -C "${root}" ls-files functions/src/`, { encoding: 'utf8' })
         .trim().split('\n')
-        .filter(f => /^functions\/[^/]+\.js$/.test(f) && !f.endsWith('/index.js') && f !== 'functions/index.js')
-        .map(f => path.basename(f))
+        .filter(f => f.endsWith('.js'))
         .sort();
     } catch (e) {
       // Fallback si git indisponible
-      rootServices = fs.readdirSync(functionsRootDir)
-        .filter(f => f.endsWith('.js') && f !== 'index.js')
-        .sort();
+      services = walkFiles(root, 'functions/src', f => f.endsWith('.js'));
     }
-    sources.push({ path: 'functions/__root_services__', content: JSON.stringify(rootServices) });
+    sources.push({ path: 'functions/src/__services__', content: JSON.stringify(services) });
   }
 
   return sources;
@@ -491,24 +488,20 @@ async function generateGraph(root, outPath) {
     });
   }
 
-  // 9b. Scanner functions/*.js racine (services, hors index.js déjà scanné)
-  const functionsRootDir = path.join(root, 'functions');
-  const rootServiceFiles = fs.existsSync(functionsRootDir)
-    ? fs.readdirSync(functionsRootDir)
-        .filter(f => f.endsWith('.js') && f !== 'index.js')
-        .sort()
-    : [];
+  // 9b. Scanner functions/src/**/*.js (modules métier et services)
+  const serviceFiles = walkFiles(root, 'functions/src', f => f.endsWith('.js'));
 
-  for (const f of rootServiceFiles) {
+  for (const relPath of serviceFiles) {
+    const f = path.basename(relPath);
     const baseName = f.replace('.js', '');
     const classified = classifyByKeywords(baseName, domains);
     const testFile = `tests/unit/${baseName}.test.js`;
     const hasTests = fs.existsSync(path.join(root, testFile));
     backendModules.push({
       name: f,
-      filePath: `functions/${f}`,
+      filePath: relPath,
       isDir: false,
-      isRootService: true,
+      isService: true,
       domain: classified.domain,
       confidence: classified.confidence,
       hasTests,
@@ -654,8 +647,8 @@ async function generateGraph(root, outPath) {
       backend: {
         cloudFunctions: domainCFs,
         routes: domainRoutes,
-        modules: domainBEModules.filter(m => !m.isRootService).map(m => m.name).sort(),
-        services: domainBEModules.filter(m => m.isRootService).map(m => m.filePath).sort(),
+        modules: domainBEModules.filter(m => !m.isService).map(m => m.name).sort(),
+        services: domainBEModules.filter(m => m.isService).map(m => m.filePath).sort(),
       },
       firestore: {
         collections: domainCollections,
@@ -687,7 +680,7 @@ async function generateGraph(root, outPath) {
     filesIndex[`functions/index.js#${cf.name}`] = { domain: cf.domain, confidence: cf.confidence };
   }
   for (const m of backendModules) {
-    const fileKey = m.isRootService ? m.filePath : `functions/lib/${m.name}`;
+    const fileKey = m.isService ? m.filePath : `functions/lib/${m.name}`;
     filesIndex[fileKey] = { domain: m.domain, confidence: m.confidence };
   }
 

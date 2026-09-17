@@ -17,7 +17,7 @@ const FERMES = ['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'BAHIA', 'BGF'];
 
 /**
  * Cultures — mêmes valeurs que CULTURES_SB_VALIDES
- * (functions/pointageService.js) et public/lib/cultureUtils.js.
+ * (functions/src/modules/rh/pointageService.js) et public/lib/cultureUtils.js.
  * @type {ReadonlyArray<string>}
  */
 const CULTURES = ['Framboise', 'Myrtille', 'Avocatier'];

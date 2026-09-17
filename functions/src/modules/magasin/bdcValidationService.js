@@ -1,14 +1,14 @@
 /**
  * bdcValidationService.js — Core BDC approval logic, callable from:
  *  - HTTP endpoint (action=validate-bdc in functions/index.js)
- *  - WhatsApp bot (functions/chefBdcBot.js)
+ *  - WhatsApp bot (functions/src/modules/magasin/chefBdcBot.js)
  *
  * Returns { success, error?, statusCode? } and triggers downstream WhatsApp
  * notifications (chef approved / rejected / dg approved / ...).
  */
 
-const { db } = require("./config/firebase");
-const { dispatchNotification } = require("./notificationDispatcher");
+const { db } = require("../../../config/firebase");
+const { dispatchNotification } = require("../admin/notificationDispatcher");
 
 /**
  * Validate (approve/reject) a BDC.

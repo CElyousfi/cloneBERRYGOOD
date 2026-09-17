@@ -15,7 +15,7 @@ const XLSX = require("xlsx");
 
 const { PDFParse } = require("pdf-parse");
 
-const { requireAuth } = require("./middleware/requireAuth");
+const { requireAuth } = require("../../../middleware/requireAuth");
 
 
 // Firestore reference (admin already initialized in index.js)

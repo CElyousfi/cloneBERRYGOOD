@@ -17,7 +17,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const AC = require('../../functions/lib/valorisation/accessControl.js');
 const { canAccessDivers, resolvePointageRHAccess } = require('../../functions/lib/auth/paieAccess.js');
-const { filterMirrorRowsByFerme } = require('../../functions/pointageService.js');
+const { filterMirrorRowsByFerme } = require('../../functions/src/modules/rh/pointageService.js');
 
 // Helper : périmètre pour un profil donné (rôle système 'user' par défaut).
 function perim(profileId, opts) {

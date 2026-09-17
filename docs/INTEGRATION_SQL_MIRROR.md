@@ -12,11 +12,11 @@
 Le SQL Server de la ferme (`BEE_BERRY_GOOD` / bases de reporting) est **la
 source de vérité opérationnelle** pour le pointage des ouvriers, la
 consommation d'intrants et la cueillette. Firebase/Firestore reste **le seul
-backend applicatif** : ce module (`functions/sqlSyncService.js`) ne fait que
+backend applicatif** : ce module (`functions/src/modules/rh/sqlSyncService.js`) ne fait que
 recopier, heure par heure, des lignes SQL vers des collections Firestore
 « miroir » que le reste de l'app lit normalement. Ce n'est ni un second
 backend, ni du code legacy — **ne pas le supprimer** (voir l'en-tête ajouté
-directement dans `functions/sqlSyncService.js`).
+directement dans `functions/src/modules/rh/sqlSyncService.js`).
 
 Si ce module est retiré : le pointage, la cueillette et la consommation
 cessent d'arriver. Les écrans continuent de s'afficher avec les dernières
@@ -82,7 +82,7 @@ chaque lecture pointage :
 
 - **`USE_MIRROR = true` (défaut)** : lecture depuis les collections
   Firestore `sql_mirror_*` (`fetchDetailFromMirror`, `fetchSummaryFromMirror`,
-  `fetchPostesFixesFromMirror` dans `functions/pointageService.part2.js`).
+  `fetchPostesFixesFromMirror` dans `functions/src/modules/rh/pointageService.part2.js`).
 - **`USE_MIRROR = false`** : lecture SQL **directe et synchrone** à chaque
   requête (`fetchDetailFromSQL`, `getPool()`), sans passer par le mirror.
   Existe comme filet de secours / mode debug, mais charge le SQL Server à
@@ -109,7 +109,7 @@ cette collection **ne contient plus rien depuis avril 2026** (10 mois sans
 nouvelle ligne sur la campagne courante — commentaires dans
 `functions/lib/consoBons/bonsToConsoRows.js:11-19`,
 `functions/src/shared/core.js:18-19`,
-`functions/pointageService.part1.js:148-149`). Les écrans Campagne/Agronomie
+`functions/src/modules/rh/pointageService.part1.js:148-149`). Les écrans Campagne/Agronomie
 ont été explicitement migrés pour lire `consumption_vouchers` (bons Smart
 Berry natifs) à la place — voir commit `e3995e9`.
 

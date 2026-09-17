@@ -83,7 +83,7 @@ exports.ojra = functions
           return res.status(400).json({ success: false, error: "period requis au format YYYY-MM-DD (samedi début de quinzaine)" });
         }
 
-        const { parseOjraExcel } = require("../../../ojraParser");
+        const { parseOjraExcel } = require("./ojraParser");
         let parsed;
         try {
           parsed = parseOjraExcel(file);
@@ -538,7 +538,7 @@ exports.primesManagement = functions
       // ouvriers_registry. Idempotent — ne réécrit JAMAIS un champ déjà non-vide,
       // même si la valeur BEE ONE diffère (aucune écrasement possible).
       if (action === "sync-identite-bdp" && req.method === "POST") {
-        const rhBdpService = require("../../../rhBdpService");
+        const rhBdpService = require("./rhBdpService");
         const bdpResult = await rhBdpService.getPersonnelRef();
         if (!bdpResult.success) {
           return res.status(502).json({ success: false, error: bdpResult.error || "Connexion BEE ONE échouée" });
@@ -759,7 +759,7 @@ exports.registryService = functions
         const {
           filterMirrorRowsByFerme,
           computeAllowedMatricules,
-        } = require("../../../pointageService");
+        } = require("./pointageService");
         const mirrorRows = await getPointageRowsForDateRange(from, to);
         // computeAllowedMatricules → set UPPERCASE alpha (DD10502) filtré ferme.
         const allowedRaw = computeAllowedMatricules(
@@ -1056,7 +1056,7 @@ exports.runSyncJoursFeriesNow = functions
 //   ou header  x-admin-secret: <ADMIN_SECRET>
 // Outil temporaire — à retirer après usage.
 // ─────────────────────────────────────────────────────────────────────────────
-const rhBdpService = require('../../../rhBdpService');
+const rhBdpService = require('./rhBdpService');
 
 exports.rh = functions
   .region('europe-west1')

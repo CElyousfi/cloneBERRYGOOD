@@ -16,7 +16,7 @@ const admin = require("firebase-admin");
 if (!admin.apps.length) admin.initializeApp({ projectId: "berrygood-farms-dashboard" });
 const db = admin.firestore();
 
-const { JOURS_FERIES_FALLBACK } = require("./pointageService");
+const { JOURS_FERIES_FALLBACK } = require("./src/modules/rh/pointageService");
 
 const DRY_RUN = process.argv.includes("--dry-run");
 

@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { parseTimacInvoiceText } = require('../../functions/emailService');
+const { parseTimacInvoiceText } = require('../../functions/src/modules/finance/emailService');
 
 // Fixtures are plain-text extracts (as produced by pdf-parse) pasted inline.
 // The 134 source PDFs are NOT in the repo, so these tests stay self-contained.

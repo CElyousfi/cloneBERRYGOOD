@@ -32,7 +32,7 @@ const db = admin.firestore();
 // points at the same place as manually-created analyses.
 const bucket = admin.storage().bucket("berrygood-farms-photos");
 
-const { parseAgqPdf } = require("./agqParser");
+const { parseAgqPdf } = require("./src/modules/agronomie/agqParser");
 
 function parseArgs(argv) {
   const args = {};

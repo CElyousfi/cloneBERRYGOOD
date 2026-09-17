@@ -1,7 +1,7 @@
 /**
  * bdcDigest.js — Helpers purs pour les digests BdC (« en attente de
  * validation » et « non réceptionnés ») consommés par le bot WhatsApp
- * assistant DG (functions/dgAgent.js).
+ * assistant DG (functions/src/modules/admin/dgAgent.js).
  *
  * Module backend uniquement, SANS accès Firestore : les documents
  * `purchase_orders` et la date du jour sont injectés en paramètre. C'est ce

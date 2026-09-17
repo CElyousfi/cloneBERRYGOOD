@@ -44,7 +44,7 @@ require.cache[fbPath] = {
   exports: { admin: {}, db: fakeDb, bucket: {} },
 };
 
-const whatsapp = require('../../../whatsappService');
+const whatsapp = require('../../../src/modules/admin/whatsappService');
 const { XLSX_MIME, TEMPLATE_NAME } = require('../index');
 
 const PHONE = '+212600000001';

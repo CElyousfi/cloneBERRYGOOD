@@ -371,17 +371,17 @@ test('unclassified contient inflightDedup', async () => {
 
 // --- 16. Root services (functions/*.js) scannés ---
 
-test('files index contient les services racine functions/*.js', async () => {
+test('files index contient les services functions/src/**/*.js', async () => {
   await generateGraph(ROOT, TMP_GRAPH);
   const content = fs.readFileSync(TMP_GRAPH, 'utf8');
   const graph = JSON.parse(content);
-  // pointageService.js est un service racine connu — doit apparaître dans files index
+  // pointageService.js est un service connu — doit apparaître dans files index
   const keys = Object.keys(graph.files);
-  assert(keys.some(k => k === 'functions/pointageService.js'),
-    'functions/pointageService.js devrait être dans files index');
+  assert(keys.some(k => k === 'functions/src/modules/rh/pointageService.js'),
+    'functions/src/modules/rh/pointageService.js devrait être dans files index');
 });
 
-test('domains backend.services liste les services racine classifiés', async () => {
+test('domains backend.services liste les services classifiés', async () => {
   await generateGraph(ROOT, TMP_GRAPH);
   const content = fs.readFileSync(TMP_GRAPH, 'utf8');
   const graph = JSON.parse(content);
@@ -394,7 +394,7 @@ test('domains backend.services liste les services racine classifiés', async () 
 // --- 17. Stabilité du fingerprint (contrat Category A / Category B) ---
 // Category A (dans le fingerprint) : docs/ai/domains.json, firebase.json, firestore.rules,
 //   functions/index.js, src/modules/**/*.jsx, src/modules/shared/lib/*.js,
-//   functions/lib/__entries__ (liste), functions/__root_services__ (liste)
+//   functions/lib/__entries__ (liste), functions/src/__services__ (liste)
 // Category B (exclu) : heatmap git, commit counts, fenêtre 90j, HEAD, timestamps, Date.now()
 
 const { execSync } = require('child_process');

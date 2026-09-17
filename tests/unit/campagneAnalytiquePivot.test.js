@@ -111,7 +111,7 @@ const Tab = loadTab();
 
 const DATA = {
   // Libellé au format EXACT servi par le backend (`${startYear}/${startYear+1}`,
-  // functions/pointageService.js) — avec un SLASH, pas un tiret. Un tiret ici
+  // functions/src/modules/rh/pointageService.js) — avec un SLASH, pas un tiret. Un tiret ici
   // rendrait la fixture irréaliste : c'est ce qui avait laissé passer en QA une
   // 4e sous-colonne « Budget idéal » morte en prod (partEcoulee → null).
   campagne: '2026/2027',

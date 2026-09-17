@@ -28,7 +28,7 @@ for (const mod of [
   // Agrégation historique du service e-mail : 14 fonctions (analyzeEmail,
   // fetchEmails, parseLiquidation*, parseTimacInvoice*…). Était en ligne dans
   // le monolithe ; sa place est ici, au point d'entrée.
-  require("./emailService"),
+  require("./src/modules/finance/emailService"),
 ]) {
   Object.assign(exports, mod);
 }

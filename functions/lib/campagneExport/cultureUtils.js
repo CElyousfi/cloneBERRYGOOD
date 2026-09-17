@@ -31,7 +31,7 @@
 // CONSTANTS (préfixe interne unique __cult_ — jamais exposées au global)
 // ============================================================================
 
-/** Cultures reconnues — mêmes valeurs que CULTURES_SB_VALIDES (functions/pointageService.js). */
+/** Cultures reconnues — mêmes valeurs que CULTURES_SB_VALIDES (functions/src/modules/rh/pointageService.js). */
 const __cult_CULTURES = ['Framboise', 'Myrtille', 'Avocatier'];
 
 /** Culture par défaut quand rien ne permet de trancher (comportement historique). */

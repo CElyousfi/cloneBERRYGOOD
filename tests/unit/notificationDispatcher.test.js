@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Tests de functions/notificationDispatcher.js — valeur de retour du dispatcher.
+ * Tests de functions/src/modules/admin/notificationDispatcher.js — valeur de retour du dispatcher.
  *
  * Le module require ./config/firebase et ./whatsappService au chargement : on les
  * STUB dans le require-cache AVANT de require le dispatcher (même technique que
@@ -52,7 +52,7 @@ function stub(request, exportsObj) {
 }
 
 stub('./config/firebase', { db: fakeDb });
-stub('./whatsappService', {
+stub('./src/modules/admin/whatsappService', {
   resolveRecipientsForProfile: async () => {
     if (wa.resolveThrows) throw new Error('resolve KO');
     return wa.recipients;
@@ -64,7 +64,7 @@ stub('./whatsappService', {
   },
 });
 
-const { dispatchNotification } = require(path.join(FN_DIR, 'notificationDispatcher.js'));
+const { dispatchNotification } = require(path.join(FN_DIR, 'src/modules/admin/notificationDispatcher.js'));
 
 function reset(opts) {
   alerts.length = 0;

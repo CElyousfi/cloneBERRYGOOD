@@ -7,7 +7,7 @@
  * Produit × Fournisseur) en documents `bdc_mirror` prêts à l'upsert.
  *
  * La connexion SQL read-only et l'écriture Firestore (gardée derrière --apply)
- * vivent dans functions/bdcMirrorService.js. Ici, uniquement du pur testable.
+ * vivent dans functions/src/modules/magasin/bdcMirrorService.js. Ici, uniquement du pur testable.
  *
  * Étape 1 du cycle Achats — MIRROR BDC (dry-run par défaut).
  */

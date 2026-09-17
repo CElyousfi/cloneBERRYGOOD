@@ -10,7 +10,7 @@ const sqlConfig = require("../../config/sqlConfig");
 const { setCors } = require("../../middleware/cors");
 const { withCache, invalidateCachePrefix: invalidateApiCachePrefix } = require("../../middleware/cache");
 const { verifyAuth, requireAuth } = require("../../middleware/requireAuth");
-const { dispatchNotification } = require("../../notificationDispatcher");
+const { dispatchNotification } = require("../modules/admin/notificationDispatcher");
 const { isoDateInTz } = require("../../lib/dates/isoDateInTz");
 const { resolveCallerRole, resolveCallerProfile } = require("../../lib/auth/resolveRole");
 const consoAccessControl = require("../../lib/valorisation/accessControl");
@@ -19,8 +19,8 @@ const { deriveFermeFromParcelle } = require("../../lib/valorisation/fermeParcell
 // BEE ONE `sql_mirror_consommation` est tarie depuis avril 2026.
 const scanAttachment = require("../../lib/stock/scanAttachment");
 const demandeCreationArticle = require("../../lib/stock/demandeCreationArticle");
-const whatsappService = require("../../whatsappService");
-const { getConsommationRows, getCueilletteRows, getPointageRowsForDate, getPointageRowsForDateRange, getSyncStatus, getPointageMeta } = require("../../firestoreDataService");
+const whatsappService = require("../modules/admin/whatsappService");
+const { getConsommationRows, getCueilletteRows, getPointageRowsForDate, getPointageRowsForDateRange, getSyncStatus, getPointageMeta } = require("./firestoreDataService");
 const USE_MIRROR = process.env.USE_FIRESTORE_MIRROR !== "false";
 
 // Cache mémoire (scope module) de l'index grand-livre de TOUS les articles.
@@ -29,8 +29,8 @@ const USE_MIRROR = process.env.USE_FIRESTORE_MIRROR !== "false";
 // articles). Le scan complet stock_movements (~3,4 s) est fait UNE fois puis
 // servi à tous les articles pendant le TTL. Invalidation = TTL (5 min) ;
 // pas d'invalidation explicite sur write → acceptable (cf. ticket perf).
-const syncService = require("../../sqlSyncService");
-const prodSync = require("../../prodSyncService");
+const syncService = require("../modules/rh/sqlSyncService");
+const prodSync = require("../modules/recolte/prodSyncService");
 
 // BDP introspection (diagnostic READ-ONLY temporaire — protégé par ADMIN_SECRET)
 let sql = null;

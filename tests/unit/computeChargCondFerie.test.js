@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { computeChargCond, halfKey, buildHalfToPeriode, resolveHolidayPeriode, findJourAvant, findJourApres } = require('../../functions/pointageService');
+const { computeChargCond, halfKey, buildHalfToPeriode, resolveHolidayPeriode, findJourAvant, findJourApres } = require('../../functions/src/modules/rh/pointageService');
 
 // Deux ouvriers actifs dans la quinzaine Q1, avec une présence encadrante (avant ET
 // après) autour des fériés testés — requis par la règle "présence réelle le jour J"

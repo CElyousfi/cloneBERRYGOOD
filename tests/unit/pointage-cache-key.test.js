@@ -23,7 +23,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 
-const { pointageCacheKey } = require('../../functions/pointageService');
+const { pointageCacheKey } = require('../../functions/src/modules/rh/pointageService');
 
 // Toutes les bases de clé nominatives chef-reachable qui passent par withCache.
 const NOMINATIVE_BASES = [

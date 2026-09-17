@@ -96,7 +96,7 @@ function sbParcelleHa(labelBeeOne) {
 ## Fichiers concernés
 
 **Backend** :
-- `functions/pointageService.js` : ajouter actions `sb-referentiel-list` + `sb-referentiel-save`
+- `functions/src/modules/rh/pointageService.js` : ajouter actions `sb-referentiel-list` + `sb-referentiel-save`
 
 **Frontend** :
 - `public/app.jsx` : loader `SB_PARCELLE_REF` au démarrage + helpers

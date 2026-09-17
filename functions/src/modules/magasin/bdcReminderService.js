@@ -1,7 +1,7 @@
 /**
  * bdcReminderService.js — Core BDC reminder logic, callable from:
  *  - HTTP endpoint (action=remind-bdc in functions/index.js)
- *  - WhatsApp bot (functions/chefBdcBot.js) — à venir
+ *  - WhatsApp bot (functions/src/modules/magasin/chefBdcBot.js) — à venir
  *
  * Returns { success, error?, statusCode?, profiles?, duration? } and triggers the
  * downstream WhatsApp notification (template `bdc_reminder`, 3 paramètres).
@@ -10,9 +10,9 @@
  * le format de durée sont purs et testés dans functions/lib/bdc/reminder.js.
  */
 
-const { db } = require("./config/firebase");
-const { dispatchNotification } = require("./notificationDispatcher");
-const bdcReminder = require("./lib/bdc/reminder");
+const { db } = require("../../../config/firebase");
+const { dispatchNotification } = require("../admin/notificationDispatcher");
+const bdcReminder = require("../../../lib/bdc/reminder");
 
 /**
  * Send a reminder for a pending BDC.

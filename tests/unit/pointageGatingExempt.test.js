@@ -2,7 +2,7 @@
 
 // CONTRAT D'ACCÈS — tables d'exemption du gating paie (Étape 0) de pointageRH.
 //
-// Ces tests portent sur les VRAIES tables exportées par functions/pointageService.js
+// Ces tests portent sur les VRAIES tables exportées par functions/src/modules/rh/pointageService.js
 // (`GATING_EXEMPT_ACTIONS`, `EXEMPT_BUT_SCOPED`), pas sur des copies recopiées ici :
 // dupliquer les listes ne protégerait rien, le test resterait vert pendant que la
 // prod dérive.
@@ -45,7 +45,7 @@ const {
   projectSbReferentielDoc,
   projectSbReferentielForCaller,
   SB_REFERENTIEL_PUBLIC_FIELDS,
-} = require('../../functions/pointageService');
+} = require('../../functions/src/modules/rh/pointageService');
 const { resolvePerimetre } = require('../../functions/lib/valorisation/accessControl');
 const { resolvePointageRHAccess } = require('../../functions/lib/auth/paieAccess');
 

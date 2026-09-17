@@ -24,12 +24,12 @@
  * fichier envoyé ne doit JAMAIS "disparaître" silencieusement.
  */
 
-const { db, bucket } = require("./config/firebase");
-const wa = require("./whatsappService");
-const scanAttachment = require("./lib/stock/scanAttachment");
-const stockFilesRecord = require("./lib/stockFiles/recordSubmission");
-const { detectFarmFromCaption } = require("./lib/stockFiles/farmDetection");
-const { STOCK_FILE_ALLOWED_MIME, STOCK_FILE_ALLOWED_FORMATS_LABEL } = require("./lib/stockFiles/allowedMime");
+const { db, bucket } = require("../../../config/firebase");
+const wa = require("../admin/whatsappService");
+const scanAttachment = require("../../../lib/stock/scanAttachment");
+const stockFilesRecord = require("../../../lib/stockFiles/recordSubmission");
+const { detectFarmFromCaption } = require("../../../lib/stockFiles/farmDetection");
+const { STOCK_FILE_ALLOWED_MIME, STOCK_FILE_ALLOWED_FORMATS_LABEL } = require("../../../lib/stockFiles/allowedMime");
 
 const SESSION_TTL_MS = 30 * 60 * 1000;
 

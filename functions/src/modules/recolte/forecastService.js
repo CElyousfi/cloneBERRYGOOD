@@ -5,7 +5,7 @@
  * to be reusable from both HTTP handlers and the WhatsApp DG bot.
  */
 
-const { admin, db } = require("./config/firebase");
+const { admin, db } = require("../../../config/firebase");
 
 const FRUIT_LABEL = { RASP: "Raspberries (framboise)", BLUE: "Blueberries (myrtille)" };
 const FRUIT_NAME = { RASP: "framboise", BLUE: "myrtille" };

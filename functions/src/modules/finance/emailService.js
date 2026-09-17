@@ -572,7 +572,7 @@ exports.analyzeEmail = functions
         // WhatsApp: notify chef de ferme + qualité + DG en cas de rejet (REJECT/FAIL)
         if ((report.overallResult === "REJECT" || report.overallResult === "FAIL") && !existingExp.exists) {
           try {
-            const { dispatchNotification } = require("./notificationDispatcher");
+            const { dispatchNotification } = require("../admin/notificationDispatcher");
             // Build top defects summary as reason
             const defects = [...(report.conditionDefects || []), ...(report.appearanceDefects || [])]
               .filter(d => d.percent > 0 || d.points > 0)
@@ -635,7 +635,7 @@ exports.analyzeEmail = functions
             // DG: try to send the PDF d'inspection en pièce jointe via the doc-variant
             // template. Fall back to the text template if no PDF / upload fails.
             (async () => {
-              const whatsapp = require("./whatsappService");
+              const whatsapp = require("../admin/whatsappService");
               let mediaId = null;
               if (emailData.pdfBase64) {
                 try {
@@ -1127,7 +1127,7 @@ exports.analyzeEmail = functions
       } else if (emailData.isAgqAnalysis && Array.isArray(emailData.agqPdfAttachments) && emailData.agqPdfAttachments.length > 0) {
         // ---- AGQ Labs analytical reports (foliar / soil / water) ----
         category = "agq_analysis";
-        const { parseAgqPdf } = require("./agqParser");
+        const { parseAgqPdf } = require("../agronomie/agqParser");
         const bucket = admin.storage().bucket("berrygood-farms-photos");
 
         const createdAnalyses = [];

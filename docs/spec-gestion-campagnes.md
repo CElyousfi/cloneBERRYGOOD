@@ -31,7 +31,7 @@
 → La campagne est **100 % dérivée de la date**, jamais saisie.
 - Dérivation : `campagneOf(dateStr)` ([resolver.js:49](../functions/lib/mappingConso/resolver.js#L49)) —
   `month >= 7 ? year : year-1` → `${startYear}-${startYear+1}`. Frontière **1er juillet**.
-- Même convention côté backend `campagne-mo-variete` ([pointageService.js:2348](../functions/pointageService.js#L2348)).
+- Même convention côté backend `campagne-mo-variete` ([pointageService.js:2348](../functions/src/modules/rh/pointageService.js#L2348)).
 
 ### Q2 — `mapping_campagne` est-il scopé par campagne ?
 **OUI, c'est la brique propre.** docId = `${campagne}__${parcelle_conso_id}`, champ `campagne`.
@@ -65,7 +65,7 @@ au centime garanti par test. En prod : 19 docs, tous `2025-2026`.
      variété arrêtée ou nouvelle n'est pas isolée par campagne.
 - **Rituel de transition ?** **AUCUN.** Pas de seed nouvelle campagne, pas d'archive campagne, pas
   de bascule. (Il existe un `archiveQuinzaines` mais c'est par **quinzaine**, pas par campagne —
-  [sqlSyncService.js:521](../functions/sqlSyncService.js#L521).)
+  [sqlSyncService.js:521](../functions/src/modules/rh/sqlSyncService.js#L521).)
 
 ---
 

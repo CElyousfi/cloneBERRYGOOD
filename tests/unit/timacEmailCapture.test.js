@@ -8,7 +8,7 @@ const {
   isDailyQualityReport,
   isWeeklyQualityReport,
   createTimacInvoiceFromParsed,
-} = require('../../functions/emailService');
+} = require('../../functions/src/modules/finance/emailService');
 
 // =============================================
 // isTimacInvoice — strict detection

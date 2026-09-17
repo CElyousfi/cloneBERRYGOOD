@@ -17,19 +17,19 @@ const cors = require("cors")({ origin: true });
 
 
 // Shared config modules
-const { admin, db: db_firestore } = require("./config/firebase");
+const { admin, db: db_firestore } = require("../../../config/firebase");
 
-const sqlConfig = require("./config/sqlConfig");
+const sqlConfig = require("../../../config/sqlConfig");
 
-const { withCache } = require("./middleware/cache");
+const { withCache } = require("../../../middleware/cache");
 
-const { resolveFermeFromParcelle } = require("./lib/pointage/refParcelleFerme");
+const { resolveFermeFromParcelle } = require("../../../lib/pointage/refParcelleFerme");
 
 const {
   aggregateParcellesFromMirror,
   mergeReferentiel,
   isValidCampagneLabel,
-} = require("./lib/pointage/parcellesParams");
+} = require("../../../lib/pointage/parcellesParams");
 
 const { syncPointageFromProd } = require("./pointageBdpSync");
 
@@ -46,16 +46,16 @@ const {
   getWorkerHistory,
   getCueilletteRows,
   getSyncStatus,
-} = require("./firestoreDataService");
+} = require("../../shared/firestoreDataService");
 
 
 // Coût CHARGÉ d'une journée d'ouvrier (CNSS patronale + transport compris) —
 // calcul PUR, testé sans émulateur. Cf. l'action `campagne-cout-ouvrier`.
-const coutOuvrier = require("./lib/paie/coutOuvrierCampagne.js");
+const coutOuvrier = require("../../../lib/paie/coutOuvrierCampagne.js");
 
-const coutQuinzaineSnap = require("./lib/paie/coutQuinzaineSnapshot.js");
+const coutQuinzaineSnap = require("../../../lib/paie/coutQuinzaineSnapshot.js");
 
-const fichierPaieStore = require("./lib/paie/fichierPaieStore.js");
+const fichierPaieStore = require("../../../lib/paie/fichierPaieStore.js");
 
 
 // Aliases bruts (non filtrés) des fetchers de lignes, pour le gating chef
@@ -80,23 +80,23 @@ const {
   computeDurationOvertime,
   shouldExcludeWorkerDay,
   isSansEquipe,
-} = require("./lib/heuresSup/heuresSup");
+} = require("../../../lib/heuresSup/heuresSup");
 
 
 // Pointage — effectifs ouvriers DISTINCTS par (ferme, type).
 // Corrige le comptage gonflé (somme des distincts par parcelle → ouvrier multi-parcelles compté N×).
-const { countDistinctByFermeType } = require("./lib/pointage/countDistinctByFermeType");
+const { countDistinctByFermeType } = require("../../../lib/pointage/countDistinctByFermeType");
 
-const { dedupeWorkersByMatricule } = require("./lib/pointage/dedupeWorkersByMatricule");
+const { dedupeWorkersByMatricule } = require("../../../lib/pointage/dedupeWorkersByMatricule");
 
 const {
   defaultPeriodeForCampagne,
   buildPeriodeCampagne,
   splitCompositeLabel,
   filterRowsByExactDates,
-} = require("./lib/pointage/campagnePeriodes");
+} = require("../../../lib/pointage/campagnePeriodes");
 
-const { campagneCourante, campagneOf } = require("./lib/mappingConso/campagneUtils");
+const { campagneCourante, campagneOf } = require("../../../lib/mappingConso/campagneUtils");
 
 
 // Un label de quinzaine désambiguïsé ("Quinzaine 15 (2024-2025)") n'existe QUE
@@ -126,36 +126,36 @@ function defaultPeriode(meta, periodes) {
 
 // GATING PAIE (Étape 0) — barrière serveur sur les agrégats RH nominatifs.
 // Rôle résolu depuis le token (users/{uid}), jamais depuis le body.
-const { verifyAuth } = require("./middleware/requireAuth");
+const { verifyAuth } = require("../../../middleware/requireAuth");
 
-const { resolveCallerProfile } = require("./lib/auth/resolveRole");
+const { resolveCallerProfile } = require("../../../lib/auth/resolveRole");
 
-const consoAccessControl = require("./lib/valorisation/accessControl");
+const consoAccessControl = require("../../../lib/valorisation/accessControl");
 
-const { resolvePointageRHAccess } = require("./lib/auth/paieAccess");
+const { resolvePointageRHAccess } = require("../../../lib/auth/paieAccess");
 
 // Groupes de parcelles (raccourci de saisie BC, éclatement au prorata des Ha).
-const parcelleGroupSplit = require("./lib/parcelleGroupes/split");
+const parcelleGroupSplit = require("../../../lib/parcelleGroupes/split");
 
-const parcelleGroupValidate = require("./lib/parcelleGroupes/validate");
+const parcelleGroupValidate = require("../../../lib/parcelleGroupes/validate");
 
 // Initialisation des Ha manquants du référentiel SB depuis les surfaces BEE ONE.
-const parcelleGroupSeedHa = require("./lib/parcelleGroupes/seedHa");
+const parcelleGroupSeedHa = require("../../../lib/parcelleGroupes/seedHa");
 
 // Budget JH/Ha par parcelle × famille d'opération (validation + merge purs).
-const campagneBudget = require("./lib/campagneBudget/validate");
+const campagneBudget = require("../../../lib/campagneBudget/validate");
 
 // Consommation depuis les BONS Smart Berry (`consumption_vouchers`) — la source
 // BEE ONE `sql_mirror_consommation` est tarie depuis avril 2026.
-const consoBons = require("./lib/consoBons");
+const consoBons = require("../../../lib/consoBons");
 
 // Export Excel « Campagne » côté serveur (structure + rendu ExcelJS) — module
 // pur : aucune lecture Firestore, tout lui est injecté.
-const campagneExport = require("./lib/campagneExport");
+const campagneExport = require("../../../lib/campagneExport");
 
 // Miroir backend de public/lib/cultureUtils.js — gating avocatier du budget de
 // quinzaine (le backend ne peut PAS requérir public/, cf. CLAUDE.md).
-const campagneBudgetCulture = require("./lib/campagneBudget/culture");
+const campagneBudgetCulture = require("../../../lib/campagneBudget/culture");
 
 const POINTAGE_FERMES = ["F1", "F5", "Avocatier", "BAHIA"];
 
@@ -916,7 +916,7 @@ function computeChargCond(allRows, holidays) {
   // un ouvrier n'est crédité de la prime Jour Férié que s'il a travaillé le jour
   // férié lui-même, OU qu'il a une présence encadrante (jour ouvré avant ET après
   // le férié). Remplace l'ancien forfait "actif quelque part dans la quinzaine".
-  const today = require('./lib/dates/isoDateInTz').isoDateInTz(new Date(), 'Africa/Casablanca');
+  const today = require('../../../lib/dates/isoDateInTz').isoDateInTz(new Date(), 'Africa/Casablanca');
   // Jours où au moins un ouvrier de la ferme a une ligne de pointage (proxy "jour ouvré",
   // sans dépendre d'un calendrier de repos hebdomadaire fixe qui varie selon ferme/équipe).
   const joursTravailles = [...new Set(allRows.map(r => r.DateStr).filter(Boolean))].sort();

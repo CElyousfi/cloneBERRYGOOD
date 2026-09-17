@@ -11,9 +11,9 @@ const { METEO_FERMES, admin, bucket, consoAccessControl, db_firestore, demandeCr
 const nodemailer = require("nodemailer");
 
 // Shared config & middleware
-const { validateBdcCore } = require("../../../bdcValidationService");
-const { remindBdcCore } = require("../../../bdcReminderService");
-const { updateBdcVirementCore, recordVirementAvis } = require("../../../bdcVirementService");
+const { validateBdcCore } = require("./bdcValidationService");
+const { remindBdcCore } = require("./bdcReminderService");
+const { updateBdcVirementCore, recordVirementAvis } = require("./bdcVirementService");
 const bdcWorkflow = require("../../../lib/bdc/workflow");
 const bdcReceptionGuard = require("../../../lib/bdc/receptionGuard");
 const { validateSupplier } = require("../../../lib/suppliers/supplierValidation");

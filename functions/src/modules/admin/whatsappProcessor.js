@@ -10,7 +10,7 @@
  * a message if its id was already recorded in `whatsapp_messages` recently.
  */
 
-const { admin, db } = require("./config/firebase");
+const { admin, db } = require("../../../config/firebase");
 const whatsappService = require("./whatsappService");
 
 /**
@@ -125,7 +125,7 @@ async function processIncomingMessage(msg, value) {
   const effectiveProfile = matchedUser.testProfileOverride || matchedUser.profileId;
   try {
     // BDC approval session takes precedence
-    const chefBdcBot = require("./chefBdcBot");
+    const chefBdcBot = require("../magasin/chefBdcBot");
     if (await chefBdcBot.hasActiveBdcSession(from)) {
       const handled = await chefBdcBot.handleBdcMessage(
         from,
@@ -136,13 +136,13 @@ async function processIncomingMessage(msg, value) {
     }
 
     if (effectiveProfile === "securite") {
-      const securityBot = require("./securityBot");
+      const securityBot = require("../securite/securityBot");
       await securityBot.handleSecurityMessage(from, { ...matchedUser, profileId: effectiveProfile }, msg);
     } else if (effectiveProfile === "dg") {
       const dgBot = require("./dgBot");
       await dgBot.handleDgMessage(from, { ...matchedUser, profileId: effectiveProfile }, msg);
     } else if (effectiveProfile === "magasinier") {
-      const magasinierBot = require("./magasinierBot");
+      const magasinierBot = require("../magasin/magasinierBot");
       await magasinierBot.handleMessage(from, { ...matchedUser, profileId: effectiveProfile }, msg);
     }
   } catch (botErr) {

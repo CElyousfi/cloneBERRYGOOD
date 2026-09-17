@@ -11,7 +11,7 @@
 // c'est-à-dire le bug d'origine dans son intégralité (onglet Pesticides vide,
 // bandeau « à classer » vide).
 //
-// `functions/pointageService.js` et `functions/index.js` sont des monolithes
+// `functions/src/modules/rh/pointageService.js` et `functions/index.js` sont des monolithes
 // sans injection de dépendances (cf. TODO_REFACTO.md) : on ne peut pas mocker
 // Firestore pour un test d'intégration. Même approche que le précédent maison
 // `tests/unit/pointage-quinzaine-cache-shape.test.js` : on lit le source en
@@ -158,7 +158,7 @@ test('campagne-conso-parcelle : le module consoBons est CÂBLÉ (catégorie par 
   assert.notStrictEqual(
     anchor,
     -1,
-    `clé de cache "${CACHE_KEY}" introuvable dans functions/pointageService.js — ` +
+    `clé de cache "${CACHE_KEY}" introuvable dans functions/src/modules/rh/pointageService.js — ` +
       'action renommée ou cache bumpé : mettre ce test à jour (ne pas le supprimer).'
   );
 

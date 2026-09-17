@@ -6,7 +6,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { deriveFerme } = require('../../functions/pointageService.js');
+const { deriveFerme } = require('../../functions/src/modules/rh/pointageService.js');
 
 test('BAHIA détecté via Ref_parcelle', () => {
   assert.equal(deriveFerme('BAHIA-01', ''), 'BAHIA');

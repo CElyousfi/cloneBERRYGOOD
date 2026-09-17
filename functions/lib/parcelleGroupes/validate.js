@@ -3,7 +3,7 @@
 
 /**
  * Validation PURE d'une création/édition de groupe de parcelles
- * (action `sb-groupe-save` de functions/pointageService.js).
+ * (action `sb-groupe-save` de functions/src/modules/rh/pointageService.js).
  *
  * Aucune dépendance Firestore : les données du référentiel et des groupes
  * existants entrent par argument (DI), comme functions/lib/irrigation/.

@@ -5,11 +5,11 @@
  * Sent to all users with profileId='dg' via whatsappService.
  */
 
-const { db } = require("./config/firebase");
-const { getCycle } = require("./parcellesCulturales");
-const { getTeamNameMap } = require("./equipesConfig");
-const whatsappService = require("./whatsappService");
-const productionEstimation = require("./lib/productionEstimation");
+const { db } = require("../../../config/firebase");
+const { getCycle } = require("../agronomie/parcellesCulturales");
+const { getTeamNameMap } = require("../rh/equipesConfig");
+const whatsappService = require("../admin/whatsappService");
+const productionEstimation = require("../../../lib/productionEstimation");
 
 function todayCasablancaISO() {
   // Casablanca = UTC+1 (no DST since 2018). Compute today's date in that tz.
@@ -117,7 +117,7 @@ async function aggregateCycle2Estimation(todayISO, opts = {}) {
  */
 function filterTeamByFerme(aggTeam, ferme) {
   if (!ferme) return aggTeam;
-  const { normalizeParcelle } = require('./parcellesCulturales');
+  const { normalizeParcelle } = require('../agronomie/parcellesCulturales');
   const filtered = {};
   Object.entries(aggTeam.byVariete || {}).forEach(([variete, teams]) => {
     const resolved = normalizeParcelle(variete);

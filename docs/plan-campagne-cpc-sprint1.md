@@ -9,9 +9,9 @@
 Le module Campagne réel ([app.jsx:9237-9471](public/app.jsx#L9237)) ne calcule aujourd'hui que la **Main-d'Œuvre** ; les Ha et kg sont **hardcodés** (`CAMPAGNE_PARCELLE_MAP` [app.jsx:9241](public/app.jsx#L9241)) et la « vue CPC » Finance ([app.jsx:1697-1818](public/app.jsx#L1697)) est une **maquette 100 % statique**. Pour bâtir un CPC automatique, il faut d'abord un **dénominateur fiable** (kg produit/exporté/local par parcelle) et la **valorisation réelle des intrants en DH** — les deux briques bloquantes du brief [CG_TRANSFORMATION.md](CG_TRANSFORMATION.md) §S1. Ce sprint pose ces fondations **en parallèle** des vues existantes, sans les casser.
 
 Découvertes qui orientent le design :
-- `kgRecolte` (= kg **produit** réel depuis `prod_tracabilite_recolte`) est **déjà agrégé et renvoyé** par l'endpoint `campagne-mo-variete` par variété|ferme×cycle ([pointageService.js:2112-2188](functions/pointageService.js#L2112)), mais **non affiché** par le front.
+- `kgRecolte` (= kg **produit** réel depuis `prod_tracabilite_recolte`) est **déjà agrégé et renvoyé** par l'endpoint `campagne-mo-variete` par variété|ferme×cycle ([pointageService.js:2112-2188](functions/src/modules/rh/pointageService.js#L2112)), mais **non affiché** par le front.
 - Les **prix d'intrants** existent sur les mouvements de **réception** (`stock_movements`, `prix_unitaire` hérité du BDC, [index.js:5776-5790](functions/index.js#L5776)) ; **pas** sur les lignes de consommation. → CMP calculable côté réceptions.
-- Les **quantités consommées** sont lisibles via `getConsommationRows({weekStart,weekEnd,...})` ([firestoreDataService.js:27-57](functions/firestoreDataService.js#L27)), champ date = `r.Date`, parcelle = `r.Parcelle_Culturale` (souvent vide → « Non classifié »).
+- Les **quantités consommées** sont lisibles via `getConsommationRows({weekStart,weekEnd,...})` ([firestoreDataService.js:27-57](functions/src/shared/firestoreDataService.js#L27)), champ date = `r.Date`, parcelle = `r.Parcelle_Culturale` (souvent vide → « Non classifié »).
 - L'endpoint `get-consumption-costs` ([index.js:8074](functions/index.js#L8074)) lit une collection pré-calculée `consumption_costs_by_variety` (obsolète/vide) — on **ajoute en parallèle**, on ne le casse pas.
 
 ---
@@ -22,12 +22,12 @@ Deux modules purs (pattern `functions/lib/irrigation/` : pure functions + DI + `
 
 ### Brique 1 — Dénominateur kg réel (`functions/lib/campagne_recolte/`)
 
-Agrège par **(variété, sousVariété, ferme, cycle)** sur la fenêtre campagne (`{start: YYYY-07-01, end: +1-06-30}`, cycle1End/cycle2Start déjà définis [pointageService.js:2024](functions/pointageService.js#L2024)) :
+Agrège par **(variété, sousVariété, ferme, cycle)** sur la fenêtre campagne (`{start: YYYY-07-01, end: +1-06-30}`, cycle1End/cycle2Start déjà définis [pointageService.js:2024](functions/src/modules/rh/pointageService.js#L2024)) :
 
 | kg | Source réelle | Résolution |
 |---|---|---|
 | **kg_produit** | `prod_tracabilite_recolte.rows[].totalKg` | `resolveVariete()` (déjà fait dans `campagne-mo-variete`) |
-| **kg_exporté** | `liquidations.rows[].receiptQtyKg` (⚠️ **uniquement le kg**, jamais `gsNet`/prix — hors périmètre) | `varMap`/`variety_mapping` ([emailService.js varMap](functions/emailService.js)) → variété ; ferme via `normalizeParcelle` |
+| **kg_exporté** | `liquidations.rows[].receiptQtyKg` (⚠️ **uniquement le kg**, jamais `gsNet`/prix — hors périmètre) | `varMap`/`variety_mapping` ([emailService.js varMap](functions/src/modules/finance/emailService.js)) → variété ; ferme via `normalizeParcelle` |
 | **kg_local** | `pfq_interne.poidsLot` où `typeVente='ECRT'` | `normalizeParcelle(designation/blocVariete)` |
 | **taux_tri** (dérivé) | `kg_exporté / kg_produit` | — |
 | **kg_écart** (dérivé) | `kg_produit − kg_exporté − kg_local` | — |
@@ -78,14 +78,14 @@ Fichiers : `types.js`, `priceBook.js` (CMP+repli, pur), `valuation.js` (conso×p
 - `tests/unit/campagneRecolte.test.js`, `tests/unit/intrantsCosting.test.js` (ou tests `node:test` dans les `__tests__/` des modules, cf. irrigation)
 
 **Modifier**
-- `functions/pointageService.js` : nouvelle action `campagne-recolte` (wiring fin → module).
+- `functions/src/modules/rh/pointageService.js` : nouvelle action `campagne-recolte` (wiring fin → module).
 - `functions/index.js` : nouvelles actions `intrants-valorises` et `assign-intrant-parcelle` (stock service) ; helper `getReceptionMovements` si absent.
-- `functions/firestoreDataService.js` : éventuel lecteur réceptions/overrides (sinon dans `dataAccess.js`).
+- `functions/src/shared/firestoreDataService.js` : éventuel lecteur réceptions/overrides (sinon dans `dataAccess.js`).
 - `firestore.rules` : `intrants_parcelle_overrides` en **read auth / write deny** (writes via CF).
 - `public/app.jsx` : colonnes kg dans `CampagneSegmentTable` + sous-panneaux Valorisation/Non-classifié + appels API.
 - `firebase.json` : vérifier le rewrite des nouvelles actions (réutilise routes `/api/pointage-rh`, `/api/stock` existantes — a priori rien à ajouter).
 
-**Réutilisés sans modification** : `resolveVariete`, `resolveMyrtilleVariete`, `deriveFerme` ([pointageService.js:36-135](functions/pointageService.js#L36)), `normalizeParcelle`/`DESIGNATION_MAP`/`getCycle` ([parcellesCulturales.js](functions/parcellesCulturales.js)), `getConsommationRows` ([firestoreDataService.js:27](functions/firestoreDataService.js#L27)), `varMap`/`variety_mapping` ([emailService.js](functions/emailService.js)).
+**Réutilisés sans modification** : `resolveVariete`, `resolveMyrtilleVariete`, `deriveFerme` ([pointageService.js:36-135](functions/src/modules/rh/pointageService.js#L36)), `normalizeParcelle`/`DESIGNATION_MAP`/`getCycle` ([parcellesCulturales.js](functions/src/modules/agronomie/parcellesCulturales.js)), `getConsommationRows` ([firestoreDataService.js:27](functions/src/shared/firestoreDataService.js#L27)), `varMap`/`variety_mapping` ([emailService.js](functions/src/modules/finance/emailService.js)).
 
 ---
 

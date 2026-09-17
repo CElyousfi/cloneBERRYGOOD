@@ -6,8 +6,8 @@
  * No npm dependency needed — Node 20 native fetch.
  */
 
-const { db } = require("./config/firebase");
-const { formatPhoneE164 } = require("./lib/phone/formatPhoneE164");
+const { db } = require("../../../config/firebase");
+const { formatPhoneE164 } = require("../../../lib/phone/formatPhoneE164");
 
 // Cache config for 5 minutes to avoid repeated Firestore reads
 let _configCache = null;

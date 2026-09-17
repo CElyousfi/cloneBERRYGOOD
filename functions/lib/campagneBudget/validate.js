@@ -5,7 +5,7 @@
  * Budget JH/Ha par parcelle × famille d'opération — logique PURE.
  *
  * Sert les actions `campagne-budget-list` / `campagne-budget-save` de
- * functions/pointageService.js. Aucune dépendance Firestore : le référentiel
+ * functions/src/modules/rh/pointageService.js. Aucune dépendance Firestore : le référentiel
  * des familles et la liste des labels connus entrent par argument (DI), comme
  * functions/lib/parcelleGroupes/.
  *
@@ -67,7 +67,7 @@
  * CLÉ D'UNE OPÉRATION = LE COUPLE (CODE GB, OPÉRATION), PAS (FAMILLE, OPÉRATION).
  * Le tableau Campagne ne lit JAMAIS la famille inscrite sur la fiche d'une
  * opération : il la déduit du code GB porté par chaque ligne de pointage BEE ONE
- * (`resolveFamily` → `_refMap[code].famille`, functions/pointageService.js). Deux
+ * (`resolveFamily` → `_refMap[code].famille`, functions/src/modules/rh/pointageService.js). Deux
  * fiches légitimes peuvent porter le MÊME libellé d'opération sous deux codes —
  * cas réel du référentiel : « Nettoyage » existe en GB05 (Entretien structure) ET
  * en GB11 (Service générale). Keyer le budget par (famille, opération) le rendait
@@ -289,7 +289,7 @@ function splitOpKey(key) {
  * Famille d'une opération telle que le tableau Campagne la résout : depuis le
  * CODE GB, jamais depuis le champ `famille` de la fiche. PURE.
  *
- * Miroir de `resolveFamily` (functions/pointageService.js) restreint au
+ * Miroir de `resolveFamily` (functions/src/modules/rh/pointageService.js) restreint au
  * référentiel : `_refMap[code].famille` d'abord, la famille de la fiche seulement
  * si le code est inconnu de la table de résolution. Sans ça, une fiche dont la
  * famille diverge de celle que le code résout produirait une ligne de budget que

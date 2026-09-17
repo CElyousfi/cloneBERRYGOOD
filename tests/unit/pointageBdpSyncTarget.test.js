@@ -1,6 +1,6 @@
 'use strict';
 
-// Tests du paramètre `target` de syncPointageFromProd (functions/pointageBdpSync.js).
+// Tests du paramètre `target` de syncPointageFromProd (functions/src/modules/rh/pointageBdpSync.js).
 //
 // Objectif P3 : prouver que
 //   - target='test' (défaut) écrit UNIQUEMENT dans sql_mirror_pointage_bdp_test
@@ -126,12 +126,12 @@ stub('./lib/pointageBdp/mapBdpRow', {
     Periode_paie: raw.Periode_paie,
   }),
 });
-stub('./sqlSyncService', {
+stub('./src/modules/rh/sqlSyncService', {
   rebuildPointageMetaFromMirror: async () => { rebuildCalls.meta++; },
   rebuildPointageWorkersFromMirror: async () => { rebuildCalls.workers++; },
 });
 
-const { syncPointageFromProd } = require(path.join(FN_DIR, 'pointageBdpSync.js'));
+const { syncPointageFromProd } = require(path.join(FN_DIR, 'src/modules/rh/pointageBdpSync.js'));
 
 const SAMPLE_ROWS = [
   { DateStr: '2026-07-01', Personnel_Matricule: 'M1', Personnel_Nom: 'A', Periode_paie: 'Quinzaine 24' },

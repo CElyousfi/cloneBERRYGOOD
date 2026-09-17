@@ -38,7 +38,7 @@ require(path.join(REPO_ROOT, 'node_modules', 'dotenv')).config({
 
 const XLSX = require(path.join(REPO_ROOT, 'node_modules', 'xlsx'));
 
-const svc = require('../bdcMirrorService');
+const svc = require('../src/modules/magasin/bdcMirrorService');
 
 // ---- Args ---------------------------------------------------------------
 const argv = process.argv.slice(2);
@@ -148,7 +148,7 @@ function printReport(result) {
     process.exit(0);
   } catch (err) {
     console.error('\n[bdcMirror] ERREUR :', err.message);
-    console.error('Requête SQL one-shot prévue (read-only) : voir fetchBdcRows() dans functions/bdcMirrorService.js');
+    console.error('Requête SQL one-shot prévue (read-only) : voir fetchBdcRows() dans functions/src/modules/magasin/bdcMirrorService.js');
     try { await svc.closePool(); } catch (_) { /* noop */ }
     process.exit(1);
   }

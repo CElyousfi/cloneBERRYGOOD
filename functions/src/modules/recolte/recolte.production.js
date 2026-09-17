@@ -18,7 +18,7 @@ exports.dailyProductionDigest = functions
   .timeZone("Africa/Casablanca")
   .onRun(async () => {
     try {
-      const dailyProductionReport = require("../../../dailyProductionReport");
+      const dailyProductionReport = require("./dailyProductionReport");
       const result = await dailyProductionReport.sendDailyProductionReport();
       console.log("[dailyProductionDigest]", result);
     } catch (err) {
@@ -35,7 +35,7 @@ exports.dailyProductionReportTrigger = functions
     // List configured recipients for the 3 audiences via ?checkRecipients=1.
     if (req.query.checkRecipients === '1') {
       try {
-        const whatsapp = require('../../../whatsappService');
+        const whatsapp = require('../admin/whatsappService');
         const [dg, chefF1, chefF5] = await Promise.all([
           whatsapp.resolveRecipientsForProfile('dg', null),
           whatsapp.resolveRecipientsForProfile('chef_f1', null),
@@ -112,7 +112,7 @@ exports.dailyProductionReportTrigger = functions
     const preview = req.query.preview === '1' || req.query.preview === 'true';
     const debug = req.query.debug === '1' || req.query.debug === 'true';
     try {
-      const dailyProductionReport = require("../../../dailyProductionReport");
+      const dailyProductionReport = require("./dailyProductionReport");
       const result = await dailyProductionReport.sendDailyProductionReport(date, { preview, debug });
       console.log("[dailyProductionReportTrigger]", { ...result, message: undefined, stats: undefined, diagnostic: undefined });
       res.json({ success: true, ...result, dateRequested: date || null });
@@ -168,8 +168,8 @@ exports.submitProductionDigestTemplate = functions
   });
 
 // WhatsApp recap to DG when today's harvest totalKg jumps by ≥100 kg.
-// See functions/recolteWhatsAppNotifier.js for the threshold logic.
-const recolteWhatsAppNotifier = require("../../../recolteWhatsAppNotifier");
+// See functions/src/modules/recolte/recolteWhatsAppNotifier.js for the threshold logic.
+const recolteWhatsAppNotifier = require("./recolteWhatsAppNotifier");
 const { invalidateCache: invalidateApiCache } = require("../../../middleware/cache");
 exports.onProdRecolteWriteNotify = functions
   .region("europe-west1")

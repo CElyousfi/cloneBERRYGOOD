@@ -219,7 +219,7 @@ pondérée — il suffit de le borner par campagne (pas de réécriture).
 - **P3** : bascule incrémentale une fois l'étape 4 email + lien BL en prod.
 
 ### 10.8 Liens
-- Plage/couverture mesurées : parser `functions/emailService.js` `parseTimacInvoiceText` sur les 134
+- Plage/couverture mesurées : parser `functions/src/modules/finance/emailService.js` `parseTimacInvoiceText` sur les 134
   factures (`docs/factures/TIMAC`).
 - Pipeline factures (captation email, rapprochement BL, alimentation prix) : `spec-pipeline-factures.md`.
 - Mapping code→article (alimentation par article) : `spec-mapping-articles-bdc.md`.

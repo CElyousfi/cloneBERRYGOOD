@@ -22,13 +22,13 @@ const functions = require("firebase-functions");
 const sql = require("mssql");
 
 // Shared config modules
-const { admin, db: db_firestore } = require("./config/firebase");
-const baseSqlConfig = require("./config/sqlConfig");
-const sqlConfigProd = require("./config/sqlConfigProd");
-const whatsappService = require("./whatsappService");
-const probeStaleness = require("./lib/probeStaleness/probeStaleness");
-const pullHealth = require("./lib/pointage/pullHealth");
-const { resolveFermeFromParcelle } = require("./lib/pointage/refParcelleFerme");
+const { admin, db: db_firestore } = require("../../../config/firebase");
+const baseSqlConfig = require("../../../config/sqlConfig");
+const sqlConfigProd = require("../../../config/sqlConfigProd");
+const whatsappService = require("../admin/whatsappService");
+const probeStaleness = require("../../../lib/probeStaleness/probeStaleness");
+const pullHealth = require("../../../lib/pointage/pullHealth");
+const { resolveFermeFromParcelle } = require("../../../lib/pointage/refParcelleFerme");
 const { buildParCulture } = require("./pointageService");
 
 // Ré-alerte staleness : rappel toutes les 24h tant que la donnée reste gelée.
@@ -747,8 +747,8 @@ async function syncPointage(db) {
   // fusionnent JAMAIS sous la même clé — l'occurrence la plus ancienne reçoit un
   // suffixe " (AAAA-BBBB)"). Même fonction pure que `rebuildPointageMetaFromMirror`
   // (qui écrase de toute façon ce meta juste après — on garde la même forme canonique).
-  const { campagneOf: __campagneOf } = require("./lib/mappingConso/campagneUtils");
-  const { buildDisambiguatedPeriodeMap: __buildDPM, sortPeriodesByCampagne: __sortPC } = require("./lib/pointage/campagnePeriodes");
+  const { campagneOf: __campagneOf } = require("../../../lib/mappingConso/campagneUtils");
+  const { buildDisambiguatedPeriodeMap: __buildDPM, sortPeriodesByCampagne: __sortPC } = require("../../../lib/pointage/campagnePeriodes");
   const __periodeEntries = rows.filter(r => r.Periode_paie).map(r => ({ label: r.Periode_paie, date: r.DateStr }));
   const { periodeMap, periodeCampagne } = __buildDPM(__periodeEntries, __campagneOf);
 
@@ -884,9 +884,9 @@ async function syncPointage(db) {
  * @param {{now?: Date|string, windowDays?: number}} [opts]  overrides for tests
  */
 async function rebuildPointageMetaFromMirror(opts) {
-  const { campagneOf } = require("./lib/mappingConso/campagneUtils");
-  const { sortPeriodesByCampagne } = require("./lib/pointage/campagnePeriodes");
-  const { filterDateIdsWithinWindow, buildPeriodeMapFromDailyDocs, REBUILD_WINDOW_DAYS } = require("./lib/pointage/mirrorWindow");
+  const { campagneOf } = require("../../../lib/mappingConso/campagneUtils");
+  const { sortPeriodesByCampagne } = require("../../../lib/pointage/campagnePeriodes");
+  const { filterDateIdsWithinWindow, buildPeriodeMapFromDailyDocs, REBUILD_WINDOW_DAYS } = require("../../../lib/pointage/mirrorWindow");
 
   const now = (opts && opts.now) || new Date();
   const windowDays = (opts && opts.windowDays) || REBUILD_WINDOW_DAYS;
@@ -1188,7 +1188,7 @@ async function runFullSync() {
     // reconstruit meta/workers → l'ancien syncPointage(db) N'EST PLUS appelé.
     // Import LAZY : pointageBdpSync require déjà sqlSyncService (rebuildMeta/
     // Workers) → un require top-level créerait un cycle.
-    const { computePointageWindow } = require("./lib/pointage/slidingWindow");
+    const { computePointageWindow } = require("../../../lib/pointage/slidingWindow");
     const { syncPointageFromProd } = require("./pointageBdpSync");
     const pointageWindow = computePointageWindow(new Date());
 
@@ -1228,8 +1228,8 @@ async function runFullSync() {
     // Référentiel parcelle→ferme (docs/spec-referentiel-parcelle-ferme.md §4.2).
     // Piggyback horaire, best-effort : enrobé try/catch → ne casse JAMAIS le sync.
     try {
-      const { syncReferentielParcelleFerme } = require("./lib/pointage/referentielSync");
-      const { campagneCourante } = require("./lib/mappingConso/campagneUtils");
+      const { syncReferentielParcelleFerme } = require("../../../lib/pointage/referentielSync");
+      const { campagneCourante } = require("../../../lib/mappingConso/campagneUtils");
       const poolProd = await getPoolProd();
       const campagne = campagneCourante();
       let invalidateCache = null;

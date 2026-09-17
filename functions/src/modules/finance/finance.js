@@ -516,7 +516,7 @@ exports.budgetService = functions
 const campagneRapportHebdo = require("../../../lib/campagneRapportHebdo");
 
 function buildCampagneRapportHebdoDeps() {
-  const { buildCampagneExportXlsx } = require("../../../pointageService");
+  const { buildCampagneExportXlsx } = require("../rh/pointageService");
   return {
     buildWorkbook: (params) => buildCampagneExportXlsx({
       culture: params.culture,

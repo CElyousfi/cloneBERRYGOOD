@@ -206,7 +206,7 @@ function parseCell(raw) {
 
 /**
  * Indexe le référentiel des tâches, EXACTEMENT comme le backend le fait
- * (`referentielOperationsConnues` + `familleDuCode`, functions/pointageService.js) :
+ * (`referentielOperationsConnues` + `familleDuCode`, functions/src/modules/rh/pointageService.js) :
  * la famille d'une opération est celle que son CODE résout (première fiche
  * rencontrée pour ce code, trimée), jamais le champ `famille` de la fiche.
  * Sans cette règle, on écrirait un budget sous une famille que le réalisé ne

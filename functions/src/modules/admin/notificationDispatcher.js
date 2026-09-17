@@ -8,7 +8,7 @@
  * All dispatches are fire-and-forget to avoid blocking API responses.
  */
 
-const { db } = require("./config/firebase");
+const { db } = require("../../../config/firebase");
 const whatsapp = require("./whatsappService");
 // chefBdcBot is required lazily inside sendWhatsAppToProfiles to avoid a
 // circular dependency (chefBdcBot → bdcValidationService → notificationDispatcher).
@@ -344,7 +344,7 @@ async function sendWhatsAppToProfiles(profiles, ferme, mapping, data, relatedDoc
     // template itself, so it still reaches the recipient.
     // ─────────────────────────────────────────────────────────────────────
     if ((type === "bdc_submit" || type === "bdc_submit_doc") && data.bdc_id) {
-      const chefBdcBot = require("./chefBdcBot");
+      const chefBdcBot = require("../magasin/chefBdcBot");
       await Promise.allSettled(unique.map(async (recipient) => {
         try {
           // Determine the role for validation based on which profile this recipient matches
@@ -371,7 +371,7 @@ async function sendWhatsAppToProfiles(profiles, ferme, mapping, data, relatedDoc
     // Achats stays informational only.
     // ─────────────────────────────────────────────────────────────────────
     if ((type === "bdc_chef_approved" || type === "bdc_chef_approved_doc") && data.bdc_id) {
-      const chefBdcBot = require("./chefBdcBot");
+      const chefBdcBot = require("../magasin/chefBdcBot");
       await Promise.allSettled(unique.map(async (recipient) => {
         if (recipient.profileId !== "dg") return;
         try {
@@ -390,7 +390,7 @@ async function sendWhatsAppToProfiles(profiles, ferme, mapping, data, relatedDoc
     // (achats) only get the informational template.
     // ─────────────────────────────────────────────────────────────────────
     if (type === "bdc_dg_approved" && data.bdc_id) {
-      const chefBdcBot = require("./chefBdcBot");
+      const chefBdcBot = require("../magasin/chefBdcBot");
       await Promise.allSettled(unique.map(async (recipient) => {
         if (recipient.profileId !== "finance") return;
         try {
@@ -410,7 +410,7 @@ async function sendWhatsAppToProfiles(profiles, ferme, mapping, data, relatedDoc
     // Virement launched: DG gets an action button to confirm signature.
     // ─────────────────────────────────────────────────────────────────────
     if (type === "bdc_virement_launched" && data.bdc_id) {
-      const chefBdcBot = require("./chefBdcBot");
+      const chefBdcBot = require("../magasin/chefBdcBot");
       await Promise.allSettled(unique.map(async (recipient) => {
         if (recipient.profileId !== "dg") return;
         try {

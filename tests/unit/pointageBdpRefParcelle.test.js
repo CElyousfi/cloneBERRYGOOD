@@ -8,10 +8,10 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { deriveFerme } = require('../../functions/pointageService.js');
+const { deriveFerme } = require('../../functions/src/modules/rh/pointageService.js');
 
 // Codes numériques 4 chiffres explicitement mappés dans deriveFerme
-// (functions/pointageService.js:311-313).
+// (functions/src/modules/rh/pointageService.js:311-313).
 const BDP_REFS = {
   '0032': 'F1',
   '0035': 'F1',

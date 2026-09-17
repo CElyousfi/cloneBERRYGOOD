@@ -7,7 +7,7 @@
  * Un dépassement est compté au-delà de 8h30 (510 min) de travail.
  *
  * Ces helpers sont purs (pas d'I/O) pour être testables en isolation ;
- * la jointure Firestore vit dans functions/pointageService.js (buildHeuresSup).
+ * la jointure Firestore vit dans functions/src/modules/rh/pointageService.js (buildHeuresSup).
  */
 
 'use strict';
@@ -179,7 +179,7 @@ function shouldExcludeWorkerDay(fonction, excludedFonctions) {
 
 /**
  * Un ouvrier « sans équipe » : son matricule ne porte aucune lettre, donc aucun
- * préfixe d'équipe (cf. functions/equipesConfig.js — MM, AY, HT, HA, KR, NA, JA,
+ * préfixe d'équipe (cf. functions/src/modules/rh/equipesConfig.js — MM, AY, HT, HA, KR, NA, JA,
  * AZ, CC, CA, RE, NV, LG). Ces ouvriers sont exclus des heures supplémentaires.
  *
  * Le prédicat est bien « aucune lettre », PAS « commence par un chiffre » :

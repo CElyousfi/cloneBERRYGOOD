@@ -35,7 +35,7 @@ db.collection = function () {
   };
 };
 
-const { buildCampagneExportXlsx } = require('../../functions/pointageService');
+const { buildCampagneExportXlsx } = require('../../functions/src/modules/rh/pointageService');
 const campagneBudget = require('../../functions/lib/campagneBudget/validate');
 const { campagneCourante } = require('../../functions/lib/mappingConso/campagneUtils');
 

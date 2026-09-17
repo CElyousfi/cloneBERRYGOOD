@@ -560,7 +560,7 @@ module.exports = async function emailServiceActions1(ctx) {
       if (action === "liquidation-forecast-extract") {
         if (req.method !== "POST") return res.status(405).json({ success: false, error: "POST uniquement" });
         const { fruitCode, imageBase64, mediaType } = req.body || {};
-        const forecastService = require("./forecastService");
+        const forecastService = require("../recolte/forecastService");
         const result = await forecastService.extractForecastFromImage(fruitCode, imageBase64, mediaType);
         if (!result.success) {
           const status = result.error === "LLM_UNAVAILABLE" || result.error === "Réponse Claude non parsable" ? 502
@@ -574,7 +574,7 @@ module.exports = async function emailServiceActions1(ctx) {
       if (action === "liquidation-forecast-save") {
         if (req.method !== "POST") return res.status(405).json({ success: false, error: "POST uniquement" });
         const { fruitCode, year, weeks, imageBase64, mediaType } = req.body || {};
-        const forecastService = require("./forecastService");
+        const forecastService = require("../recolte/forecastService");
         const result = await forecastService.saveForecast(fruitCode, year, weeks, {
           updatedBy: authUser.email || authUser.uid || "unknown",
           imageBase64,

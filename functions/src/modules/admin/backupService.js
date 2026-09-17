@@ -7,10 +7,10 @@
  */
 
 const functions = require("firebase-functions");
-const { admin, db } = require("./config/firebase");
-const { handleCors } = require("./middleware/cors");
-const { requireAuth } = require("./middleware/requireAuth");
-const { isoDateInTz } = require("./lib/dates/isoDateInTz");
+const { admin, db } = require("../../../config/firebase");
+const { handleCors } = require("../../../middleware/cors");
+const { requireAuth } = require("../../../middleware/requireAuth");
+const { isoDateInTz } = require("../../../lib/dates/isoDateInTz");
 
 const BACKUP_PREFIX = "backups";
 const RETENTION_DAYS = 7;

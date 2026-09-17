@@ -14,7 +14,7 @@ complète, pas une supposition) :
 error_data.details: "Param text cannot have new-line/tab characters or more than 4 consecutive spaces"
 ```
 `sendTemplateMessage`, `sendTemplateMessageWithDocument` et
-`sendTemplateMessageWithImage` (`functions/whatsappService.js`) ne
+`sendTemplateMessageWithImage` (`functions/src/modules/admin/whatsappService.js`) ne
 nettoyaient les paramètres qu'avec `.trim()` — les sauts de ligne internes
 (volontaires, pour la mise en forme du digest) passaient tels quels. Corrigé
 en appliquant `toSingleLine()` (déjà utilisé par `general_alert`, jamais
@@ -73,7 +73,7 @@ atteint leurs destinataires WhatsApp depuis leur mise en service.
 
 **Diagnostic fait, cause non confirmable d'ici** : le code envoie exactement 2
 paramètres (`bodyParams`) pour chacun de ces 5 templates
-(`functions/dailyProductionReport.js:221`, `functions/lib/meteo/meteoAlertes.js:663`,
+(`functions/src/modules/recolte/dailyProductionReport.js:221`, `functions/lib/meteo/meteoAlertes.js:663`,
 `functions/lib/meteo/sprayDigest.js`), et les définitions dans
 `functions/create-whatsapp-templates.js` déclarent bien 2 variables (`{{1}}`,
 `{{2}}`) pour chacun — **pas d'écart visible côté code**. L'erreur Meta

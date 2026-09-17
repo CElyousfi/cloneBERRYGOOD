@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Tests de functions/bdcReminderService.js (remindBdcCore) — I/O du rappel BDC.
+ * Tests de functions/src/modules/magasin/bdcReminderService.js (remindBdcCore) — I/O du rappel BDC.
  *
  * Le service require ./config/firebase (init Firebase Admin) et
  * ./notificationDispatcher (envoi WhatsApp) au chargement. Pour rester
@@ -66,14 +66,14 @@ function stub(request, exportsObj) {
 }
 
 stub('./config/firebase', { db: makeFakeDb() });
-stub('./notificationDispatcher', {
+stub('./src/modules/admin/notificationDispatcher', {
   dispatchNotification: async (payload) => {
     dispatched.push(payload);
     return dispatchResult;
   },
 });
 
-const { remindBdcCore } = require(path.join(FN_DIR, 'bdcReminderService.js'));
+const { remindBdcCore } = require(path.join(FN_DIR, 'src/modules/magasin/bdcReminderService.js'));
 
 function seed(bdc, opts) {
   store.doc = bdc;

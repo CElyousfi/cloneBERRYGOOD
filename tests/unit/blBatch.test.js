@@ -5,7 +5,7 @@
  * Run with: npm run test:unit
  *
  * Le module porte le chargement PAR LOTS des BL du tool
- * `get_bdc_non_receptionnes` (functions/dgAgent.js). Ce qui est testé ici :
+ * `get_bdc_non_receptionnes` (functions/src/modules/admin/dgAgent.js). Ce qui est testé ici :
  * le découpage respecte la limite dure Firestore (30 valeurs par clause `in`)
  * et le regroupement reproduit à l'identique l'ancienne boucle « une requête
  * par BdC » — chaque BdC demandé reçoit ses BL, un BdC sans BL reçoit un

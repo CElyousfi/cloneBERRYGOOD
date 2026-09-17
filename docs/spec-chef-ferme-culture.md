@@ -113,7 +113,7 @@ const cultureFiltre = CHEF_PROFILE_CULTURE[profileId] || null;
 return { autorise: true, role: profileId, perimetre_ferme: ferme, ferme_filtre: ferme || '__none__', culture_filtre: cultureFiltre };
 ```
 
-**B. `functions/pointageService.js`**
+**B. `functions/src/modules/rh/pointageService.js`**
 
 Ajouter la fonction `filterMirrorRowsByCulture()` (~l.97) :
 ```js
@@ -171,7 +171,7 @@ Si Omar demande une validation par culture (v2), créer des documents `${date}_F
 |---------|---------|--------|
 | `public/app.jsx` | `PROFILES` (l.383), `farmFilter` derivation (~l.67757), tous les onglets | Frontend filtre + labels |
 | `functions/lib/valorisation/accessControl.js` | `CHEF_PROFILE_FERME` (l.35), `resolvePerimetre()` | Gating serveur |
-| `functions/pointageService.js` | `filterMirrorRowsByFerme` (l.97), handlers pointage | Filtre culture backend |
+| `functions/src/modules/rh/pointageService.js` | `filterMirrorRowsByFerme` (l.97), handlers pointage | Filtre culture backend |
 | `functions/lib/pointageValidation/stateMachine.js` | `CHEF_FERME_BY_PROFILE` (l.24) | Pas de changement (v1) |
 
 ---

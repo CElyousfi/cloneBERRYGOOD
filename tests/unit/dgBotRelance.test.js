@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Tests des décisions PURES de la relance BdC depuis WhatsApp (functions/dgBot.js) :
+ * Tests des décisions PURES de la relance BdC depuis WhatsApp (functions/src/modules/admin/dgBot.js) :
  *   - normalizeRelanceReply : vocabulaire FERMÉ de confirmation, tout le reste annule ;
  *   - resolvePendingRelance : machine à états (valide / expirée / consommée) ;
  *   - buildRelanceNotice    : annulation jamais silencieuse, remplacement annoncé.
@@ -24,10 +24,10 @@ function stub(request, exportsObj) {
 }
 
 stub('./config/firebase', { db: {} });
-stub('./whatsappService', { sendTextMessage: async () => {}, downloadMedia: async () => ({}) });
-stub('./dgAgent', { ask: async () => ({ success: false, error: 'stub' }) });
-stub('./forecastService', {});
-stub('./bdcReminderService', { remindBdcCore: async () => ({ success: false, error: 'stub' }) });
+stub('./src/modules/admin/whatsappService', { sendTextMessage: async () => {}, downloadMedia: async () => ({}) });
+stub('./src/modules/admin/dgAgent', { ask: async () => ({ success: false, error: 'stub' }) });
+stub('./src/modules/recolte/forecastService', {});
+stub('./src/modules/magasin/bdcReminderService', { remindBdcCore: async () => ({ success: false, error: 'stub' }) });
 
 const {
   normalizeRelanceReply,
@@ -36,7 +36,7 @@ const {
   buildRelanceNotice,
   buildDiscardedIntentsNotice,
   PENDING_RELANCE_TTL_MS,
-} = require(path.join(FN_DIR, 'dgBot.js'));
+} = require(path.join(FN_DIR, 'src/modules/admin/dgBot.js'));
 
 const T0 = 1_800_000_000_000;
 const pendingA = { id: 'abc', numero: 'BDC-2026-0142', at: T0 };

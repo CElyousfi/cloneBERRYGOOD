@@ -39,9 +39,9 @@
  */
 
 const sql = require("mssql");
-const { admin, db: db_firestore } = require("./config/firebase");
-const sqlConfigProd = require("./config/sqlConfigProd");
-const { mapBdpRowToContract } = require("./lib/pointageBdp/mapBdpRow");
+const { admin, db: db_firestore } = require("../../../config/firebase");
+const sqlConfigProd = require("../../../config/sqlConfigProd");
+const { mapBdpRowToContract } = require("../../../lib/pointageBdp/mapBdpRow");
 
 let poolProd = null;
 async function getPoolProd() {

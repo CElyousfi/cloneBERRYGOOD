@@ -9,8 +9,8 @@
 ## 0. Topologie
 - **Frontend** : `public/app.jsx` (monolithe). Conteneur Achats = routeur d'onglets (~ligne 62416,
   arbre Desktop/chef-bahia ; numéros décalés sur `main`). **15 sous-onglets** (§1).
-- **Backend** : `functions/index.js` (~14 k lignes) + `functions/bdcValidationService.js`,
-  `functions/bdcVirementService.js`, `functions/lib/bdc/workflow.js`. Toutes les actions sous
+- **Backend** : `functions/index.js` (~14 k lignes) + `functions/src/modules/magasin/bdcValidationService.js`,
+  `functions/src/modules/magasin/bdcVirementService.js`, `functions/lib/bdc/workflow.js`. Toutes les actions sous
   `/api/stock?action=…` (+ `/api/email-analysis?action=…` pour l'onglet Rapprochement).
 - **Écritures Firestore = serveur uniquement.** Le front lit/écrit via les actions API.
 - ⚠️ **Divergence d'arbres** : exploré sur Desktop (working copy ≈ prod live, branche `feat/chef-bahia`).

@@ -16,7 +16,7 @@ passent pas par le même canal :
 → Le pipeline auto vise **TIMAC** (le gros volume). Le reste reste sur saisie/grand livre.
 
 ## 1. ✅ Étape 1 — Parser `parseTimacInvoicePdf` (LIVRÉ, dormant sur main)
-- `functions/emailService.js` : `parseTimacInvoiceText(text)` (pur) + `parseTimacInvoicePdf(buffer)`
+- `functions/src/modules/finance/emailService.js` : `parseTimacInvoiceText(text)` (pur) + `parseTimacInvoicePdf(buffer)`
   (wrappe `pdf-parse`, PDF natif texte — **pas d'OCR**). Exportés. Ajout-only (exports CF intacts).
 - Extrait : en-tête (code_client, num_facture, date, **num_bcde, num_bl**, dates, ice, net_a_payer,
   total_ht/tva) + lignes (**code_article**, designation, quantite, **unite** KG/LITRE/TONNE/U,
@@ -37,7 +37,7 @@ pour TIMAC ; **nom canonicalisé/fuzzy** pour les autres fournisseurs. Dictionna
 (~20 mappe / 16 a_valider / 10 a_mapper). À valider avec le magasinier (collection `mapping_articles`).
 
 ## 4. ⏳ Étape 4 — Captation email auto (À FAIRE)
-Réutiliser **l'archi Driscoll's** de `functions/emailService.js` (déjà : ImapFlow + mailparser +
+Réutiliser **l'archi Driscoll's** de `functions/src/modules/finance/emailService.js` (déjà : ImapFlow + mailparser +
 pdf-parse, dispatch par expéditeur/objet, stockage Firestore + Storage) :
 1. **`isTimacInvoice(from, subject)`** = `from ⊃ timacmaroc.com` ET `subject ⊃ /facture/i`.
 2. Dans **`exports.fetchEmails`** (`emailService.js:963`) : ajouter le cas TIMAC → extraire la pièce
@@ -99,9 +99,9 @@ Email TIMAC (gmail) ──fetchEmails──> emails + PDF Storage
 ```
 
 ## 7. Liens
-- Parser + validation : `functions/emailService.js`, `scripts/validate-timac-parser.js`,
+- Parser + validation : `functions/src/modules/finance/emailService.js`, `scripts/validate-timac-parser.js`,
   `tests/unit/timacInvoiceParser.test.js`.
 - Mapping : `docs/spec-mapping-articles-bdc.md`.
 - Valorisation / hiérarchie / anti-double-comptage : `docs/spec-valorisation-pmp.md` §8-9.
 - Paysage BDC BEE ONE (Bon_Commande, purchase_orders) : `docs/spec-workflow-achats.md`.
-- Archi captation email (référence) : `functions/emailService.js` `exports.fetchEmails` / `analyzeEmail`.
+- Archi captation email (référence) : `functions/src/modules/finance/emailService.js` `exports.fetchEmails` / `analyzeEmail`.

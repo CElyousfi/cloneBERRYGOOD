@@ -251,7 +251,7 @@ mémoire `whatsapp-proactif-doit-etre-template`).
 
 ### 4.5 Canal WhatsApp entrant (nouveau bot `magasinier`)
 
-Nouveau handler `functions/magasinierBot.js`, sur le modèle de
+Nouveau handler `functions/src/modules/magasin/magasinierBot.js`, sur le modèle de
 `securityBot.js` (télécharger → uploader Storage → confirmer par boutons →
 écrire Firestore) :
 
@@ -395,9 +395,9 @@ routeur de tabs magasinier, même zone que `NAV_ITEMS_MAGASINIER` /
   tests `node:test`) — écriture partagée par les 2 canaux.
 - `functions/lib/stockFiles/reminders.js` (nouveau, pure logic + DI, tests
   `node:test` dans `functions/lib/stockFiles/__tests__/`).
-- `functions/magasinierBot.js` (nouveau) — handler WhatsApp entrant, sur le
+- `functions/src/modules/magasin/magasinierBot.js` (nouveau) — handler WhatsApp entrant, sur le
   modèle de `securityBot.js`.
-- `functions/whatsappProcessor.js` — ajouter le routage `profileId ===
+- `functions/src/modules/admin/whatsappProcessor.js` — ajouter le routage `profileId ===
   "magasinier"` dans le dispatch (`:126-144`).
 - `storage.rules` — règle d'écriture `stock_files/**` (y compris
   `stock_files/_pending/**` pour le flux WhatsApp en attente de choix de

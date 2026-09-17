@@ -23,7 +23,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 
-const svc = require('../../functions/sqlSyncService');
+const svc = require('../../functions/src/modules/rh/sqlSyncService');
 
 const NOW = new Date('2026-07-09T10:00:00Z');
 

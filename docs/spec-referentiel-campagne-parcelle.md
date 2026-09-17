@@ -8,7 +8,7 @@
 
 Aujourd'hui, l'appartenance d'une parcelle à une campagne n'est **jamais
 déclarée** : elle est **déduite des dates de pointage** BEE ONE, dans
-`functions/pointageService.js` (action `parcelles-campagne-list`) :
+`functions/src/modules/rh/pointageService.js` (action `parcelles-campagne-list`) :
 
 - campagne courante = parcelles avec au moins un `BR_Pointage.Periode_Date >= 2026-07-01` ;
 - campagne précédente = pointage entre 2025-07-01 et 2026-06-30, hors labels déjà
@@ -57,7 +57,7 @@ Choix retenus (et pourquoi) :
 
 ## 3. Plan d'implémentation
 
-### 3.1 Backend — `functions/pointageService.js`
+### 3.1 Backend — `functions/src/modules/rh/pointageService.js`
 
 1. `sb-referentiel-save` : accepter `campagnes` (array de strings `^\d{4}-\d{4}$`,
    max 10) et `actif` (bool, défaut `true`). Rejeter tout autre format en 400.

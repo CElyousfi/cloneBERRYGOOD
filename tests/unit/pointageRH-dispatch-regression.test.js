@@ -21,7 +21,7 @@ const path = require('node:path');
  * runtime a été vérifié manuellement avec `firebase emulators:exec`.
  */
 
-const FUNCTIONS_DIR = path.join(__dirname, '..', '..', 'functions');
+const FUNCTIONS_DIR = path.join(__dirname, '..', '..', 'functions', 'src', 'modules', 'rh');
 
 test('pointageRH : le fallback "Unknown action" est APRÈS la boucle de dispatch, pas avant', () => {
   const src = fs.readFileSync(path.join(FUNCTIONS_DIR, 'pointageService.js'), 'utf8');

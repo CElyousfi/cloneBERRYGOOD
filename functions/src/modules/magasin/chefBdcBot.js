@@ -10,8 +10,8 @@
  * by dgBot / securityBot).
  */
 
-const { db } = require("./config/firebase");
-const wa = require("./whatsappService");
+const { db } = require("../../../config/firebase");
+const wa = require("../admin/whatsappService");
 const { validateBdcCore } = require("./bdcValidationService");
 const { updateBdcVirementCore } = require("./bdcVirementService");
 

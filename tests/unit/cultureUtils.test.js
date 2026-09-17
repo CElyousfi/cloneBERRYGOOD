@@ -10,7 +10,7 @@ const {
 } = require('./_esm').loadEsm('src/modules/shared/lib/cultureUtils.js');
 
 // ============================================================================
-// CULTURES — mêmes valeurs que CULTURES_SB_VALIDES (functions/pointageService.js)
+// CULTURES — mêmes valeurs que CULTURES_SB_VALIDES (functions/src/modules/rh/pointageService.js)
 // ============================================================================
 test('CULTURES — les 3 cultures reconnues', () => {
   assert.deepStrictEqual(CULTURES, ['Framboise', 'Myrtille', 'Avocatier']);

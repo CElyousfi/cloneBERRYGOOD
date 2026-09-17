@@ -45,7 +45,7 @@ require.cache[fbPath] = {
   exports: { admin: {}, db: fakeDb, bucket: {} },
 };
 
-const whatsapp = require('../../../whatsappService');
+const whatsapp = require('../../../src/modules/admin/whatsappService');
 const { PNG_MIME } = require('../renderPng');
 // Nom du template en dur : ce fichier couvre le TRANSPORT (whatsappService),
 // pas le job. Le lien avec `sprayDigest.IMAGE_TEMPLATE_NAME` est verrouillé

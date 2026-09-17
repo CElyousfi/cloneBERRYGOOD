@@ -230,7 +230,7 @@ module.exports = async function stockActions1(ctx) {
         if (pdf_url) updatePatch.pdf_url = pdf_url;
         await db_firestore.collection("purchase_orders").doc(id).update(updatePatch);
         // WhatsApp: notify chef de ferme OU DG selon le cas
-        const { buildBdcWhatsAppSummary } = require("../../../notificationDispatcher");
+        const { buildBdcWhatsAppSummary } = require("../admin/notificationDispatcher");
         const bdcForSummary = { ...current, id };
         const bdcPdfUrl = pdf_url || current.pdf_url || null;
         const useDocTemplate = !!bdcPdfUrl;

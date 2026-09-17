@@ -246,7 +246,7 @@ jusqu'à l'arrivée du pointage de cette quinzaine. Non-gated (deploy functions 
 Demandé par le DG (2026-07-03), suite au chantier monitoring pointage. Deux volets qui se
 valident ENSEMBLE sur les premières vraies écritures de la saison :
 1. **Sonde staleness RÉCOLTE saisonnière** : étendre le mécanisme de la sonde pointage
-   (`functions/sqlSyncService.js` `replicationProbe` + `functions/lib/probeStaleness/`) au flux
+   (`functions/src/modules/rh/sqlSyncService.js` `replicationProbe` + `functions/lib/probeStaleness/`) au flux
    récolte (`prod_tracabilite_recolte` / `syncTracabiliteRecolte`), AVEC logique saisonnière :
    **pas d'alerte hors campagne** (la récolte s'arrête légitimement en fin de saison — actuellement
    figée au 10/06/2026 = fin campagne 25-26, PAS une panne), et **réarmement à la reprise 26-27**
@@ -1086,7 +1086,7 @@ Gated : oui (import/migration données depuis BEE ONE).
 
 SOURCES SQL CONFIRMÉES (investigation read-only 2026-06-23, doc only) :
 - Base TRANSACTIONNELLE = `BEE_BERRY_GOOD` (≠ `BR_BERRY_GOOD` = reporting/mirror).
-  Connexion READ-ONLY via functions/config/sqlConfigProd.js (pattern functions/prodSyncService.js).
+  Connexion READ-ONLY via functions/config/sqlConfigProd.js (pattern functions/src/modules/recolte/prodSyncService.js).
 - BDC en-tête : `dbo.Bon_Commande` (Num_BC format "BC-000XXX", IDFournisseur, Date_BC, totaux HT/TVA/TTC).
 - BDC lignes (CRITIQUE = le prix) : `dbo.Demande_achat_Bon_Commande`
   (Prix_U_HT = prix négocié, Qte, ID = IDProduit ; 490/491 lignes avec prix > 0).
@@ -1193,8 +1193,8 @@ Source : tag `archive/chef-bahia` (968512e). Main n'a qu'une notif TEXTE `bdc_ch
 (vers dg/achats) SANS PDF ni session interactive. La feature archivée envoie au DG le MÊME
 mécanisme que le chef : PDF récap des articles en pièce jointe + session WhatsApp OK/NON.
 Méthode : repartir de MAIN, cherry-pick CIBLÉ de 4 fichiers, PARTIE BDC UNIQUEMENT :
-- functions/notificationDispatcher.js (`dispatchBdcValidationRequest` + `buildBdcArticlesSummary`)
-- functions/bdcValidationService.js (hop chef→DG ; `bdc_chef_approved` réduit à ["achats"])
+- functions/src/modules/admin/notificationDispatcher.js (`dispatchBdcValidationRequest` + `buildBdcArticlesSummary`)
+- functions/src/modules/magasin/bdcValidationService.js (hop chef→DG ; `bdc_chef_approved` réduit à ["achats"])
 - functions/index.js (~5294, `submit-bdc` via le dispatcher partagé)
 - tests/test-chef-bdc-bot.js
 NE PAS reprendre (régressif vs main) : hunk transport ~4417 de index.js, emailService.js

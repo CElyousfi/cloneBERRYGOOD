@@ -16,7 +16,7 @@
  * upstream in dailyProductionReport.js.
  */
 
-const { normalizeParcelle, getHaByCycle, getPlantsByCycle, getCycle } = require('../parcellesCulturales');
+const { normalizeParcelle, getHaByCycle, getPlantsByCycle, getCycle } = require('../src/modules/agronomie/parcellesCulturales');
 const { BUDGET_BGF } = require('./budgetBgf');
 
 /** Fixed 6 cycle-2 varieties shown in the "Rendement Cycle 2" cards. */

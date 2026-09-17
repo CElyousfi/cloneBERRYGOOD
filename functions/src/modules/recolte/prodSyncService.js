@@ -5,8 +5,8 @@
  */
 
 const sql = require("mssql");
-const { admin, db: db_firestore } = require("./config/firebase");
-const sqlConfigProd = require("./config/sqlConfigProd");
+const { admin, db: db_firestore } = require("../../../config/firebase");
+const sqlConfigProd = require("../../../config/sqlConfigProd");
 
 let poolProd = null;
 async function getPoolProd() {

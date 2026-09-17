@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { syncBahia } = require('../');
+const { syncBahia } = require('../index.js');
 const { READINGS_COLLECTION, CURSOR_COLLECTION, CURSOR_DOC } = require('../dataAccess');
 const { COLLECTION: PARCELLES_COLLECTION } = require('../parcelles');
 const { netafimItem, netafimPage, fakeDb } = require('./fixtures');

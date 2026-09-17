@@ -10,7 +10,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { buildParCulture } = require('../../functions/pointageService.js');
+const { buildParCulture } = require('../../functions/src/modules/rh/pointageService.js');
 
 // Fixtures : jeux de rows multi-ferme multi-culture
 const ROWS_MIXED = [

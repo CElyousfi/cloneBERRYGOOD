@@ -120,7 +120,7 @@ module.exports = async function emailServiceActions2(ctx) {
         const apiKey = process.env.ANTHROPIC_API_KEY;
         if (!apiKey) return res.status(400).json({ success: false, error: "ANTHROPIC_API_KEY manquante" });
 
-        const productivity = require("./lib/productivity");
+        const productivity = require("../../../lib/productivity");
         const client = createImapClient();
 
         try {

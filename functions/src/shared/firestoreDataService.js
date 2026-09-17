@@ -7,7 +7,7 @@
  * All functions return plain JS arrays/objects — same shape as SQL recordsets.
  */
 
-const { db: db_firestore } = require("./config/firebase");
+const { db: db_firestore } = require("../../config/firebase");
 
 // =============================================
 // BR_Consommation — from sql_mirror_consommation/{YYYY-MM}

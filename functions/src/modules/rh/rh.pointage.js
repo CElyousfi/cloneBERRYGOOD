@@ -8,7 +8,7 @@ const { admin, bucket, consoAccessControl, db_firestore, functions, getPointageM
 
 const pointageValidationSM = require("../../../lib/pointageValidation/stateMachine");
 const { authorizeValidationAction } = require("../../../lib/validation/validationAccess");
-const pointageBdpSync = require("../../../pointageBdpSync");
+const pointageBdpSync = require("./pointageBdpSync");
 const { comparePointage: comparePointageBdp } = require("../../../lib/pointageBdp/comparePointage");
 
 // Sync récolte prod (Tracabilite_recolte) — toutes les 30 min de 11h à 20h
@@ -67,7 +67,7 @@ exports.backfillPresence = functions.region("europe-west1")
   });
 
 // Import & re-export backup functions
-const pointageMod = require("../../../pointageService");
+const pointageMod = require("./pointageService");
 // Keep pointageRH/pointageRH2 exported to avoid GCP deletion issues
 exports.pointageRH = pointageMod.pointageRH;
 exports.pointageRH2 = pointageMod.pointageRH;
@@ -412,7 +412,7 @@ exports.validation = functions
       // Delegate pointage-rh actions to pointageService
       const pointageActions = ['summary', 'detail', 'dates', 'recolte', 'hors-recolte', 'recolte-equipes', 'quinzaine', 'quinzaine-analytique', 'quinzaine-repos', 'quinzaine-alertes', 'upload-times', 'postes-fixes', 'suivi-tunnels', 'presence'];
       if (pointageActions.includes(action)) {
-        const { pointageRH } = require("../../../pointageService");
+        const { pointageRH } = require("./pointageService");
         return pointageRH(req, res);
       }
 
@@ -465,7 +465,7 @@ exports.validation = functions
             current.workerCount = (diversData.entries || []).length;
           } else {
             // Create snapshot of SQL data (freeze data at submission time)
-            const { createSnapshot } = require("../../../pointageService");
+            const { createSnapshot } = require("./pointageService");
             const snapshotData = await createSnapshot(date, ferme, callerProfile);
             current.workerCount = snapshotData.workerCount || 0;
           }
@@ -620,7 +620,7 @@ exports.validation = functions
           if (v.locked) lockedItems.push({ date: v.date, ferme: v.ferme });
         });
 
-        const { deriveFerme } = require("../../../pointageService");
+        const { deriveFerme } = require("./pointageService");
         const comparisons = [];
         for (const item of lockedItems) {
           // Load SQL mirror

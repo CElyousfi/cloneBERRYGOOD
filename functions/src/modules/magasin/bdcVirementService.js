@@ -3,15 +3,15 @@
  *
  * Callable from:
  *  - HTTP endpoint (action=update-bdc-virement in functions/index.js)
- *  - WhatsApp bot (functions/chefBdcBot.js)
+ *  - WhatsApp bot (functions/src/modules/magasin/chefBdcBot.js)
  *
  * Decision flow:
  *   valide_dg ── decision="lancer"  ──▶ virement_lance  (Finance saisit le virement)
  *   virement_lance ── decision="signer" ─▶ virement_signe (DG signe)
  */
 
-const { db } = require("./config/firebase");
-const { dispatchNotification } = require("./notificationDispatcher");
+const { db } = require("../../../config/firebase");
+const { dispatchNotification } = require("../admin/notificationDispatcher");
 
 /**
  * Apply a virement state transition.

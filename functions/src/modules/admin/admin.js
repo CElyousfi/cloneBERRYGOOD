@@ -10,10 +10,10 @@ const { isAdminProfile, validateStatusUpdate, sortReportsByCreatedDesc, isValidS
 const bugTriage = require("../../../lib/triage/bugTriage");
 exports.sqlToFirestoreSync = syncService.sqlToFirestoreSync;
 exports.sqlSyncTrigger = syncService.sqlSyncTrigger;
-const bdpIntrospectService = require("../../../bdpIntrospectService");
+const bdpIntrospectService = require("./bdpIntrospectService");
 
 // P2b — pull pointage FACTUEL BDP → collection témoin (zéro écriture live)
-const backupService = require("../../../backupService");
+const backupService = require("./backupService");
 exports.scheduledBackup = backupService.scheduledBackup;
 exports.backupApi = backupService.backupApi;
 
@@ -1287,7 +1287,7 @@ exports.whatsappAdmin = functions
 
         // Dispatch via type to profiles (uses notificationDispatcher mapping)
         if (type && profiles && profiles.length > 0) {
-          const { dispatchNotification } = require("../../../notificationDispatcher");
+          const { dispatchNotification } = require("./notificationDispatcher");
           // Build data object based on params for known types
           const data = req.body.data || {};
           if (params && Array.isArray(params)) {
@@ -1307,7 +1307,7 @@ exports.whatsappAdmin = functions
 
       if (action === "test-expedition-rejected" && req.method === "POST") {
         const { ferme, variety, weightKg, reason, profiles } = req.body;
-        const { dispatchNotification } = require("../../../notificationDispatcher");
+        const { dispatchNotification } = require("./notificationDispatcher");
         const dateTime = new Date().toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" });
         const receiptId = `RPT-TEST-${Date.now().toString().slice(-6)}`;
         await dispatchNotification({
@@ -1507,7 +1507,7 @@ exports.processWhatsappIncoming = functions
   .onPublish(async (message) => {
     try {
       const body = message.json || (message.data ? JSON.parse(Buffer.from(message.data, "base64").toString()) : {});
-      const { processIncomingEvent } = require("../../../whatsappProcessor");
+      const { processIncomingEvent } = require("./whatsappProcessor");
       await processIncomingEvent(body);
     } catch (err) {
       console.error("processWhatsappIncoming error:", err);

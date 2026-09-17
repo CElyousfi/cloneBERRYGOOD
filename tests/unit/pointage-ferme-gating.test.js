@@ -26,7 +26,7 @@ const {
   filterProdRowsByFerme,
   recomposeProdTotalKg,
   deriveFerme,
-} = require('../../functions/pointageService');
+} = require('../../functions/src/modules/rh/pointageService');
 
 // --- Fixtures : lignes brutes du mirror (mêmes champs que sql_mirror_pointage) ---
 // F1 : Ref_parcelle 'F1...'/'0032' ; F5 : 'F5...' ; Avocatier : 'F2...' ; BAHIA : ref bahia.

@@ -20,7 +20,7 @@ journaliers de `sql_mirror_pointage` et recalcule tout. C'est lent, et c'est
 proportionnel au nombre de jours consultés.
 
 C'est aussi ce qui a imposé le plafond `periodes.slice(0, 2)` de l'action `transport`
-(`functions/pointageService.js`) — un commentaire du code chiffre 6 quinzaines à
+(`functions/src/modules/rh/pointageService.js`) — un commentaire du code chiffre 6 quinzaines à
 ~12 000 lignes et ~10 s de réponse. Ce plafond a produit le bug du 2026-08-20 : les blocs
 Transport / Autres primes / Jours fériés vides sur Q1 et Q2, avec des KPI justes au-dessus.
 Le correctif livré (`?periode=`) charge « les 2 récentes + celle demandée » : il traite le
@@ -36,9 +36,9 @@ C'est le vrai enjeu : **la paie versée doit rester opposable**.
 
 ### 1.3 La collection existe déjà, mais orpheline
 
-`quinzaine_archive` est **lue** à quatre endroits de `functions/pointageService.js`
+`quinzaine_archive` est **lue** à quatre endroits de `functions/src/modules/rh/pointageService.js`
 (actions `quinzaine`, `quinzaine-analytique`, `quinzaine-alertes`, `quinzaine-repos`) et
-listée par `rebuildPointageMetaFromMirror` (`functions/sqlSyncService.js`) pour composer
+listée par `rebuildPointageMetaFromMirror` (`functions/src/modules/rh/sqlSyncService.js`) pour composer
 `allPeriodes`.
 
 **Rien ne l'écrit dans le code.** Les documents présents viennent d'un import manuel ou

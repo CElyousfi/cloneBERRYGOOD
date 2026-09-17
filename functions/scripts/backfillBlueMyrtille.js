@@ -33,7 +33,7 @@ process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || "berrygood-farms-dash
 const fs = require("fs");
 const path = require("path");
 const admin = require("firebase-admin");
-const { parseLiquidationSummaryText } = require("../emailService");
+const { parseLiquidationSummaryText } = require("../src/modules/finance/emailService");
 const { PDFParse } = require("pdf-parse");
 
 if (!admin.apps.length) {

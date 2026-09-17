@@ -1,6 +1,6 @@
 /**
  * blBatch.js — Helpers purs pour le chargement PAR LOTS des bons de livraison
- * rattachés à une liste de BdC (functions/dgAgent.js, tool
+ * rattachés à une liste de BdC (functions/src/modules/admin/dgAgent.js, tool
  * `get_bdc_non_receptionnes`).
  *
  * Module backend uniquement, SANS accès Firestore : le découpage des ids et le

@@ -6,7 +6,7 @@
 'use strict';
 const { db } = require('../functions/config/firebase');
 const fs = require('fs');
-const { parseTimacInvoicePdf } = require('../functions/emailService');
+const { parseTimacInvoicePdf } = require('../functions/src/modules/finance/emailService');
 function canon(a){return (a==null?'':String(a)).toUpperCase().trim().replace(/\s+/g,' ').replace(/\s*\((L|KG|G|ML|UNITE|U)\)\s*$/,'');}
 // décision : code -> {stock (clé EXISTANTE ou null), statut, alias?}
 const D = {

@@ -9,8 +9,8 @@
  * Sessions expire after 30 minutes of inactivity.
  */
 
-const { db, bucket } = require("./config/firebase");
-const wa = require("./whatsappService");
+const { db, bucket } = require("../../../config/firebase");
+const wa = require("../admin/whatsappService");
 
 const SESSION_TTL_MS = 30 * 60 * 1000;
 

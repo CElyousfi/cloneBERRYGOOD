@@ -3,7 +3,7 @@
 
 /**
  * Reads `config/netafim` from Firestore with a 5-minute in-memory cache.
- * Mirrors the pattern used by `functions/whatsappService.js`.
+ * Mirrors the pattern used by `functions/src/modules/admin/whatsappService.js`.
  *
  * Doc shape (seeded manually via Firebase console):
  *   {

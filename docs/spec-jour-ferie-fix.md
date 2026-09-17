@@ -31,7 +31,7 @@ journalier déjà pointé par l'ouvrier sur la quinzaine), pas un coût réel �
 
 ### Root cause — code actuel
 
-Fichier : `functions/pointageService.js`, fonction `computeChargCond()`
+Fichier : `functions/src/modules/rh/pointageService.js`, fonction `computeChargCond()`
 (lignes 717-802). Cœur du bug : lignes 769-789.
 
 ```js
@@ -64,12 +64,12 @@ Deux bugs cumulés :
 
 ### Chaîne d'appel (inchangée par ce fix)
 
-- Fériés : `getJoursFeries()` (`functions/pointageService.js:657-668`,
+- Fériés : `getJoursFeries()` (`functions/src/modules/rh/pointageService.js:657-668`,
   Firestore `app_settings/jours_feries`, fallback
   `JOURS_FERIES_FALLBACK` ligne 617-650).
 - Calcul : `computeChargCond(allRows, holidays)` → `jourFerieDetail`.
 - Appelé dans le warm-cache `pointage_transport`
-  (`functions/pointageService.js:1707-1728`, et un appel similaire `:2827` —
+  (`functions/src/modules/rh/pointageService.js:1707-1728`, et un appel similaire `:2827` —
   **vérifier au moment de l'implémentation si ce 2e appel existe toujours et
   utilise la même signature**, le code peut avoir bougé entre le diagnostic
   et l'implémentation).
@@ -104,12 +104,12 @@ l'algorithme ci-dessous :
 - **Aucune ligne de pointage ne porte de flag Férié/Congé/Absence.** Une
   ligne de pointage (`allRows`) n'existe QUE si l'ouvrier a réellement pointé
   ce jour-là. L'absence n'est jamais un flag — c'est l'absence de ligne pour
-  ce matricule/cette date. Confirmé sur `functions/pointageService.js`,
-  `functions/firestoreDataService.js`, `functions/sqlSyncService.js`
-  (schéma source SQL : `functions/sqlSyncService.js:680-711`).
+  ce matricule/cette date. Confirmé sur `functions/src/modules/rh/pointageService.js`,
+  `functions/src/shared/firestoreDataService.js`, `functions/src/modules/rh/sqlSyncService.js`
+  (schéma source SQL : `functions/src/modules/rh/sqlSyncService.js:680-711`).
 - **Aucun helper existant ne calcule une présence J-1/J+1 par ouvrier.** Le
   seul mécanisme voisin est un détecteur de séries d'absences **par équipe**
-  (`presenceMap[prefix]`, `functions/pointageService.js:1668-1695` et
+  (`presenceMap[prefix]`, `functions/src/modules/rh/pointageService.js:1668-1695` et
   duplicata `:3081-3150`) qui alerte sur ≥5 jours consécutifs sans pointage
   — granularité équipe, pas ouvrier, et pas lié aux fériés. **Ce fix doit
   construire sa propre logique de présence par ouvrier**, il n'y a rien à
@@ -284,8 +284,8 @@ exemple) → `jourAvant = '2026-07-29'`, `jourApres = '2026-07-31'`.
 
 | Fichier | Changement |
 |---|---|
-| `functions/pointageService.js` | Remplacer boucle `ferieWorkers` (769-789) par l'algorithme §3 ; ajouter `findJourAvant`/`findJourApres` près de `buildHalfToPeriode`/`resolveHolidayPeriode` (687-709) |
-| `functions/pointageService.js:1707-1728` (et `:2827` si toujours présent — **vérifier au moment de l'implémentation**) | Aucun changement de signature attendu, `computeChargCond(allRows, holidays)` reste identique |
+| `functions/src/modules/rh/pointageService.js` | Remplacer boucle `ferieWorkers` (769-789) par l'algorithme §3 ; ajouter `findJourAvant`/`findJourApres` près de `buildHalfToPeriode`/`resolveHolidayPeriode` (687-709) |
+| `functions/src/modules/rh/pointageService.js:1707-1728` (et `:2827` si toujours présent — **vérifier au moment de l'implémentation**) | Aucun changement de signature attendu, `computeChargCond(allRows, holidays)` reste identique |
 | Tests | Vérifier s'il existe déjà un test unitaire pour `computeChargCond` (chercher dans `functions/lib/**/__tests__` ou `tests/unit/`). **Probable qu'il n'en existe pas** (fonction historiquement dans le monolithe `pointageService.js`, pas dans `functions/lib/`) — créer un test ciblé couvrant les 4 cas du tableau §4 avec un jeu de lignes `allRows` simulé minimal. |
 
 Aucun changement frontend (`public/app.jsx`) requis — le front affiche

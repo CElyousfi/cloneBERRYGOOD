@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Tests du tool `relancer_bdc` (functions/dgAgent.js).
+ * Tests du tool `relancer_bdc` (functions/src/modules/admin/dgAgent.js).
  *
  * Le point structurant vérifié ici : le tool N'ENVOIE JAMAIS. Il pré-contrôle
  * (statut relançable + cooldown 4 h) et dépose son intention dans le contexte
@@ -44,10 +44,10 @@ function stub(request, exportsObj) {
 }
 
 stub('./config/firebase', { db: makeFakeDb() });
-stub('./firestoreDataService', { getSyncStatus: async () => ({}) });
-stub('./forecastService', { getForecast: async () => null });
+stub('./src/shared/firestoreDataService', { getSyncStatus: async () => ({}) });
+stub('./src/modules/recolte/forecastService', { getForecast: async () => null });
 
-const { TOOL_HANDLERS } = require(path.join(FN_DIR, 'dgAgent.js'));
+const { TOOL_HANDLERS } = require(path.join(FN_DIR, 'src/modules/admin/dgAgent.js'));
 const relancer = TOOL_HANDLERS.relancer_bdc;
 
 function seed(data) {

@@ -6,7 +6,7 @@
  * parcelle × article, pour l'action `campagne-conso-parcelle`
  * (écran Campagne › Engrais / Pesticides).
  *
- * Extraction à l'identique du bloc inline de `functions/pointageService.js`,
+ * Extraction à l'identique du bloc inline de `functions/src/modules/rh/pointageService.js`,
  * AVEC deux corrections délibérées :
  *
  *  1. CLASSIFICATION TOLÉRANTE. L'inline comparait `cat === 'Engrais'` /

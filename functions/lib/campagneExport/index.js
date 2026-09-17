@@ -9,7 +9,7 @@
  * Le module est PUR au sens Firestore : il ne lit rien, tout lui est injecté
  * (payload, référentiel parcelle, budgets, périmètre). Le chargement des
  * données reste à l'appelant — `computeCampagneAnalytiqueDetail` et le
- * référentiel côté functions/pointageService.js.
+ * référentiel côté functions/src/modules/rh/pointageService.js.
  *
  * Il n'expose AUCUNE Cloud Function : c'est un module interne, appelé par
  * l'existant. (Une function créée après la bascule WIF naîtrait sans variables

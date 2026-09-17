@@ -615,7 +615,7 @@ Envoyées **par le backend**, jamais par le frontend. Trois conditions doivent
 être réunies, et le code les échoue **silencieusement** :
 
 1. **Destinataire** — `resolveRecipientsForProfile`
-   (`functions/whatsappService.js`) ne retient un utilisateur que si `profileId`
+   (`functions/src/modules/admin/whatsappService.js`) ne retient un utilisateur que si `profileId`
    correspond, `whatsappEnabled === true` **et** `whatsappPhone` est renseigné
    en E.164 (`+2126…`). Un champ manquant → zéro destinataire, aucune erreur.
 2. **Config** — document Firestore `config/whatsapp` : `enabled`,

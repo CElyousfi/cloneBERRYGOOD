@@ -134,7 +134,7 @@ pré-juillet.
 
 ## 9. Fichiers concernés (implémentation)
 - `functions/lib/pointage/referentielSync.js` : + lecture `pc.Superficie` → `surface_ha`.
-- `functions/bdpIntrospectService.js` : section 12 (déjà prête, branche `feat/bdp-sondage-surfaces`).
+- `functions/src/modules/admin/bdpIntrospectService.js` : section 12 (déjà prête, branche `feat/bdp-sondage-surfaces`).
 - Nouvelle CF (dans un service parcelles ou `index.js`) : `assign-campagne-parcelle` (gatée DG/admin).
 - `public/components/ParcellesParamsTab.jsx` (nouveau) + câblage onglet + build.
 - `firestore.rules` : `parcelle_ferme_referentiel` reste `read:false` (write CF-only) — inchangé.

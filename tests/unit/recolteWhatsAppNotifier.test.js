@@ -1,13 +1,13 @@
 'use strict';
 
 /**
- * Unit tests for functions/recolteWhatsAppNotifier.js
+ * Unit tests for functions/src/modules/recolte/recolteWhatsAppNotifier.js
  * Run with: npm run test:unit
  */
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const N = require('../../functions/recolteWhatsAppNotifier.js');
+const N = require('../../functions/src/modules/recolte/recolteWhatsAppNotifier.js');
 
 test('aggregateByVariete groups, rounds and sorts desc', () => {
   const rows = [

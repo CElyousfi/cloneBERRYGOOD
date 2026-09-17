@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Tests d'ORCHESTRATION de handleDgMessage (functions/dgBot.js) sur la relance BdC.
+ * Tests d'ORCHESTRATION de handleDgMessage (functions/src/modules/admin/dgBot.js) sur la relance BdC.
  *
  * Les tests de dgBotRelance.test.js couvrent les décisions pures ; ici on vérifie
  * l'invariant qu'elles ne peuvent pas prouver seules :
@@ -53,24 +53,24 @@ stub('./config/firebase', {
     },
   },
 });
-stub('./whatsappService', {
+stub('./src/modules/admin/whatsappService', {
   sendTextMessage: async (phone, text) => { sent.push(text); },
   downloadMedia: async () => ({ error: 'stub' }),
 });
-stub('./dgAgent', {
+stub('./src/modules/admin/dgAgent', {
   ask: async (args) => { asked.push(args); return agentResponse; },
 });
-stub('./forecastService', {
+stub('./src/modules/recolte/forecastService', {
   saveForecast: async (fruitCode, year, weeks) => { savedForecasts.push({ fruitCode, year, weeks }); return { success: true }; },
 });
-stub('./bdcReminderService', {
+stub('./src/modules/magasin/bdcReminderService', {
   remindBdcCore: async (payload) => {
     reminders.push(payload);
     return { success: true, profiles: ['chef_f1'], duration: '2 jours' };
   },
 });
 
-const { handleDgMessage } = require(path.join(FN_DIR, 'dgBot.js'));
+const { handleDgMessage } = require(path.join(FN_DIR, 'src/modules/admin/dgBot.js'));
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function seedSession(data) {

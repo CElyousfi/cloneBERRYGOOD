@@ -41,13 +41,16 @@ function backendSource() {
  * Le source d'un service backend eclate en plusieurs fichiers.
  *
  * `pointageService.js` etait un monolithe ; il vit maintenant dans
- * pointageService.js + .part*.js + .actions*.js. Les tests qui lisaient le
- * fichier unique lisent cette concatenation — meme matiere, repartie autrement.
+ * pointageService.js + .part*.js + .actions*.js, sous son module
+ * (functions/src/modules/<domaine>/). Les tests qui lisaient le fichier unique
+ * lisent cette concatenation — meme matiere, repartie autrement.
  *
  * @param {string} base nom de base, ex. 'pointageService'
  */
 function serviceSource(base) {
-  const dir = path.join(ROOT, 'functions');
+  const srcDir = path.join(ROOT, 'functions', 'src');
+  const dir = path.dirname(walk(srcDir).find(p => path.basename(p) === base + '.js') || '');
+  if (!dir || dir === '.') throw new Error('serviceSource : ' + base + '.js introuvable sous functions/src');
   const files = fs.readdirSync(dir)
     .filter(f => f === base + '.js' || f.startsWith(base + '.'))
     .filter(f => f.endsWith('.js'))

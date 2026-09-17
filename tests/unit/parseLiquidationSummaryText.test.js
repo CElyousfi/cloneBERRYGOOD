@@ -2,7 +2,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { parseLiquidationSummaryText } = require('../../functions/emailService');
+const { parseLiquidationSummaryText } = require('../../functions/src/modules/finance/emailService');
 
 // Sample text extracted from a real Driscoll's Myrtille liquidation PDF (W13 2026).
 const BLUE_W13_TEXT = `LIQUIDATION Berry Good Farms SARL BLUE W 13

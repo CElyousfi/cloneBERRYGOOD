@@ -12,7 +12,7 @@
  * `Fermes` ne sert qu'à isoler BAHIA (IDFermes=2).
  *
  * Cette fonction REMPLACE la liste codée en dur de `deriveFerme`
- * (functions/pointageService.js:320, dupliquée sqlSyncService.js:927). Elle DOIT
+ * (functions/src/modules/rh/pointageService.js:320, dupliquée sqlSyncService.js:927). Elle DOIT
  * reproduire EXACTEMENT le rattachement actuel sur les données actives (gate
  * « migration 100 % iso », §7 du spec) — c'est pourquoi les listes numériques et
  * l'ordre des tests sont FIGÉS sur la logique existante. Ne pas « améliorer » la

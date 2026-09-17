@@ -9,7 +9,7 @@
  *     WhatsApp `bdc_reminder`).
  *
  * Les I/O (lecture du BDC, dispatchNotification, écriture history /
- * last_reminded_at / reminder_count) vivent dans functions/bdcReminderService.js.
+ * last_reminded_at / reminder_count) vivent dans functions/src/modules/magasin/bdcReminderService.js.
  * Même découpage que lib/bdc/mirrorSync.js (pur) vs bdcMirrorService.js (I/O).
  *
  * ⚠️ Comportement strictement identique à l'action HTTP d'origine — toute

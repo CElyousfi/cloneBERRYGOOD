@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { shouldCacheRecolteEquipes } = require('../../functions/pointageService');
+const { shouldCacheRecolteEquipes } = require('../../functions/src/modules/rh/pointageService');
 
 // Garde-fou anti-régression rCbmEuXS : le warm/serving ne doit JAMAIS cacher un payload
 // recolte-equipes dégradé (kg=0 sur la majorité des dates → graphe Coût Récolte vide).

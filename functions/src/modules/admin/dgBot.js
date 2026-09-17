@@ -16,12 +16,12 @@
  * The webhook still handles `!profile <id>` as a global command (see whatsappProcessor.js).
  */
 
-const { db } = require("./config/firebase");
+const { db } = require("../../../config/firebase");
 const wa = require("./whatsappService");
 const dgAgent = require("./dgAgent");
-const forecastService = require("./forecastService");
-const { parseForecastConfirmation } = require("./lib/forecastConfirmation");
-const { remindBdcCore } = require("./bdcReminderService");
+const forecastService = require("../recolte/forecastService");
+const { parseForecastConfirmation } = require("../../../lib/forecastConfirmation");
+const { remindBdcCore } = require("../magasin/bdcReminderService");
 
 const SESSION_TTL_MS = 30 * 60 * 1000;
 const MAX_HISTORY = 12;

@@ -57,7 +57,7 @@ cacheMiddleware.withCache = async function (cacheKey) {
 };
 
 // 3. Charger la cible.
-const { computeCampagneAnalytiqueDetail } = require('../../functions/pointageService');
+const { computeCampagneAnalytiqueDetail } = require('../../functions/src/modules/rh/pointageService');
 
 /** Début de la campagne courante — même règle que la fonction sous test. */
 function campagneStart(now) {

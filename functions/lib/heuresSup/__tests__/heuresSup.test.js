@@ -233,7 +233,7 @@ test('isSansEquipe: matricule purement numérique = sans équipe', () => {
   }
 });
 
-// ZU / ZZ / DD ne figurent PAS dans les 13 préfixes de functions/equipesConfig.js,
+// ZU / ZZ / DD ne figurent PAS dans les 13 préfixes de functions/src/modules/rh/equipesConfig.js,
 // et sont pourtant bien présents en production : la règle conserve tout matricule
 // portant une lettre, qu'il corresponde ou non à un préfixe connu.
 test('isSansEquipe: matricule contenant au moins une lettre = conservé', () => {

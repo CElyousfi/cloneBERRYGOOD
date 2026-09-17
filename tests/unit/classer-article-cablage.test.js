@@ -2,7 +2,7 @@
 
 // Test de CÂBLAGE (structurel, lecture du source) — même approche et mêmes
 // garde-fous que tests/unit/conso-categorie-cablage.test.js, pour les mêmes
-// raisons : `functions/index.js` et `functions/pointageService.js` sont des
+// raisons : `functions/index.js` et `functions/src/modules/rh/pointageService.js` sont des
 // monolithes sans injection de dépendances, on ne peut pas les instancier sans
 // Firestore. Ce n'est pas une preuve de comportement, c'est un cliquet contre
 // le débranchement silencieux.
@@ -321,7 +321,7 @@ test('le préfixe purgé est EXACTEMENT la clé écrite par campagne-conso-parce
     idx,
     -1,
     'le préfixe « ' + CONSO_PARCELLE_CACHE_PREFIX + ' » (functions/lib/consoBons/cacheKeys.js) '
-      + 'est introuvable dans functions/pointageService.js : la clé de cache a été bumpée d\'un '
+      + 'est introuvable dans functions/src/modules/rh/pointageService.js : la clé de cache a été bumpée d\'un '
       + 'seul côté — la purge d\'un classement taperait à côté et l\'écran resservirait 30 min '
       + 'une réponse périmée, SANS erreur visible.'
   );
