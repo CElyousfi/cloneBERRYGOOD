@@ -25,6 +25,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { loadComponent } = require('./_esm');
 const babel = require('@babel/core');
 
 const ROOT = path.join(__dirname, '../..');
@@ -36,8 +37,6 @@ function babelise(rel) {
   ).code;
 }
 
-const SRC_TAB = babelise('public/components/MagBCTab.jsx');
-const SRC_DIALOG = babelise('public/components/BCDoublonDialog.jsx');
 
 const CampagneUtils = require('./_esm').loadEsm('src/modules/shared/lib/campagneUtils.js');
 
@@ -121,9 +120,9 @@ function load(stateOverrides, spy) {
   vm.createContext(sandbox);
   // La fenêtre de doublon est un composant PARTAGÉ, chargé en <script> séparé :
   // on le charge dans le même sandbox, exactement comme le navigateur.
-  vm.runInContext(SRC_DIALOG, sandbox);
-  vm.runInContext(SRC_TAB, sandbox);
-  return { MagBCTab: sandbox.window.MagBCTab, BCDoublonDialog: sandbox.window.BCDoublonDialog };
+  const tab = loadComponent('src/modules/magasin/MagBCTab.jsx', sandbox);
+  const dialog = loadComponent('src/modules/magasin/BCDoublonDialog.jsx', sandbox);
+  return { MagBCTab: tab.MagBCTab, BCDoublonDialog: dialog.BCDoublonDialog };
 }
 
 function walk(node, out) {

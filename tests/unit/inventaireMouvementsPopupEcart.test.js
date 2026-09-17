@@ -28,10 +28,7 @@ const vm = require('node:vm');
 const babel = require('@babel/core');
 
 const ROOT = path.join(__dirname, '../..');
-const SRC = babel.transformSync(
-  fs.readFileSync(path.join(ROOT, 'public/components/InventaireMouvementsPopup.jsx'), 'utf8'),
-  { presets: [require.resolve('@babel/preset-react')], filename: 'InventaireMouvementsPopup.jsx', babelrc: false, configFile: false }
-).code;
+const { loadComponent } = require('./_esm');
 
 function flatten(children) {
   const out = [];
@@ -83,8 +80,7 @@ function rendre(props, state) {
     useEffect: function () {},
   };
   vm.createContext(sandbox);
-  vm.runInContext(SRC, sandbox);
-  const Popup = sandbox.window.InventaireMouvementsPopup;
+  const Popup = loadComponent('src/modules/magasin/InventaireMouvementsPopup.jsx', sandbox).InventaireMouvementsPopup;
   assert.ok(Popup, 'window.InventaireMouvementsPopup non exposé');
   return Popup(props);
 }

@@ -29,6 +29,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { loadComponent } = require('./_esm');
 const babel = require('@babel/core');
 
 const ROOT = path.join(__dirname, '../..');
@@ -40,8 +41,6 @@ function babelise(rel) {
   ).code;
 }
 
-const SRC_TAB = babelise('public/components/MagBCTab.jsx');
-const SRC_CONV = babelise('public/components/ArticleConversionFields.jsx');
 
 const CampagneUtils = require('./_esm').loadEsm('src/modules/shared/lib/campagneUtils.js');
 const UniteConsoUtils = require('./_esm').loadEsm('src/modules/shared/lib/uniteConsoUtils.js');
@@ -119,9 +118,7 @@ function load(stateOverrides, spy) {
     useRef: function (initial) { const ref = { current: initial }; if (spy) spy.refs.push(ref); return ref; },
   };
   vm.createContext(sandbox);
-  vm.runInContext(SRC_CONV, sandbox);
-  vm.runInContext(SRC_TAB, sandbox);
-  return sandbox.window.MagBCTab;
+  return loadComponent('src/modules/magasin/MagBCTab.jsx', sandbox).MagBCTab;
 }
 
 function walk(node, out) {
@@ -287,7 +284,7 @@ test('MUTANT « refus serveur affaibli » : create-bc refuse toujours de son cô
 });
 
 test('le front délègue au module pur, il ne compare aucun libellé lui-même', () => {
-  const src = fs.readFileSync(path.join(ROOT, 'public/components/MagBCTab.jsx'), 'utf8');
+  const src = fs.readFileSync(path.join(ROOT, 'src/modules/magasin/MagBCTab.jsx'), 'utf8');
   const code = src.split('\n').map((l) => l.replace(/^\s*\/\/.*$/, '')).join('\n');
   assert.ok(/AS\.lignesInvalides\(validItems, articleIndex\)/.test(code),
     'la garde de soumission doit venir du module pur');

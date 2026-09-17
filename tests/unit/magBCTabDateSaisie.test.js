@@ -1,7 +1,7 @@
 'use strict';
 
 // Tests de RENDU de la DATE DE SAISIE dans la pop-up de détail d'un bon de
-// consommation (public/components/MagBCTab.jsx, ticket sb/bc-date-saisie).
+// consommation (src/modules/magasin/MagBCTab.jsx, ticket sb/bc-date-saisie).
 //
 // Contexte : la ligne existait déjà mais ne s'affichait JAMAIS, car `fmtTs` ne
 // savait pas lire le format réellement stocké — created_at est un nombre de
@@ -26,13 +26,10 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { loadComponent } = require('./_esm');
 const babel = require('@babel/core');
 
 const ROOT = path.join(__dirname, '../..');
-const SRC = babel.transformSync(
-  fs.readFileSync(path.join(ROOT, 'public/components/MagBCTab.jsx'), 'utf8'),
-  { presets: [require.resolve('@babel/preset-react')], filename: 'MagBCTab.jsx', babelrc: false, configFile: false }
-).code;
 
 const CampagneUtils = require('./_esm').loadEsm('src/modules/shared/lib/campagneUtils.js');
 
@@ -96,8 +93,7 @@ function load(stateOverrides) {
     useRef: function (initial) { return { current: initial }; },
   };
   vm.createContext(sandbox);
-  vm.runInContext(SRC, sandbox);
-  return sandbox.window.MagBCTab;
+  return loadComponent('src/modules/magasin/MagBCTab.jsx', sandbox).MagBCTab;
 }
 
 function walk(node, out) {

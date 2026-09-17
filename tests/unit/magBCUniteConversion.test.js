@@ -29,6 +29,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { loadComponent } = require('./_esm');
 const babel = require('@babel/core');
 
 const ROOT = path.join(__dirname, '../..');
@@ -40,8 +41,6 @@ function babelise(rel) {
   ).code;
 }
 
-const SRC_TAB = babelise('public/components/MagBCTab.jsx');
-const SRC_CONV = babelise('public/components/ArticleConversionFields.jsx');
 
 const CampagneUtils = require('./_esm').loadEsm('src/modules/shared/lib/campagneUtils.js');
 const UniteConsoUtils = require('./_esm').loadEsm('src/modules/shared/lib/uniteConsoUtils.js');
@@ -136,9 +135,9 @@ function load(stateOverrides, spy) {
     },
   };
   vm.createContext(sandbox);
-  vm.runInContext(SRC_CONV, sandbox);
-  vm.runInContext(SRC_TAB, sandbox);
-  return { MagBCTab: sandbox.window.MagBCTab, ArticleConversionFields: sandbox.window.ArticleConversionFields };
+  const tab = loadComponent('src/modules/magasin/MagBCTab.jsx', sandbox);
+  const conv = loadComponent('src/modules/magasin/ArticleConversionFields.jsx', sandbox);
+  return { MagBCTab: tab.MagBCTab, ArticleConversionFields: conv.ArticleConversionFields };
 }
 
 function walk(node, out) {
@@ -553,7 +552,7 @@ test('LA SOURCE de la liste : les trois chargements posent la liste COMPLÈTE', 
   // Le contrôle est BORNÉ AU BLOC de chaque chargement, jamais au fichier
   // entier : le dédoublonnage d'affichage (`catalogueArticlesAffichage`) est
   // légitime et doit pouvoir évoluer sans faire rougir ce test.
-  const src = fs.readFileSync(path.join(ROOT, 'public/components/MagBCTab.jsx'), 'utf8');
+  const src = fs.readFileSync(path.join(ROOT, 'src/modules/magasin/MagBCTab.jsx'), 'utf8');
   const sites = [];
   for (let i = src.indexOf('setCatalogueArticles('); i !== -1; i = src.indexOf('setCatalogueArticles(', i + 1)) sites.push(i);
   // Trois chargements : initial, après création d'article, après enregistrement
@@ -634,7 +633,7 @@ test('la fiche article édite les deux champs, via le MÊME composant partagé',
   // source à ses invariants. Sans ces trois points, achats/dg n'ont aucun moyen
   // de saisir la conversion, et le magasinier reste seul à pouvoir la donner.
   const src = require('./_sources').modulesSource();
-  assert.match(src, /<window\.ArticleConversionFields/, 'formulaire de fiche article non câblé');
+  assert.match(src, /<ArticleConversionFields/, 'formulaire de fiche article non câblé');
   assert.match(src, /uniteConsommation=\{form\.unite_consommation\}/);
   assert.match(src, /facteur=\{form\.stock_par_unite_consommation\}/);
   // La fiche ouverte doit CHARGER les valeurs existantes, sinon rouvrir une
@@ -643,13 +642,12 @@ test('la fiche article édite les deux champs, via le MÊME composant partagé',
   assert.match(src, /stock_par_unite_consommation:\(a\.stock_par_unite_consommation===null\|\|a\.stock_par_unite_consommation===undefined\)\?''/);
 });
 
-test('le lib est publié sur window pour ses consommateurs legacy (pont transitoire)', () => {
+test('le lib est importé par ses deux consommateurs (fiche article et saisie BC)', () => {
   // Un composant construit et déployé mais jamais câblé répond 200 et reste
-  // muet : `window.X` est undefined, sans la moindre erreur (cas réel du
-  // 2026-08-26 sur CaisseDetailPopup). Tant que MagBCTab et
-  // ArticleConversionFields sont des scripts classiques, le pont
-  // src/modules/shared/legacyGlobals.js doit republier UniteConsoUtils.
-  const bridge = fs.readFileSync(path.join(ROOT, 'src/modules/shared/legacyGlobals.js'), 'utf8');
-  assert.match(bridge, /import \* as UniteConsoUtils from '\.\/lib\/uniteConsoUtils\.js'/);
-  assert.match(bridge, /\bUniteConsoUtils,/);
+  // muet (cas réel du 2026-08-26 sur CaisseDetailPopup) : l'import est le câblage.
+  const conv = fs.readFileSync(path.join(ROOT, 'src/modules/magasin/ArticleConversionFields.jsx'), 'utf8');
+  const tab = fs.readFileSync(path.join(ROOT, 'src/modules/magasin/MagBCTab.jsx'), 'utf8');
+  assert.match(conv, /^import \* as UniteConsoUtils from '\.\.\/shared\/lib\/uniteConsoUtils\.js';/m);
+  assert.match(tab, /^import \* as UniteConsoUtils from '\.\.\/shared\/lib\/uniteConsoUtils\.js';/m);
+  assert.match(tab, /^import \{ ArticleConversionFields \} from '\.\/ArticleConversionFields\.jsx';/m);
 });

@@ -1,7 +1,7 @@
 'use strict';
 
 // Tests de RENDU de la modification de la DATE d'un bon de consommation
-// (public/components/MagBCTab.jsx, ticket sb/bc-modifier-date).
+// (src/modules/magasin/MagBCTab.jsx, ticket sb/bc-modifier-date).
 //
 // Même harnais que tests/unit/magBCScanModal.test.js : faux `window`, React
 // stubé, JSX babélisé à la volée (pas de DOM, pas de RTL — limitation
@@ -20,13 +20,10 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { loadComponent } = require('./_esm');
 const babel = require('@babel/core');
 
 const ROOT = path.join(__dirname, '../..');
-const SRC = babel.transformSync(
-  fs.readFileSync(path.join(ROOT, 'public/components/MagBCTab.jsx'), 'utf8'),
-  { presets: [require.resolve('@babel/preset-react')], filename: 'MagBCTab.jsx', babelrc: false, configFile: false }
-).code;
 
 const CampagneUtils = require('./_esm').loadEsm('src/modules/shared/lib/campagneUtils.js');
 
@@ -106,8 +103,7 @@ function load(stateOverrides, spy) {
     },
   };
   vm.createContext(sandbox);
-  vm.runInContext(SRC, sandbox);
-  return sandbox.window.MagBCTab;
+  return loadComponent('src/modules/magasin/MagBCTab.jsx', sandbox).MagBCTab;
 }
 
 function walk(node, out) {

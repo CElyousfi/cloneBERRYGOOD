@@ -14,7 +14,6 @@ import { App } from './shared/App.jsx';
 import { ErrorBoundary } from './shared/ErrorBoundary.jsx';
 import { ToastProvider } from './shared/ToastProvider.jsx';
 import { _origFetch } from './shared/_origFetch.jsx';
-import { cachedFetch } from './shared/cachedFetch.jsx';
 import { deriveSubFerme } from './shared/deriveSubFerme.jsx';
 import { remapLegacyTab } from './shared/remapLegacyTab.jsx';
 import { sbLoad } from './shared/sbLoad.jsx';
@@ -67,10 +66,6 @@ window.fetch = async function(url, opts) {
             }
             return _origFetch.call(this, url, opts);
         };
-
-// Exposé pour les composants extraits en <script> séparé (public/components/*),
-        // qui ne partagent pas le scope de app.jsx : MagBdcReceptionTab, MagBCTab, …
-        window.cachedFetch = cachedFetch;
 
 // Consommé par public/components/AffectationAnalytiqueTable.jsx (hors scope d'app.jsx).
         window.deriveSubFerme = deriveSubFerme;

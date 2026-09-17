@@ -2,7 +2,7 @@
 
 /*
  * bcDoublonScanModal.test.js — câblage de la garde anti-doublon dans le modal
- * de SCAN (public/components/MagBCScanModal.jsx).
+ * de SCAN (src/modules/magasin/MagBCScanModal.jsx).
  *
  * C'est le chemin par lequel les 2 doublons de production sont arrivés : deux
  * soumissions du même scan, à 23 et 29 secondes d'intervalle. Le refus doit
@@ -21,14 +21,13 @@ const vm = require('node:vm');
 const babel = require('@babel/core');
 
 const ROOT = path.join(__dirname, '../..');
+const { loadComponent } = require('./_esm');
 function babelise(rel) {
   return babel.transformSync(
     fs.readFileSync(path.join(ROOT, rel), 'utf8'),
     { presets: [require.resolve('@babel/preset-react')], filename: path.basename(rel), babelrc: false, configFile: false }
   ).code;
 }
-const SRC = babelise('public/components/MagBCScanModal.jsx');
-const SRC_DIALOG = babelise('public/components/BCDoublonDialog.jsx');
 
 function flatten(children) {
   const out = [];
@@ -93,9 +92,7 @@ function load(stateOverrides, spy, opts) {
     },
   };
   vm.createContext(sandbox);
-  vm.runInContext(SRC_DIALOG, sandbox);
-  vm.runInContext(SRC, sandbox);
-  return sandbox.window.MagBCScanModal;
+  return loadComponent('src/modules/magasin/MagBCScanModal.jsx', sandbox).MagBCScanModal;
 }
 
 function walk(node, out) {

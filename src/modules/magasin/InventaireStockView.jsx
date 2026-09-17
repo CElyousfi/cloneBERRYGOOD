@@ -4,6 +4,8 @@ import { useEffect, useState } from '../shared/reactHooks.jsx';
 import { canonArt } from './canonArt.jsx';
 
 import * as InventaireUtils from '../shared/lib/inventaireUtils.js';
+import { InventaireMouvementsPopup } from './InventaireMouvementsPopup.jsx';
+import { PmpDetailPopup } from './PmpDetailPopup.jsx';
 function InventaireStockView() {
             const [balances, setBalances] = useState([]);
             const [loading, setLoading] = useState(true);
@@ -276,8 +278,8 @@ function InventaireStockView() {
                             </tfoot>
                         )}
                     </table></div>
-                    {pmpDetailArticle && window.PmpDetailPopup && (
-                        <window.PmpDetailPopup
+                    {pmpDetailArticle && PmpDetailPopup && (
+                        <PmpDetailPopup
                             article_ref={pmpDetailArticle.article_ref}
                             article_nom={pmpDetailArticle.article_nom}
                             unite={pmpDetailArticle.unite}
@@ -285,8 +287,8 @@ function InventaireStockView() {
                             onClose={() => setPmpDetailArticle(null)}
                         />
                     )}
-                    {mvtDetailLine && window.InventaireMouvementsPopup && (
-                        <window.InventaireMouvementsPopup
+                    {mvtDetailLine && InventaireMouvementsPopup && (
+                        <InventaireMouvementsPopup
                             article={mvtDetailLine.article}
                             article_nom={mvtDetailLine.article_nom}
                             lieu_id={mvtDetailLine.lieu_id}

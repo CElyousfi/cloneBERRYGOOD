@@ -1,7 +1,7 @@
 'use strict';
 
 // Tests de RENDU de la modale « Scanner des Bons de Consommation »
-// (public/components/MagBCScanModal.jsx).
+// (src/modules/magasin/MagBCScanModal.jsx).
 //
 // Même harnais que tests/unit/affectationAnalytiqueTable.test.js : faux
 // `window`, React stubé, JSX babélisé à la volée (pas de DOM, pas de RTL —
@@ -21,10 +21,7 @@ const vm = require('node:vm');
 const babel = require('@babel/core');
 
 const ROOT = path.join(__dirname, '../..');
-const SRC = babel.transformSync(
-  fs.readFileSync(path.join(ROOT, 'public/components/MagBCScanModal.jsx'), 'utf8'),
-  { presets: [require.resolve('@babel/preset-react')], filename: 'MagBCScanModal.jsx', babelrc: false, configFile: false }
-).code;
+const { loadComponent } = require('./_esm');
 
 function flatten(children) {
   const out = [];
@@ -116,8 +113,7 @@ function load(stateOverrides, spy, opts) {
     },
   };
   vm.createContext(sandbox);
-  vm.runInContext(SRC, sandbox);
-  return sandbox.window.MagBCScanModal;
+  return loadComponent('src/modules/magasin/MagBCScanModal.jsx', sandbox).MagBCScanModal;
 }
 
 function walk(node, out) {
@@ -641,17 +637,6 @@ test('parcelle — le signal culture traverse les props (« M.T.L S-13 » → CA
   }
 });
 
-test('parcelle — window.BcScanMatch absent : aucune proposition, aucun crash', async () => {
-  const e = await analyseOneItem({
-    article_lu: 'UREE', article: 'UREE 46', parcelle_lue: 'marvilla S-3', parcelle: '', quantite: 5,
-  }, PROD_PROPS, { BcScanMatch: undefined });
-  assert.strictEqual(e.status, 'done');
-  assert.strictEqual(e.items[0].parcelle, '');
-  assert.strictEqual(e.items[0].parcelle_status, 'unmatched');
-  // (length, pas deepStrictEqual : le tableau vide naît dans le realm du vm.)
-  assert.strictEqual(e.items[0].parcelle_candidats.length, 0);
-});
-
 // ------------------------------------ alias de parcelle mémorisés (lot A)
 //
 // « M.T.L S-8 » est l'en-tête réel qui coûte 8 lignes de saisie sur les 7 bons de
@@ -1132,9 +1117,9 @@ test('progression — repli sur le libellé générique si le total est inconnu'
   assert.match(flatText(tree), /Analyse en cours…/);
 });
 
-test('un seul global exposé par le fichier', () => {
+test('le module ne publie rien sur window', () => {
   const sandbox = { window: { React: { createElement, useState: () => [], useEffect: () => {}, useRef: () => ({}) } } };
-  vm.createContext(sandbox);
-  vm.runInContext(SRC, sandbox);
-  assert.deepStrictEqual(Object.keys(sandbox.window).filter((k) => k !== 'React'), ['MagBCScanModal']);
+  const mod = loadComponent('src/modules/magasin/MagBCScanModal.jsx', sandbox);
+  assert.deepStrictEqual(Object.keys(mod), ['MagBCScanModal']);
+  assert.deepStrictEqual(Object.keys(sandbox.window), ['React']);
 });

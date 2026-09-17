@@ -4,6 +4,7 @@ import { useEffect, useState } from '../shared/reactHooks.jsx';
 
 import * as ArticleCategories from '../shared/lib/articleCategories.js';
 import * as FusionMasse from '../shared/lib/fusionMasse.js';
+import { ArticleConversionFields } from '../magasin/ArticleConversionFields.jsx';
 // ===================== ACHATS: CATALOGUE PRODUITS TAB =====================
         function AchatsCatalogueTab({ currentProfile, profileData }) {
             const [articles, setArticles] = useState([]);
@@ -258,9 +259,9 @@ import * as FusionMasse from '../shared/lib/fusionMasse.js';
                         création d'article (`create-article`) n'écrit pas encore
                         ces champs, les afficher là ferait croire à une saisie
                         enregistrée. */}
-                    {isEdit && window.ArticleConversionFields && (
+                    {isEdit && ArticleConversionFields && (
                         <div style={{gridColumn:'1/-1'}}>
-                            <window.ArticleConversionFields
+                            <ArticleConversionFields
                                 uniteStock={form.unite}
                                 uniteConsommation={form.unite_consommation}
                                 facteur={form.stock_par_unite_consommation}

@@ -128,10 +128,7 @@ test('la liste des bons de réception, elle, reste en place', () => {
 // Même filet FAIBLE (composant non chargeable en test, pas de RTL ici).
 // --------------------------------------------------------------------------
 
-const MAG_BDC = fs.readFileSync(
-  path.join(__dirname, '..', '..', 'public', 'components', 'MagBdcReceptionTab.jsx'),
-  'utf8'
-);
+const MAG_BDC = require('./_sources').moduleSource('magasin/MagBdcReceptionTab.jsx');
 
 test('l\'écran de saisie ne fabrique aucune unité', () => {
   // Le pré-remplissage posait 'kg' quand la ligne du BDC n'avait pas d'unité.

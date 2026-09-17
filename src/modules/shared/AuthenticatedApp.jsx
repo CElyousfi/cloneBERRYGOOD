@@ -182,14 +182,14 @@ import { BugReportsAdmin } from '../admin/BugReportsAdmin.jsx';
    lit window.CampagneBudgetTab pendant son exécution, MagBCTab lit ses trois
    dialogues. Les charger en parallèle laisserait passer un undefined. */
 const CampagneAnalytiqueTabLazy = lazyGlobalComponent('CampagneAnalytiqueTab', ['components/CampagneBudgetTab.js', 'components/PivotAnalytiqueGrid.js', 'components/CampagneAnalytiqueTab.js']);
-const MagBCTabLazy = lazyGlobalComponent('MagBCTab', ['components/BCDoublonDialog.js', 'components/ArticleConversionFields.js', 'components/MagBCScanModal.js', 'components/MagBCTab.js']);
+const MagBCTabLazy = React.lazy(() => import('../magasin/MagBCTab.jsx').then(m => ({ default: m.MagBCTab })));
 const ParcellesReferentielTabLazy = lazyGlobalComponent('ParcellesReferentielTab', ['components/ParcellesGroupesPanel.js', 'components/ParcellesReferentielTab.js']);
 const PrimesFixesTabLazy = lazyGlobalComponent('PrimesFixesTab', ['components/PrimesFixesTab.js']);
-const ConsoValoriseeTabLazy = lazyGlobalComponent('ConsoValoriseeTab', ['components/ConsoValoriseeTab.js']);
-const MagBdcReceptionTabLazy = lazyGlobalComponent('MagBdcReceptionTab', ['components/MagBdcReceptionTab.js']);
-const MagBonsCommandeTabLazy = lazyGlobalComponent('MagBonsCommandeTab', ['components/MagBonsCommandeTab.js']);
-const MagMappingConsoTabLazy = lazyGlobalComponent('MagMappingConsoTab', ['components/MagMappingConsoTab.js']);
-const MagStockFilesTabLazy = lazyGlobalComponent('MagStockFilesTab', ['components/MagStockFilesTab.js']);
+const ConsoValoriseeTabLazy = React.lazy(() => import('../magasin/ConsoValoriseeTab.jsx').then(m => ({ default: m.ConsoValoriseeTab })));
+const MagBdcReceptionTabLazy = React.lazy(() => import('../magasin/MagBdcReceptionTab.jsx').then(m => ({ default: m.MagBdcReceptionTab })));
+const MagBonsCommandeTabLazy = React.lazy(() => import('../magasin/MagBonsCommandeTab.jsx').then(m => ({ default: m.MagBonsCommandeTab })));
+const MagMappingConsoTabLazy = React.lazy(() => import('../magasin/MagMappingConsoTab.jsx').then(m => ({ default: m.MagMappingConsoTab })));
+const MagStockFilesTabLazy = React.lazy(() => import('../magasin/MagStockFilesTab.jsx').then(m => ({ default: m.MagStockFilesTab })));
 const ParcellesParamsTabLazy = lazyGlobalComponent('ParcellesParamsTab', ['components/ParcellesParamsTab.js']);
 
 // Main authenticated app — all hooks are safe here since this only mounts when auth is confirmed

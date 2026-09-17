@@ -80,4 +80,60 @@ function loadEsm(rel, opts) {
   return mod.exports;
 }
 
-module.exports = { loadEsm, ROOT };
+/* Globales d'application que les composants importent désormais : quand un test
+ * pose un double sur `sandbox.window.<nom>` (ancien contrat des scripts
+ * classiques), loadComponent le sert au module importé, à la place du vrai. */
+const APP_GLOBALS = {
+  cachedFetch: 'src/modules/shared/cachedFetch.jsx',
+  deriveSubFerme: 'src/modules/shared/deriveSubFerme.jsx',
+  sbParcelleHa: 'src/modules/agronomie/sbParcelleHa.jsx',
+  sbParcelleNom: 'src/modules/agronomie/sbParcelleNom.jsx',
+  nomOuvrier: 'src/modules/rh/nomOuvrier.jsx',
+  PointageTab: 'src/modules/rh/PointageTab.jsx',
+  PARCELLES_CULTURALES: 'src/modules/agronomie/PARCELLES_CULTURALES.jsx',
+  TXN_TYPE_LABELS: 'src/modules/caisse/TXN_TYPE_LABELS.jsx',
+  loadBonsFromFirestore: 'src/modules/shared/loadBonsFromFirestore.jsx',
+  useStockLocations: 'src/modules/shared/lib/useStockLocations.js',
+};
+const MODULE_DIRS = ['achats', 'admin', 'agronomie', 'caisse', 'finance', 'magasin', 'qualite', 'recolte', 'rh', 'securite', 'shared', 'technique'];
+
+/**
+ * Charge un composant (module ES) dans un contexte vm, en servant aux imports
+ * les doubles que le test a posés sur `sandbox.window` :
+ *   - window.<Helper>   (ex. CampagneUtils, ImageDownscale) → module shared/lib ;
+ *   - window.<Composant> (ex. BCDoublonDialog)             → export nommé du composant ;
+ *   - window.<globale app> (cachedFetch, useStockLocations…) → export nommé ;
+ *   - window.SB_PARCELLE_REF / SB_PARCELLE_CAMPAGNE          → sbParcelleState.
+ * `React` doit être une globale du contexte : on le copie depuis window.React.
+ * @param {string} rel
+ * @param {object} sandbox contexte vm (créé ou non — createContext est appliqué si besoin)
+ * @param {Record<string, any>} [extraStubs]
+ */
+function loadComponent(rel, sandbox, extraStubs) {
+  if (!vm.isContext(sandbox)) vm.createContext(sandbox);
+  const win = sandbox.window || {};
+  if (win.React && !sandbox.React) sandbox.React = win.React;
+  const stubs = Object.assign({}, extraStubs || {});
+  const add = (p, key, value) => { stubs[p] = Object.assign({}, stubs[p] || {}, { [key]: value }); };
+  for (const key of Object.keys(win)) {
+    if (key === 'React') continue;
+    const v = win[key];
+    if (APP_GLOBALS[key]) { add(APP_GLOBALS[key], key, v); continue; }
+    if (key === 'SB_PARCELLE_REF' || key === 'SB_PARCELLE_CAMPAGNE') {
+      const p = 'src/modules/shared/sbParcelleState.js';
+      const cur = (stubs[p] && stubs[p].sbParcelle) || { REF: undefined, CAMPAGNE: undefined };
+      cur[key === 'SB_PARCELLE_REF' ? 'REF' : 'CAMPAGNE'] = v;
+      stubs[p] = { sbParcelle: cur };
+      continue;
+    }
+    const lib = 'src/modules/shared/lib/' + key[0].toLowerCase() + key.slice(1) + '.js';
+    if (fs.existsSync(path.join(ROOT, lib))) { if (!(lib in stubs)) stubs[lib] = v; continue; }
+    for (const d of MODULE_DIRS) {
+      const comp = 'src/modules/' + d + '/' + key + '.jsx';
+      if (fs.existsSync(path.join(ROOT, comp))) { add(comp, key, v); break; }
+    }
+  }
+  return loadEsm(rel, { sandbox, stubs });
+}
+
+module.exports = { loadEsm, loadComponent, ROOT };
