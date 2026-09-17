@@ -1,6 +1,6 @@
 /* publish-modular — dépose le bundle ES dans public/, à côté du monolithe.
  *
- * `vite.migrated.config.js` écrit dans `dist-migrated/`, qui n'est pas servi :
+ * `vite.config.js` écrit dans `dist-migrated/`, qui n'est pas servi :
  * Firebase Hosting publie `public/` (cf. firebase.json, `hosting.public`). Sans
  * cette copie, le sélecteur d'entrée de index.html demanderait `app.modular.js`
  * et recevrait un 404 — c'est-à-dire un écran blanc pour tout utilisateur dont
