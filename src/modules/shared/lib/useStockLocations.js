@@ -9,15 +9,11 @@
  * (magasins = ['F1','F2','F5','F6']) afin de ne pas casser le 1er render.
  * Dès que la config arrive, F3/F4 (ou tout magasin ajouté côté config) apparaissent.
  *
- * Loaded twice:
- *   - In the browser via <script src="lib/useStockLocations.js"> → window.useStockLocations
- *   - In node:test via require('./useStockLocations.js') → module.exports
  *     (la dérivation pure deriveStockLocations est testable sans React/DOM).
  *
  * 2026-06 — feat/magasins-f3f4-alignement.
  */
 // @ts-check
-'use strict';
 
 // Fallback figé : comportement identique à l'ancien hardcode tant que le fetch
 // n'a pas répondu (1er render) ou en cas d'échec réseau.
@@ -75,8 +71,9 @@ function USL_fetchOnce() {
  * @returns {{magasins: string[], stations: string[], parcelles: Record<string, string[]>, loading: boolean}}
  */
 function useStockLocations() {
-  var React = (typeof window !== 'undefined' && window.React) ? window.React : null;
-  if (!React) {
+  // React est une globale (CDN, cf. public/index.html) ; hors navigateur (tests) elle est absente.
+  var R = (typeof React !== 'undefined' && React) ? React : null;
+  if (!R) {
     // Hors React (ex. tests) : renvoie le fallback dérivé.
     return deriveStockLocations(USL_cache, !USL_cache);
   }
@@ -99,19 +96,5 @@ function useStockLocations() {
   return deriveStockLocations(locations, !locations);
 }
 
-// ============================================================================
-// UMD-style export (browser global + CommonJS for node:test)
-// Noms internes uniques (USL_*) pour éviter toute collision globale (cf. crash #75).
-// ============================================================================
 
-var useStockLocationsApi = {
-  useStockLocations: useStockLocations,
-  deriveStockLocations: deriveStockLocations,
-  USL_FALLBACK_MAGASINS: USL_FALLBACK_MAGASINS,
-};
-
-if (typeof module !== 'undefined' && module.exports) module.exports = useStockLocationsApi;
-if (typeof window !== 'undefined') {
-  window.useStockLocations = useStockLocations;
-  window.StockLocationsLib = useStockLocationsApi;
-}
+export { useStockLocations, deriveStockLocations, USL_FALLBACK_MAGASINS };

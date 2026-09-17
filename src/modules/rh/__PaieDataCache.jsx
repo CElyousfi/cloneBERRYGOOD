@@ -8,7 +8,9 @@
         // (~1636 docs) + sql_mirror_pointage (plage d'historique) → >120s sur Safari.
         // Le cache ne change AUCUNE valeur : il rejoue les mêmes données, juste sans
         // re-fetch. Fallback no-op défensif si le <script> n'est pas chargé.
-        const __PaieDataCache = (typeof window !== 'undefined' && window.PaieDataCache) || {
+import * as PaieDataCache from '../shared/lib/paieDataCache.js';
+
+        const __PaieDataCache = (typeof window !== 'undefined' && PaieDataCache) || {
             pointageKey: (a, b) => 'pointage:' + a + '..' + b,
             getOrLoad: (_k, loader) => Promise.resolve().then(loader),
             invalidate: () => {},

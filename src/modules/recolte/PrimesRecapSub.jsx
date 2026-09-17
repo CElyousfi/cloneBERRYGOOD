@@ -5,6 +5,7 @@ import { cachedFetch } from '../shared/cachedFetch.jsx';
 import { invalidateCache } from '../shared/invalidateCache.jsx';
 import { useState } from '../shared/reactHooks.jsx';
 
+import * as QuinzaineUtils from '../shared/lib/quinzaineUtils.js';
 function PrimesRecapSub({ data, onNavigate, farmFilter, initialPeriode }) {
             const [detailRows, setDetailRows] = useState([]);
             const [transportData, setTransportData] = useState({});
@@ -19,7 +20,7 @@ function PrimesRecapSub({ data, onNavigate, farmFilter, initialPeriode }) {
             const fmtDuree = (min) => { if (min == null || !isFinite(min)) return '—'; const a = Math.abs(Math.round(min)); return `${Math.floor(a/60)}h ${String(a%60).padStart(2,'0')}`; };
 
             // getEqPrefix UNIFIÉ (Lot 1 spec-quinzaine-cout-charge) : même comportement
-            // déterministe que l'écran Quinzaine via window.QuinzaineUtils. L'ancien
+            // déterministe que l'écran Quinzaine via QuinzaineUtils. L'ancien
             // getEqPrefix local retournait null pour un préfixe inconnu, ce qui divergeait
             // de l'écran Quinzaine (cause du bug 240 DH sur l'équipe NV).
 
@@ -80,13 +81,13 @@ function PrimesRecapSub({ data, onNavigate, farmFilter, initialPeriode }) {
 
             // Transport summary — fonction Transport UNIFIÉE (Lot 1
             // spec-quinzaine-cout-charge) : même source que l'écran Quinzaine
-            // (window.QuinzaineUtils.computeTransportQuinzaine) → mêmes totaux à
+            // (QuinzaineUtils.computeTransportQuinzaine) → mêmes totaux à
             // périmètre ferme égal. Corrige le bug 240 DH : getEqPrefix déterministe
             // (DD→NV compté des deux côtés) + filtre ferme aligné sur Quinzaine.
             const coutMap = {};
             transportEquipes.forEach(t => { coutMap[t.prefix] = (data.getCoutTransport ? data.getCoutTransport(t.prefix, currentPeriode) : t.coutParOuvrier) || t.coutParOuvrier || 0; });
-            const transportSummary = (window.QuinzaineUtils && window.QuinzaineUtils.computeTransportQuinzaine)
-                ? window.QuinzaineUtils.computeTransportQuinzaine(detailRows, {
+            const transportSummary = (QuinzaineUtils && QuinzaineUtils.computeTransportQuinzaine)
+                ? QuinzaineUtils.computeTransportQuinzaine(detailRows, {
                     periode: currentPeriode,
                     transportEquipes,
                     coutMap,

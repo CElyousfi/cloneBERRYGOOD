@@ -3,6 +3,8 @@
  * Extrait de QuinzaineTab. Bloc de rendu pur — aucun hook, aucun effet :
  * toutes ses entrées arrivent en props.
  */
+import * as PaieUtils from '../shared/lib/paieUtils.js';
+
 function QuinzaineDetailParOuvrier({ cultureFilter, currentPeriode, detailEquipeFilter, detailOuvrierFullscreen, detailSearch, farmFilter, getEqPrefix, matchCulture, moHorsRecolteRows, moPostesRows, numKey, parJour, prefixToName, quinzPaieBaremes, quinzRegistry, recolteEquipeRows, setDetailEquipeFilter, setDetailOuvrierFullscreen, setDetailSearch }) {
     // Build map: matricule → { equipe, equipePrefix, nom, joursSet }
     // Sources: moHorsRecolteRows + moPostesRows + recolteEquipeRows (filtrés période/ferme)
@@ -34,7 +36,7 @@ function QuinzaineDetailParOuvrier({ cultureFilter, currentPeriode, detailEquipe
     });
 
     // Résoudre SMAG pour la période (même pattern que le module de coût)
-    const _PUd = window.PaieUtils;
+    const _PUd = PaieUtils;
     const _firstDayD = parJour.length > 0 ? parJour[0].jour : null;
     const _smagD = (_PUd && _PUd.resolveSmagForDate)
         ? _PUd.resolveSmagForDate(quinzPaieBaremes, _firstDayD)

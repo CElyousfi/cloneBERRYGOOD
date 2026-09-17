@@ -7,6 +7,7 @@ import { __PaieDataCache } from './__PaieDataCache.jsx';
 import { calculerPaieOuvrier } from './calculerPaieOuvrier.jsx';
 import { loadPointageDistinctDays } from './loadPointageDistinctDays.jsx';
 
+import * as PaieUtils from '../shared/lib/paieUtils.js';
 function PaieTab({ data, currentProfile }) {
             const [registry, setRegistry] = useState({});
             const [pointageMap, setPointageMap] = useState(new Map());
@@ -137,14 +138,14 @@ function PaieTab({ data, currentProfile }) {
                 );
                 // SMAG daté résolu à la fin de période (borne la plus représentative de la
                 // quinzaine). Cohérent avec computeWorkerPaie qui résout le SMAG par date.
-                const smag = (window.PaieUtils && window.PaieUtils.resolveSmagForDate)
-                    ? window.PaieUtils.resolveSmagForDate(baremes, periodEnd)
+                const smag = (PaieUtils && PaieUtils.resolveSmagForDate)
+                    ? PaieUtils.resolveSmagForDate(baremes, periodEnd)
                     : { smagBrutJournalier: baremes.smagBrutJournalier || 0, smagNetJournalier: baremes.smagNetJournalier || 0 };
-                // Fallback gracieux si window.PaieUtils.computePayslip absent : on retombe
+                // Fallback gracieux si PaieUtils.computePayslip absent : on retombe
                 // sur l'ancien modèle simplifié (net = brut, sans retenue) plutôt qu'un crash.
                 const computePaie = (args) => {
-                    if (window.PaieUtils && window.PaieUtils.computePayslip) {
-                        const p = window.PaieUtils.computePayslip(args);
+                    if (PaieUtils && PaieUtils.computePayslip) {
+                        const p = PaieUtils.computePayslip(args);
                         return {
                             brut: p.brut, net: p.net, netArrondi: p.netArrondi,
                             cnss: p.cnss, amo: p.amo, retenues: (p.cnss || 0) + (p.amo || 0),
@@ -185,8 +186,8 @@ function PaieTab({ data, currentProfile }) {
                     const declare = !!r.declare;
                     // Taux d'ancienneté (palier %) résolu pour le nouveau modèle computePayslip,
                     // qui attend ancienneteTaux (fraction), pas le nombre de jours.
-                    const __pal = (window.PaieUtils && window.PaieUtils.trouverPalierAnciennete)
-                        ? window.PaieUtils.trouverPalierAnciennete(anciennete, baremes.paliers || [])
+                    const __pal = (PaieUtils && PaieUtils.trouverPalierAnciennete)
+                        ? PaieUtils.trouverPalierAnciennete(anciennete, baremes.paliers || [])
                         : { palier: '—', pourcentage: 0 };
                     const ancienneteTaux = declare ? ((__pal.pourcentage || 0) / 100) : 0;
                     const primeFonctionJour = Number(r.primeFonctionJournaliere || 0);

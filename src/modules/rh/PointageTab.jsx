@@ -13,6 +13,7 @@ import { useState } from '../shared/reactHooks.jsx';
 import { WorkerLink } from './WorkerLink.jsx';
 import { loadPointageDistinctDays } from './loadPointageDistinctDays.jsx';
 
+import * as PaieUtils from '../shared/lib/paieUtils.js';
 // ===================== POINTAGE TAB =====================
         function PointageTab({ data, farmFilter, avoSubFilter, currentProfile, isValidation }) {
             // Pretty parcelle label via PARCELLES_CULTURALES.designations
@@ -83,7 +84,7 @@ import { loadPointageDistinctDays } from './loadPointageDistinctDays.jsx';
                 return () => window.removeEventListener('keydown', onKey);
             }, [pointagePopup]);
             // Modèle paie unifié pour la popup ouvrier : barèmes + registre + jours pointés distincts.
-            const [paieBaremes, setPaieBaremes] = useState((window.PaieUtils && window.PaieUtils.PAIE_BAREMES_DEFAULT) || {});
+            const [paieBaremes, setPaieBaremes] = useState((PaieUtils && PaieUtils.PAIE_BAREMES_DEFAULT) || {});
             const [ouvriersRegistry, setOuvriersRegistry] = useState({}); // matricule → {declare, baselineJours, baselineDate, primeFonction}
             const [paieDistinctDays, setPaieDistinctDays] = useState(new Map()); // matricule → {joursPointes:Set, nom}
             const [visaStatus, setVisaStatus] = useState({});
@@ -623,7 +624,7 @@ import { loadPointageDistinctDays } from './loadPointageDistinctDays.jsx';
                         const popRawRows = detailRows
                             .filter(r => (!pointagePopup.ferme || r.ferme === pointagePopup.ferme) && matchSub(r) && (pointagePopup.type === 'all' || r.type === pointagePopup.type));
                         // Net paie par ouvrier (1 journée) via computePayslip — remplace r.cout (valeur BDP brute).
-                        const __PU = window.PaieUtils;
+                        const __PU = PaieUtils;
                         const __popFeries = (data.primesConfig && data.primesConfig.joursFeries) || [];
                         const __popIsFerie = __popFeries.some(jf => jf && jf.date === paieDateISO);
                         const __popSmag = (__PU && __PU.resolveSmagForDate)
@@ -1320,7 +1321,7 @@ import { loadPointageDistinctDays } from './loadPointageDistinctDays.jsx';
                         const pres = lookupPresence(r.matricule);
                         const primeRecolte = r.type === 'recolte' ? calcPrime(r.quantite, r.variete, r.jour) : 0;
                         const hs25 = r.hs25 || 0, hs50 = r.hs50 || 0, hs100 = r.hs100 || 0;
-                        // Modèle paie complet (source unique window.PaieUtils). Cas défensif : ouvrier
+                        // Modèle paie complet (source unique PaieUtils). Cas défensif : ouvrier
                         // absent du registre → non déclaré, ancienneté 0, prime fonction 0 (pas de crash).
                         const reg = ouvriersRegistry[numKey(r.matricule)] || {};
                         const declare = !!reg.declare;
@@ -1336,8 +1337,8 @@ import { loadPointageDistinctDays } from './loadPointageDistinctDays.jsx';
                         const joursTravailles = Number(r.jours || 0);
                         const primeTransport = getTransportForMat(r.matricule);
                         // Taux d'ancienneté (palier en %) résolu depuis le registre de jours distincts.
-                        const __pal = (window.PaieUtils && window.PaieUtils.trouverPalierAnciennete)
-                            ? window.PaieUtils.trouverPalierAnciennete(anciennete, paieBaremes.paliers || [])
+                        const __pal = (PaieUtils && PaieUtils.trouverPalierAnciennete)
+                            ? PaieUtils.trouverPalierAnciennete(anciennete, paieBaremes.paliers || [])
                             : { palier: '—', pourcentage: 0 };
                         const ancienneteTaux = (__pal.pourcentage || 0) / 100;
                         // Jours fériés : nombre de jours de la période pointés qui tombent un férié.
@@ -1346,13 +1347,13 @@ import { loadPointageDistinctDays } from './loadPointageDistinctDays.jsx';
                         const __isFerie = __feries.some(jf => jf && jf.date === paieDateISO);
                         const joursFeries = (declare && __isFerie) ? joursTravailles : 0;
                         // SMAG daté (brut + net) à la date de paie.
-                        const __smag = (window.PaieUtils && window.PaieUtils.resolveSmagForDate)
-                            ? window.PaieUtils.resolveSmagForDate(paieBaremes, paieDateISO)
+                        const __smag = (PaieUtils && PaieUtils.resolveSmagForDate)
+                            ? PaieUtils.resolveSmagForDate(paieBaremes, paieDateISO)
                             : { smagBrutJournalier: paieBaremes.smagBrutJournalier || 0, smagNetJournalier: paieBaremes.smagNetJournalier || 0 };
                         // Primes optionnelles soumises au brut (déclaré) : prime de récolte incluse ici.
                         const primesOptionnelles = declare && primeRecolte > 0 ? primeRecolte : 0;
-                        const paie = (window.PaieUtils && window.PaieUtils.computePayslip)
-                            ? window.PaieUtils.computePayslip({
+                        const paie = (PaieUtils && PaieUtils.computePayslip)
+                            ? PaieUtils.computePayslip({
                                 declare,
                                 smagBrut: __smag.smagBrutJournalier,
                                 smagNet: __smag.smagNetJournalier,

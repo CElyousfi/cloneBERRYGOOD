@@ -3,6 +3,8 @@
  * Extrait de QuinzaineTab (3 554 lignes à l'origine). Bloc de rendu pur — aucun
  * hook, aucun effet : toutes ses entrées arrivent en props.
  */
+import * as PrimesV2 from '../shared/lib/primesV2.js';
+
 function QuinzaineHeuresSupPopup({ _chargesSociales, _hsTotal, _moRows, _nomOuvrierQz, currentPeriode, firebaseAuth, hsAjoutOuvert, hsAjoutQuery, hsAjoutsCourants, hsDraftCourant, hsEmargementsCourants, hsMinutes, hsMontantsCourants, hsSaving, numKey, setHsAjoutOuvert, setHsAjoutQuery, setHsAjouts, setHsDraft, setHsMontants, setHsSaving, setQuinzPopupKey }) {
     // SAISIE des heures sup accordées. Le montant est une
     // DÉCISION (la paie inscrit des sommes rondes), pas une
@@ -42,7 +44,7 @@ function QuinzaineHeuresSupPopup({ _chargesSociales, _hsTotal, _moRows, _nomOuvr
     // matricule OU nom). Script non chargé → repli local, jamais
     // de plantage : la RH garde un champ qui filtre.
     const _hsRechercher = (q) => {
-        const PV = window.PrimesV2;
+        const PV = PrimesV2;
         if (PV && typeof PV.searchWorkers === 'function') {
             const trouves = PV.searchWorkers(_hsCandidatsRows, q, 40);
             const parMat = {};

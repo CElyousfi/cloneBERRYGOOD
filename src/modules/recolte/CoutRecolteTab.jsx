@@ -11,6 +11,7 @@ import { invalidateCache } from '../shared/invalidateCache.jsx';
 import { useState } from '../shared/reactHooks.jsx';
 
 import * as RecolteKpiUtils from '../shared/lib/recolteKpiUtils.js';
+import * as PaieUtils from '../shared/lib/paieUtils.js';
 // ===================== COUT RECOLTE TAB =====================
         function CoutRecolteTab({ data, farmFilter, avoSubFilter, currentProfile }) {
             const CHARGES_SOCIALES = 40;
@@ -36,9 +37,9 @@ import * as RecolteKpiUtils from '../shared/lib/recolteKpiUtils.js';
             const [cycleSelected, setCycleSelected] = useState(getCycle(new Date().toISOString().slice(0, 10)));
             // Modèle paie unifié : registre ouvriers + barèmes (lecture seule client, même source que PaieTab).
             // Sert à remplacer le forfait charges 40 DH par le COÛT TOTAL EMPLOYEUR réel
-            // (brut + 26% charges patronales pour les déclarés) via window.PaieUtils.computePayslip.
+            // (brut + 26% charges patronales pour les déclarés) via PaieUtils.computePayslip.
             const [ouvriersRegistry, setOuvriersRegistry] = useState({}); // numKey(matricule) → {declare, baselineJours, primeFonctionJournaliere, ...}
-            const [paieBaremes, setPaieBaremes] = useState((window.PaieUtils && window.PaieUtils.PAIE_BAREMES_DEFAULT) || {});
+            const [paieBaremes, setPaieBaremes] = useState((PaieUtils && PaieUtils.PAIE_BAREMES_DEFAULT) || {});
             // Transport Fruits (pointage_divers, fonction === 'TRANSPORT FRUIT') par date.
             // Map { dateISO → montant total TRANSPORT FRUIT }. Chargé pour les dates affichées.
             const [transportFruitByDate, setTransportFruitByDate] = useState({});
@@ -104,7 +105,7 @@ import * as RecolteKpiUtils from '../shared/lib/recolteKpiUtils.js';
 
             // DÉCOMPOSITION COÛT (décision Omar 2026-06) — modèle SMAG théorique, source = computePayslip.
             // Pour UN ouvrier-JOUR de récolte, retourne la décomposition AFFICHÉE { salaire, prime, charges }
-            // dérivée du modèle unifié window.PaieUtils.computePayslip. r.cout (BEE ONE) n'est PLUS la base
+            // dérivée du modèle unifié PaieUtils.computePayslip. r.cout (BEE ONE) n'est PLUS la base
             // du coût (il s'annulait dans l'ancienne astuce, ce qui rendait la barre « Salaire » trompeuse).
             //
             // Mapping composantes (déclaré) :
@@ -126,7 +127,7 @@ import * as RecolteKpiUtils from '../shared/lib/recolteKpiUtils.js';
             //   calcul (salaire = r.cout legacy, prime récolte, charges = forfait CHARGES_SOCIALES 40 DH).
             // Granularité : appelé par ouvrier-JOUR (jT:1). En mode période/quinzaine, on somme jour par jour.
             const decomposeCoutJour = (matricule, salaireLegacy, primeRecolte, jourISO) => {
-                const PU = (typeof window !== 'undefined' && window.PaieUtils) ? window.PaieUtils : null;
+                const PU = (typeof window !== 'undefined' && PaieUtils) ? PaieUtils : null;
                 const reg = ouvriersRegistry[numKey(matricule)];
                 const sal = Number(salaireLegacy) || 0;
                 const pr = Number(primeRecolte) || 0;

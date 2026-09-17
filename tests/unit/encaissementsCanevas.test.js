@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const EC = require('../../public/lib/encaissementsCanevas.js');
+const EC = require('./_esm').loadEsm('src/modules/shared/lib/encaissementsCanevas.js');
 
 // ---------------------------------------------------------------------------
 // Référentiel de test (clients actifs + archivés)

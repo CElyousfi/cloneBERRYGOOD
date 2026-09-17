@@ -13,7 +13,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const FM = require('../../public/lib/fusionMasse.js');
+const FM = require('./_esm').loadEsm('src/modules/shared/lib/fusionMasse.js');
 
 // ── fixtures ───────────────────────────────────────────────────────────────
 // `id` (docId) et `reference` DIVERGENT partout, comme sur les 92 fiches de

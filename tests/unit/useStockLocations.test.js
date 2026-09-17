@@ -9,7 +9,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { deriveStockLocations, USL_FALLBACK_MAGASINS } = require('../../public/lib/useStockLocations.js');
+const { deriveStockLocations, USL_FALLBACK_MAGASINS } = require('./_esm').loadEsm('src/modules/shared/lib/useStockLocations.js');
 
 test('locations null (pas encore reçu) → fallback magasins F1/F2/F5/F6, loading vrai', () => {
   const r = deriveStockLocations(null, true);

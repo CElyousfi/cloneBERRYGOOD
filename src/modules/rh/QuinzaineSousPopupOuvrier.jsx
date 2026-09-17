@@ -5,6 +5,8 @@
  * toutes passées en props — c'est le bloc le moins couplé des popups, et le
  * premier sorti pour cette raison.
  */
+import * as PaieUtils from '../shared/lib/paieUtils.js';
+
 function QuinzaineSousPopupOuvrier({ f2, numKey, quinzPaieBaremes, quinzRegistry, quinzSubWorker, setQuinzSubWorker }) {
     const _sw = quinzSubWorker;
     const _swDays = (_sw.quinzaineDays || []);
@@ -14,7 +16,7 @@ function QuinzaineSousPopupOuvrier({ f2, numKey, quinzPaieBaremes, quinzRegistry
     const _declare = !!(_reg.declare);
     const _primeFonctionJour = Number(_reg.primeFonctionJournaliere || 0);
     const _anciennete = Number(_reg.baselineJours || 0);
-    const _PU = window.PaieUtils;
+    const _PU = PaieUtils;
     const _firstDay = _sw.jours ? [..._sw.jours].sort()[0] : null;
     const _smag = (_PU && _PU.resolveSmagForDate)
         ? _PU.resolveSmagForDate(quinzPaieBaremes, _firstDay)

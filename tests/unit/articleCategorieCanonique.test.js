@@ -45,7 +45,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const BACK = require('../../functions/lib/stockMerge/articleCategories.js');
-const FRONT = require('../../public/lib/articleCategories.js');
+const FRONT = require('./_esm').loadEsm('src/modules/shared/lib/articleCategories.js');
 const articleMerge = require('../../functions/lib/stockMerge/articleMerge.js');
 
 const { categorieCanonique, estCategorieCanonique, CATEGORIES_ARTICLE } = BACK;
@@ -150,11 +150,11 @@ test('estCategorieCanonique : comparaison EXACTE, casse comprise', () => {
 // le voie (le fichier existe en local). La copie est donc inévitable ; ce test
 // est ce qui l'empêche de dériver.
 
-test('ANTI-DIVERGENCE : la liste backend est identique à public/lib, à l’octet près', () => {
+test('ANTI-DIVERGENCE : la liste backend est identique à src/modules/shared/lib, à l’octet près', () => {
   assert.deepEqual(
     BACK.CATEGORIES_ARTICLE,
     FRONT.CATEGORIES_ARTICLE,
-    'functions/lib/stockMerge/articleCategories.js a divergé de public/lib/articleCategories.js — '
+    'functions/lib/stockMerge/articleCategories.js a divergé de src/modules/shared/lib/articleCategories.js — '
       + 'les deux listes doivent être modifiées ENSEMBLE (ordre et casse compris).'
   );
   // Même longueur, mêmes libellés, MÊME ORDRE : deepEqual couvre les trois,

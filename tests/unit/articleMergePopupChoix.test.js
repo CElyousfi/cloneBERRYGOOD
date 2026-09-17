@@ -223,7 +223,7 @@ function rendreGroupe(group, masters) {
     '  return (<div>' + extraireBlocGroupe() + '</div>);\n' +
     '};\n';
   const sandbox = { window: {}, console, isFinite, parseFloat };
-  sandbox.window.FusionMasse = require('../../public/lib/fusionMasse.js');
+  sandbox.window.FusionMasse = require('./_esm').loadEsm('src/modules/shared/lib/fusionMasse.js');
   sandbox.window.React = { createElement, Fragment: 'Fragment' };
   sandbox.React = sandbox.window.React;
   vm.createContext(sandbox);

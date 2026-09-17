@@ -23,6 +23,7 @@ import { invalidateCache } from './invalidateCache.jsx';
 import { useState } from './reactHooks.jsx';
 
 import * as RecolteKpiUtils from './lib/recolteKpiUtils.js';
+import * as QuinzaineUtils from './lib/quinzaineUtils.js';
 function DashboardTab({ data, farmFilter, avoSubFilter, onNavigateMeteo, currentProfile, cultureFilter }) {
             const [apiData, setApiData] = useState(null);
             const [nouveauxData, setNouveauxData] = useState(null);
@@ -473,15 +474,15 @@ function DashboardTab({ data, farmFilter, avoSubFilter, onNavigateMeteo, current
 
                         // Transport quinzaine — tarif effectif à la quinzaine (versionné).
                         // Fonction Transport UNIFIÉE (Lot 1 spec-quinzaine-cout-charge) :
-                        // window.QuinzaineUtils.computeTransportQuinzaine — même source que
+                        // QuinzaineUtils.computeTransportQuinzaine — même source que
                         // l'écran Primes → mêmes totaux à périmètre ferme/sub égal. Encode la
                         // règle (Set ouvriers distincts par jour/équipe × tarif, filtré
                         // periode + ferme/sub), aucun total hardcodé.
                         const coutMap = {};
                         transportEquipes.forEach(t => { coutMap[t.prefix] = data.getCoutTransport ? data.getCoutTransport(t.prefix, currentQuinz) : t.coutParOuvrier; });
                         const qTransportRows = transportRows.filter(r => r.periode === currentQuinz && (!farmFilter || r.ferme === farmFilter) && matchSub(r));
-                        const transportResult = (window.QuinzaineUtils && window.QuinzaineUtils.computeTransportQuinzaine)
-                            ? window.QuinzaineUtils.computeTransportQuinzaine(transportRows, {
+                        const transportResult = (QuinzaineUtils && QuinzaineUtils.computeTransportQuinzaine)
+                            ? QuinzaineUtils.computeTransportQuinzaine(transportRows, {
                                 periode: currentQuinz,
                                 transportEquipes,
                                 coutMap,

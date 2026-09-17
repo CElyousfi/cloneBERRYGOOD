@@ -24,7 +24,7 @@ const ROOT = path.join(__dirname, '../..');
 const CMO = require('./_esm').loadEsm('src/modules/shared/lib/coutMainOeuvre.js');
 // PaieUtils RÉEL, injecté : c'est le modèle de paie de la production, pas un
 // stub — un stub validerait le câblage et laisserait passer une erreur de taux.
-const paie = require(path.join(ROOT, 'public/lib/paieUtils.js'));
+const paie = require('./_esm').loadEsm('src/modules/shared/lib/paieUtils.js');
 
 const BAREMES = paie.PAIE_BAREMES_DEFAULT;
 const DECLARE = { declare: true, baselineJours: 0, primeFonctionJournaliere: 0 };

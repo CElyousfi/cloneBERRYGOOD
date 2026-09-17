@@ -66,5 +66,6 @@ interface Window {
   useStockLocations: any;
 }
 
-/** `XLSX` est aussi lu sans préfixe `window.` dans certains modules. */
+/** `XLSX` et `React` sont aussi lus sans préfixe `window.` dans certains modules. */
 declare const XLSX: any;
+declare const React: any;

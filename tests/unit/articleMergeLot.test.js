@@ -34,7 +34,7 @@ const babel = require('@babel/core');
 const ROOT = path.join(__dirname, '../..');
 const SRC = require('./_sources').modulesSource();
 const BACKEND = require('../helpers/backendSource').backendSource();
-const FM = require('../../public/lib/fusionMasse.js');
+const FM = require('./_esm').loadEsm('src/modules/shared/lib/fusionMasse.js');
 
 // ── extraction depuis le source de prod ────────────────────────────────────
 

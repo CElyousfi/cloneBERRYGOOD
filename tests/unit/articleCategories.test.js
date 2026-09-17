@@ -36,9 +36,10 @@ const babel = require('@babel/core');
 const ROOT = path.join(__dirname, '../..');
 // La fiche article vit dans l'onglet Catalogue (achats).
 const SRC = require('./_sources').moduleSource('achats/AchatsCatalogueTab.jsx');
-const LIB = path.join(ROOT, 'public/lib/articleCategories.js');
+const LIB = 'src/modules/shared/lib/articleCategories.js';
+const { loadEsm } = require('./_esm');
 
-const { CATEGORIES_ARTICLE, optionsCategorie, SUFFIXE_HORS_LISTE, LABEL_VIDE } = require(LIB);
+const { CATEGORIES_ARTICLE, optionsCategorie, SUFFIXE_HORS_LISTE, LABEL_VIDE } = loadEsm(LIB);
 const { familleBucket } = require('../../functions/lib/valorisation/consoValorisation');
 
 // ── 1. la liste canonique ──────────────────────────────────────────────────
@@ -234,7 +235,7 @@ function rendre(categorieFiche) {
   sandbox.window.React = { createElement, Fragment: 'Fragment' };
   sandbox.React = sandbox.window.React;
   vm.createContext(sandbox);
-  vm.runInContext(fs.readFileSync(LIB, 'utf8'), sandbox); // le VRAI module
+  sandbox.ArticleCategories = loadEsm(LIB, { sandbox }); // le VRAI module, importé par la fiche
   vm.runInContext(code, sandbox);
   const tree = sandbox.window.__rendreChamp({ categorie: categorieFiche });
   const [select] = collect(tree, (n) => n.type === 'select');
@@ -384,7 +385,6 @@ test('CHAÎNE — maillon 4 : update-article n’a pas le droit de normaliser la
   assert.doesNotMatch(h, /categorie[^\n]*toLowerCase/);
 });
 
-test('le module est chargé par index.html (sinon le select serait vide)', () => {
-  const html = fs.readFileSync(path.join(ROOT, 'public/index.html'), 'utf8');
-  assert.match(html, /<script[^>]*src="lib\/articleCategories\.js/);
+test('le module est importé par la fiche article (sinon le select serait vide)', () => {
+  assert.match(SRC, /^import \* as ArticleCategories from '\.\.\/shared\/lib\/articleCategories\.js';/m);
 });

@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const PaieUtils = require('../../public/lib/paieUtils.js');
+const PaieUtils = require('./_esm').loadEsm('src/modules/shared/lib/paieUtils.js');
 
 const {
   PAIE_BAREMES_DEFAULT,

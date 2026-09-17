@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { decideAuthState, isNewAppVersion, retryDelayMs } = require('../../public/lib/authResilience');
+const { decideAuthState, isNewAppVersion, retryDelayMs } = require('./_esm').loadEsm('src/modules/shared/lib/authResilience.js');
 
 const PROFILE = { uid: 'u1', profileId: 'finance', name: 'Omar' };
 

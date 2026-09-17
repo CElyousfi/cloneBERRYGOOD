@@ -3,8 +3,12 @@
  * Extrait de QuinzaineTab (3 554 lignes à l'origine). Bloc de rendu pur — aucun
  * hook, aucun effet : toutes ses entrées arrivent en props.
  */
+import * as EmargementPdf from '../shared/lib/emargementPdf.js';
+
+import * as EmargementExcel from '../shared/lib/emargementExcel.js';
+import * as PaieUtils from '../shared/lib/paieUtils.js';
 function QuinzaineEmargementPopup({ coutMap, cultureFilter, currentPeriode, emargementLang, emargementLoading, farmFilter, getEqPrefix, matchCulture, moHorsRecolteRows, moPostesRows, numKey, parJour, prefixToName, quinzPaieBaremes, quinzRegistry, recolteEquipeRows, setEmargementLang, setEmargementLoading, setEmargementOpen, transportByEquipe, transportConfig }) {
-    const _PU = window.PaieUtils;
+    const _PU = PaieUtils;
     const _firstDayQz = parJour.length > 0 ? parJour[0].jour : null;
     const _smag = (_PU && _PU.resolveSmagForDate)
         ? _PU.resolveSmagForDate(quinzPaieBaremes, _firstDayQz)
@@ -73,8 +77,8 @@ function QuinzaineEmargementPopup({ coutMap, cultureFilter, currentPeriode, emar
             return { equipe: t.equipe, caporal: t.caporal || '—', coutParOuvrier: coutMap[t.prefix] || t.coutParOuvrier || 0, nbJH: tb.workers || 0, montant: Math.round(tb.cout || 0) };
         });
 
-    const _hasPdf = !!(window.EmargementPdf);
-    const _hasXlsx = !!(window.EmargementExcel && window.XLSX);
+    const _hasPdf = !!(EmargementPdf);
+    const _hasXlsx = !!(EmargementExcel && window.XLSX);
 
     const _rowStyle = function (color) {
         return { width: '100%', padding: '10px 16px', borderRadius: 8, background: color, color: '#fff', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 };
@@ -135,11 +139,11 @@ function QuinzaineEmargementPopup({ coutMap, cultureFilter, currentPeriode, emar
                             <div style={{fontSize:11,fontWeight:400,opacity:0.85}}>{_nonDeclared.length} ouvriers — {_nonDeclared.reduce(function (s,w){return s+w.journees;},0)} jours — {(_nonDeclared.reduce(function (s,w){return s+w.net;},0)).toLocaleString('fr-FR')} DH</div>
                         </div>
                         <button disabled={!_hasPdf} style={_fmtBtn(!_hasPdf, 'PDF')}
-                            onClick={function () { if (window.EmargementPdf) window.EmargementPdf.genSansCnss(_nonDeclared, currentPeriode); }}>
+                            onClick={function () { if (EmargementPdf) EmargementPdf.genSansCnss(_nonDeclared, currentPeriode); }}>
                             <i className="fa-solid fa-file-pdf" style={{marginRight:3}}></i>PDF
                         </button>
                         <button disabled={!_hasXlsx} style={_fmtBtn(!_hasXlsx, 'XLS')}
-                            onClick={function () { if (window.EmargementExcel) window.EmargementExcel.genSansCnssXlsx(_nonDeclared, currentPeriode); }}>
+                            onClick={function () { if (EmargementExcel) EmargementExcel.genSansCnssXlsx(_nonDeclared, currentPeriode); }}>
                             <i className="fa-solid fa-file-excel" style={{marginRight:3}}></i>XLS
                         </button>
                     </div>
@@ -152,11 +156,11 @@ function QuinzaineEmargementPopup({ coutMap, cultureFilter, currentPeriode, emar
                             <div style={{fontSize:11,fontWeight:400,opacity:0.85}}>{_declared.length} ouvriers — {_declared.reduce(function (s,w){return s+w.journees;},0)} jours — {(_declared.reduce(function (s,w){return s+w.net;},0)).toLocaleString('fr-FR')} DH</div>
                         </div>
                         <button disabled={!_hasPdf} style={_fmtBtn(!_hasPdf, 'PDF')}
-                            onClick={function () { if (window.EmargementPdf) window.EmargementPdf.genAvecCnss(_declared, currentPeriode); }}>
+                            onClick={function () { if (EmargementPdf) EmargementPdf.genAvecCnss(_declared, currentPeriode); }}>
                             <i className="fa-solid fa-file-pdf" style={{marginRight:3}}></i>PDF
                         </button>
                         <button disabled={!_hasXlsx} style={_fmtBtn(!_hasXlsx, 'XLS')}
-                            onClick={function () { if (window.EmargementExcel) window.EmargementExcel.genAvecCnssXlsx(_declared, currentPeriode); }}>
+                            onClick={function () { if (EmargementExcel) EmargementExcel.genAvecCnssXlsx(_declared, currentPeriode); }}>
                             <i className="fa-solid fa-file-excel" style={{marginRight:3}}></i>XLS
                         </button>
                     </div>
@@ -169,11 +173,11 @@ function QuinzaineEmargementPopup({ coutMap, cultureFilter, currentPeriode, emar
                             <div style={{fontSize:11,fontWeight:400,opacity:0.85}}>{_transportEquipes.length} équipes — {(_transportEquipes.reduce(function (s,e){return s+e.montant;},0)).toLocaleString('fr-FR')} DH</div>
                         </div>
                         <button disabled={!_hasPdf} style={_fmtBtn(!_hasPdf, 'PDF')}
-                            onClick={function () { if (window.EmargementPdf) window.EmargementPdf.genTransporteurs(_transportEquipes, currentPeriode); }}>
+                            onClick={function () { if (EmargementPdf) EmargementPdf.genTransporteurs(_transportEquipes, currentPeriode); }}>
                             <i className="fa-solid fa-file-pdf" style={{marginRight:3}}></i>PDF
                         </button>
                         <button disabled={!_hasXlsx} style={_fmtBtn(!_hasXlsx, 'XLS')}
-                            onClick={function () { if (window.EmargementExcel) window.EmargementExcel.genTransporteursXlsx(_transportEquipes, currentPeriode); }}>
+                            onClick={function () { if (EmargementExcel) EmargementExcel.genTransporteursXlsx(_transportEquipes, currentPeriode); }}>
                             <i className="fa-solid fa-file-excel" style={{marginRight:3}}></i>XLS
                         </button>
                     </div>
@@ -200,7 +204,7 @@ function QuinzaineEmargementPopup({ coutMap, cultureFilter, currentPeriode, emar
                         </div>
                         <button disabled={!_hasPdf || _declared.length === 0 || emargementLoading} style={_fmtBtn(!_hasPdf || _declared.length === 0 || emargementLoading, 'PDF')}
                             onClick={async function () {
-                                if (!window.EmargementPdf) return;
+                                if (!EmargementPdf) return;
                                 setEmargementLoading(true);
                                 try {
                                     var personnelRef = {};
@@ -218,10 +222,10 @@ function QuinzaineEmargementPopup({ coutMap, cultureFilter, currentPeriode, emar
                                     var _bulletinDateDebut = _parJourDays.length > 0 ? _parJourDays[0] : null;
                                     var _bulletinDateFin   = _parJourDays.length > 0 ? _parJourDays[_parJourDays.length - 1] : null;
                                     var opts = { dateDebut: _bulletinDateDebut, dateFin: _bulletinDateFin };
-                                    if (emargementLang === 'ar' && window.EmargementPdf.genBulletinsAr) {
-                                        await window.EmargementPdf.genBulletinsAr(enriched, currentPeriode, _smag.smagBrutJournalier, opts);
+                                    if (emargementLang === 'ar' && EmargementPdf.genBulletinsAr) {
+                                        await EmargementPdf.genBulletinsAr(enriched, currentPeriode, _smag.smagBrutJournalier, opts);
                                     } else {
-                                        await window.EmargementPdf.genBulletins(enriched, currentPeriode, _smag.smagBrutJournalier, opts);
+                                        await EmargementPdf.genBulletins(enriched, currentPeriode, _smag.smagBrutJournalier, opts);
                                     }
                                 } finally {
                                     setEmargementLoading(false);
@@ -230,7 +234,7 @@ function QuinzaineEmargementPopup({ coutMap, cultureFilter, currentPeriode, emar
                             <i className={emargementLoading ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-file-pdf'} style={{marginRight:3}}></i>{emargementLoading ? '...' : 'PDF'}
                         </button>
                         <button disabled={!_hasXlsx || _declared.length === 0} style={_fmtBtn(!_hasXlsx || _declared.length === 0, 'XLS')}
-                            onClick={function () { if (window.EmargementExcel) window.EmargementExcel.genBulletinsXlsx(_declared, currentPeriode); }}>
+                            onClick={function () { if (EmargementExcel) EmargementExcel.genBulletinsXlsx(_declared, currentPeriode); }}>
                             <i className="fa-solid fa-file-excel" style={{marginRight:3}}></i>XLS
                         </button>
                     </div>

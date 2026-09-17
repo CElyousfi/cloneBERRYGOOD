@@ -1413,18 +1413,11 @@
     </div>
     <!-- Local-only UI test bypass (no-op except on localhost?testui=1). See public/lib/local-test-bypass.js -->
     <script src="lib/local-test-bypass.js?v=mtrj445m"></script>
-    <!-- Pure auth/version decision helpers — loaded NON-defer so window.AuthResilience
-         exists before app.modular.js runs its checkVersion IIFE. See public/lib/authResilience.js -->
-    <script src="lib/authResilience.js?v=mtrj445m"></script>
-    <script defer src="lib/encaissementsCanevas.js?v=mtrj445m"></script>
     <!-- Liste canonique des catégories d'article (select fermé de la fiche article). -->
-    <script defer src="lib/articleCategories.js?v=mtrj445m"></script>
-    <script defer src="lib/paieUtils.js?v=mtrj445m"></script>
     <!-- Modèle de coût M.O — consomme PaieUtils par INJECTION, donc l'ordre des
          <script> n'a pas d'importance ici (rien n'est lu au chargement). -->
         <!-- Plafond de journées déclarables. PUR, INJECTÉ dans coutMainOeuvre :
          l'ordre des <script> est indifférent, rien n'est lu au chargement. -->
-    <script defer src="lib/plafondDeclaration.js?v=mtrj445m"></script>
         <!-- Lecture du fichier de paie + rapprochement. PURS, sans dépendance :
          l'ordre des <script> est indifférent, rien n'est lu au chargement. -->
     <script defer src="lib/lecturePaieExcel.js?v=mtrj445m"></script>
@@ -1432,19 +1425,14 @@
     <!-- Ventilation d'UNE parcelle quinzaine par quinzaine. PURE, sans
          dépendance : l'ordre des <script> est indifférent. -->
     <script defer src="lib/campagneParcelleQuinzaine.js?v=mtrj445m"></script>
-<script defer src="lib/quinzaineUtils.js?v=mtrj445m"></script>
     <script defer src="lib/analytiqueUtils.js?v=mtrj445m"></script>
-    <script defer src="lib/paieDataCache.js?v=mtrj445m"></script>
     <script defer src="lib/primesImportParse.js?v=mtrj445m"></script>
-    <script defer src="lib/primesV2.js?v=mtrj445m"></script>
     <script defer src="lib/campagneUtils.js?v=mtrj445m"></script>
     <script defer src="lib/factureExportUtils.js?v=mtrj445m"></script>
-    <script defer src="lib/useStockLocations.js?v=mtrj445m"></script>
     <script defer src="lib/stockDestinations.js?v=mtrj445m"></script>
     <script defer src="lib/scanAttachmentUtils.js?v=mtrj445m"></script>
     <script defer src="lib/scanClientUpload.js?v=mtrj445m"></script>
     <script defer src="lib/bdcReceptionUtils.js?v=mtrj445m"></script>
-    <script defer src="lib/fusionMasse.js?v=mtrj445m"></script>
     <script defer src="lib/parcelleGroupUtils.js?v=mtrj445m"></script>
     <script defer src="lib/cultureUtils.js?v=mtrj445m"></script>
     <script defer src="lib/campagneExportUtils.js?v=mtrj445m"></script>
@@ -1478,8 +1466,6 @@
     <script defer src="components/AffectationAnalytiqueTable.js?v=mtrj445m"></script>
     <script defer src="components/QuinzaineRecapCards.js?v=mtrj445m"></script>
     <script defer src="components/HsEmargementFooter.js?v=mtrj445m"></script>
-    <script defer src="lib/emargementPdf.js?v=mtrj445m"></script>
-    <script defer src="lib/emargementExcel.js?v=mtrj445m"></script>
     <script type="module" src="/app.modular.js"></script>
 </body>
 </html>

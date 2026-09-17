@@ -17,12 +17,13 @@ import { deriveSubFerme } from './shared/deriveSubFerme.jsx';
 import { remapLegacyTab } from './shared/remapLegacyTab.jsx';
 import { sbLoad } from './shared/sbLoad.jsx';
 
+import * as AuthResilience from './shared/lib/authResilience.js';
 window.__APP_VERSION = APP_VERSION;
 
 (async function checkVersion() {
             // Garde : si authResilience.js n'a pas chargé (improbable, il est non-defer),
             // on s'abstient plutôt que de recharger en boucle.
-            var AR = window.AuthResilience;
+            var AR = AuthResilience;
             try {
                 const resp = await fetch('/app-version.txt?t=' + Date.now(), { cache: 'no-store' });
                 if (resp.ok) {

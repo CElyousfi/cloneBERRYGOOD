@@ -3,6 +3,8 @@
  * Extrait de QuinzaineTab. Bloc de rendu pur — aucun hook, aucun effet :
  * toutes ses entrées arrivent en props.
  */
+import * as PaieUtils from '../shared/lib/paieUtils.js';
+
 function QuinzainePopupGenerique({ calcPrime, chargDetailQ, condDetailQ, coutMap, currentPeriode, data, f2, ferieDetailQ, fermeRateMap, getEqPrefix, moHorsRecolteRows, moPostesRows, moRecolteRows, numKey, parJour, prefixToName, qRecolteRows, quinzGroupBy, quinzPaieBaremes, quinzPopupKey, quinzRegistry, quinzSearch, sbNetForWorker, setQuinzChargesPopup, setQuinzGroupBy, setQuinzPopupKey, setQuinzSearch, setQuinzSubWorker, traitRows, transportRows }) {
     const _qpKey = quinzPopupKey;
     const _isMoCard = _qpKey === 'mo_recolte' || _qpKey === 'mo_horsrecolte' || _qpKey === 'mo_postes';
@@ -293,7 +295,7 @@ function QuinzainePopupGenerique({ calcPrime, chargDetailQ, condDetailQ, coutMap
 
                     {/* Encadré Charges Sociales — uniquement cartes MO */}
                     {_isMoCard && (() => {
-                        const _PU2 = window.PaieUtils;
+                        const _PU2 = PaieUtils;
                         const _firstDayQ = parJour.length > 0 ? parJour[0].jour : null;
                         const _smagQ = (_PU2 && _PU2.resolveSmagForDate)
                             ? _PU2.resolveSmagForDate(quinzPaieBaremes, _firstDayQ)

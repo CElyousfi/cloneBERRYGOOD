@@ -16,6 +16,8 @@ import { QuinzaineDetailParOuvrier } from './QuinzaineDetailParOuvrier.jsx';
 import { QuinzaineChargesSocialesPopup } from './QuinzaineChargesSocialesPopup.jsx';
 
 import * as CoutMainOeuvre from '../shared/lib/coutMainOeuvre.js';
+import * as PaieUtils from '../shared/lib/paieUtils.js';
+import * as PlafondDeclaration from '../shared/lib/plafondDeclaration.js';
 // ===================== QUINZAINE TAB =====================
         function QuinzaineTab({ data, farmFilter, farmLabel, avoSubFilter, cultureFilter, currentProfile, onNavigateToPrimes }) {
             const [apiData, setApiData] = useState(null);
@@ -105,7 +107,7 @@ import * as CoutMainOeuvre from '../shared/lib/coutMainOeuvre.js';
             const [quinzGroupBy, setQuinzGroupBy] = useState('equipe');
             const [quinzSubWorker, setQuinzSubWorker] = useState(null);
             const [quinzSearch, setQuinzSearch] = useState('');
-            const [quinzPaieBaremes, setQuinzPaieBaremes] = useState((window.PaieUtils && window.PaieUtils.PAIE_BAREMES_DEFAULT) || {});
+            const [quinzPaieBaremes, setQuinzPaieBaremes] = useState((PaieUtils && PaieUtils.PAIE_BAREMES_DEFAULT) || {});
             const [quinzRegistry, setQuinzRegistry] = useState({});
             const [quinzChargesPopup, setQuinzChargesPopup] = useState(null);
             const [analytiqueView, setAnalytiqueView] = useState('jh');
@@ -495,7 +497,7 @@ import * as CoutMainOeuvre from '../shared/lib/coutMainOeuvre.js';
             // sont recalculées inline en utilisant uniquement les variables d'état.
             const _parcelleEmpCostMap = useMemo(() => {
                 if (!apiData || !quinzBaremesResolved || !quinzRegistryResolved) return { ready: false, byParcelle: {} };
-                const _PU2 = window.PaieUtils;
+                const _PU2 = PaieUtils;
                 if (!_PU2 || !_PU2.computePayslip || Object.keys(quinzRegistry).length === 0) return { ready: false, byParcelle: {} };
                 const _cp = selectedPeriode || (apiData.periodes || [])[0] || '';
                 const _pj = apiData.parJour || [];
@@ -795,10 +797,10 @@ import * as CoutMainOeuvre from '../shared/lib/coutMainOeuvre.js';
 
             // ===== MODÈLE COÛT SMART BERRY (computePayslip) — source unique pour MO =====
             // On N'UTILISE PAS les coûts SQL BDP (parFerme.cout ou r.cout) qui ne sont qu'une
-            // estimation comptable. Le net à payer réel est calculé via window.PaieUtils.computePayslip
+            // estimation comptable. Le net à payer réel est calculé via PaieUtils.computePayslip
             // identiquement à Validation du Pointage. Les totaux cartes = somme des nets par ouvrier.
             const _CMO = CoutMainOeuvre;
-            const registryReady = Object.keys(quinzRegistry).length > 0 && !!(window.PaieUtils && window.PaieUtils.computePayslip) && !!_CMO;
+            const registryReady = Object.keys(quinzRegistry).length > 0 && !!(PaieUtils && PaieUtils.computePayslip) && !!_CMO;
             // Skeleton tant que les 2 fetch paie ne sont pas résolus (succès OU échec).
             // Résolus mais registry vide/KO → registryReady false → fallback BDP (inchangé).
             const _sbPending = !quinzRegistryResolved || !quinzBaremesResolved;
@@ -810,7 +812,7 @@ import * as CoutMainOeuvre from '../shared/lib/coutMainOeuvre.js';
             const sbNetForWorker = (mat, journees, firstDay) => {
                 if (!registryReady) return null;
                 return Math.round(_CMO.paieOuvrier({
-                    paie: window.PaieUtils,
+                    paie: PaieUtils,
                     fiche: quinzRegistry[numKey(mat)] || {},
                     jours: journees,
                     baremes: quinzPaieBaremes,
@@ -827,7 +829,7 @@ import * as CoutMainOeuvre from '../shared/lib/coutMainOeuvre.js';
             // et l'écran montre « — ».
             const _moTotaux = registryReady
                 ? _CMO.netParCategorie({
-                    paie: window.PaieUtils, rows: _moRows, registre: quinzRegistry,
+                    paie: PaieUtils, rows: _moRows, registre: quinzRegistry,
                     baremes: quinzPaieBaremes, cleRegistre: numKey,
                     // MÊME ancienneté que `chargesSociales` : sans cette
                     // injection, le net et les charges se calculeraient sur deux
@@ -863,7 +865,7 @@ import * as CoutMainOeuvre from '../shared/lib/coutMainOeuvre.js';
 
             const _chargesSociales = registryReady
                 ? _CMO.chargesSociales({
-                    paie: window.PaieUtils, rows: _moRows, registre: quinzRegistry,
+                    paie: PaieUtils, rows: _moRows, registre: quinzRegistry,
                     baremes: quinzPaieBaremes, cleRegistre: numKey,
                     joursDepuisSocle: joursDepuisSocle,
                     // Les HS sont DANS l'assiette : le module les remonte au brut
@@ -873,7 +875,7 @@ import * as CoutMainOeuvre from '../shared/lib/coutMainOeuvre.js';
                     // PLAFOND DE DÉCLARATION — injecté, comme PaieUtils : le
                     // module de coût ne lit jamais une globale. Absent (script
                     // non chargé) → aucune coupure, comportement d'avant.
-                    plafond: window.PlafondDeclaration,
+                    plafond: PlafondDeclaration,
                 })
                 : null;
             // Total des heures sup accordées sur la quinzaine, restreint aux

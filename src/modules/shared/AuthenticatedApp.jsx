@@ -169,6 +169,7 @@ import { invalidateCache } from './invalidateCache.jsx';
 import { useEffect, useMemo, useRef, useState } from './reactHooks.jsx';
 import { lazyGlobalComponent } from './lazyGlobalComponent.jsx';
 
+import * as PaieDataCache from './lib/paieDataCache.js';
 /* ─── ONGLETS LEGACY EN CHARGEMENT DIFFÉRÉ ───────────────────────────────
    Ces onglets vivent encore dans public/components/ comme scripts classiques
    publiés sur `window`. index.html les chargeait tous au démarrage — 767 Ko
@@ -1107,7 +1108,7 @@ const ParcellesParamsTabLazy = lazyGlobalComponent('ParcellesParamsTab', ['compo
                                             </div>
                                         )}
                                     </div>
-                                    <button className="header-btn refresh-btn" onClick={() => { invalidateCache(); if (window.PaieDataCache) window.PaieDataCache.invalidate(); setRefreshKey(k => k + 1); }}>
+                                    <button className="header-btn refresh-btn" onClick={() => { invalidateCache(); if (PaieDataCache) PaieDataCache.invalidate(); setRefreshKey(k => k + 1); }}>
                                         <i className="fa-solid fa-arrow-rotate-right"></i>
                                         Rafraîchir
                                     </button>
@@ -1118,7 +1119,7 @@ const ParcellesParamsTabLazy = lazyGlobalComponent('ParcellesParamsTab', ['compo
                             <div className="content-scroll" ref={pullRef}
                                 onTouchStart={e => { if (pullRef.current && pullRef.current.scrollTop === 0) pullStartY.current = e.touches[0].clientY; else pullStartY.current = null; }}
                                 onTouchMove={e => { if (pullStartY.current !== null) { const dy = e.touches[0].clientY - pullStartY.current; setPullDist(dy > 0 ? Math.min(dy, 120) : 0); }}}
-                                onTouchEnd={() => { if (pullDist > 60) { if (window.PaieDataCache) window.PaieDataCache.invalidate(); setRefreshKey(k => k + 1); } setPullDist(0); pullStartY.current = null; }}
+                                onTouchEnd={() => { if (pullDist > 60) { if (PaieDataCache) PaieDataCache.invalidate(); setRefreshKey(k => k + 1); } setPullDist(0); pullStartY.current = null; }}
                                 onTouchCancel={() => { setPullDist(0); pullStartY.current = null; }}>
                                 {pullDist > 0 && (
                                     <div style={{display:'flex', justifyContent:'center', alignItems:'center', height: pullDist * 0.5, overflow:'hidden', transition: pullDist > 60 ? 'none' : 'height 0.2s'}}>

@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const QuinzaineUtils = require('../../public/lib/quinzaineUtils.js');
+const QuinzaineUtils = require('./_esm').loadEsm('src/modules/shared/lib/quinzaineUtils.js');
 
 const { getEqPrefix, computeTransportQuinzaine } = QuinzaineUtils;
 

@@ -2,7 +2,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
-const V = require('../../public/lib/primesV2.js');
+const V = require('./_esm').loadEsm('src/modules/shared/lib/primesV2.js');
 
 // --- searchWorkers -----------------------------------------------------
 

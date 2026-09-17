@@ -2,10 +2,6 @@
  * encaissementsCanevas.js — SOURCE UNIQUE (front + tests) du connecteur d'import
  * du CANEVAS « ENCAISSEMENTS » du compte client Marché Local (FRAMBOISE uniquement).
  *
- * Loaded twice:
- *   - In the browser via <script src="lib/encaissementsCanevas.js"> → exposes window.EncaissementsCanevas
- *   - In node:test via require('./encaissementsCanevas.js') → exposes module.exports
- *
  * Toutes les fonctions sont PURES : aucun DOM, aucun réseau, aucune écriture Firestore.
  *
  * GARDE-FOU : ce connecteur ne produit QUE des enregistrements `type:'encaissement'`
@@ -49,15 +45,11 @@
  * @property {number} version
  */
 // @ts-check
-'use strict';
 
-// IIFE d'isolation : tout le corps du module vit dans cette fonction pour
 // qu'AUCUN identifiant top-level (round2, parseDate, slugifyClient, __api, …)
-// ne fuie dans le scope lexical global partagé par les <script> classiques.
 // Sans ça, `const __api` entre en collision avec caisseUtils.js → erreur
 // "Identifier '__api' has already been declared" au boot → React #200
-// (cf. incident commit 1754a64). Les exports passent par window/module en fin d'IIFE.
-(function () {
+
 // ============================================================================
 // HELPERS — nombres / dates / slug / référence
 // ============================================================================
@@ -474,8 +466,7 @@ function buildModeleAoA(schema, deps) {
 function buildModeleWorkbook(schema, deps) {
   const clients = (deps && deps.clients) || [];
   const X = (deps && deps.XLSX)
-    || (typeof XLSX !== 'undefined' ? XLSX : null)
-    || (typeof window !== 'undefined' ? window.XLSX : null);
+    || (typeof XLSX !== 'undefined' ? XLSX : null);
   if (!X) throw new Error('XLSX indisponible : passez deps.XLSX ou chargez la lib.');
 
   // Feuille ENCAISSEMENTS — en-têtes avec '*' sur les colonnes requises.
@@ -526,23 +517,4 @@ function buildModeleWorkbook(schema, deps) {
   return wb;
 }
 
-// ============================================================================
-// UMD-style export (browser global + CommonJS for node:test)
-// ============================================================================
-
-const __api = {
-  ENCAISSEMENTS_SCHEMA,
-  round2,
-  slugifyClient,
-  normalizeReference,
-  parseFrNumber,
-  parseDate,
-  parseEncaissements,
-  buildModeleAoA,
-  buildModeleWorkbook,
-};
-
-if (typeof module !== 'undefined' && module.exports) module.exports = __api;
-if (typeof window !== 'undefined') window.EncaissementsCanevas = __api;
-
-})();
+export { ENCAISSEMENTS_SCHEMA, round2, slugifyClient, normalizeReference, parseFrNumber, parseDate, parseEncaissements, buildModeleAoA, buildModeleWorkbook };

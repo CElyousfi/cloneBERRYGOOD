@@ -11,6 +11,7 @@ import { useEffect, useRef, useState } from './reactHooks.jsx';
 import { saveCachedProfile } from './saveCachedProfile.jsx';
 import { sbLoad } from './sbLoad.jsx';
 
+import * as AuthResilience from './lib/authResilience.js';
 // Auth wrapper component
         function App() {
             const [authUser, setAuthUser] = useState(null);
@@ -25,7 +26,7 @@ import { sbLoad } from './sbLoad.jsx';
             const retryAttemptRef = useRef(0);
 
             useEffect(() => {
-                const AR = window.AuthResilience;
+                const AR = AuthResilience;
 
                 const clearRetry = () => {
                     if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }

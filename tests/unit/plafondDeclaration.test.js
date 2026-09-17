@@ -15,7 +15,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const path = require('node:path');
 
-const P = require(path.join(__dirname, '../../public/lib/plafondDeclaration.js'));
+const P = require('./_esm').loadEsm('src/modules/shared/lib/plafondDeclaration.js');
 
 test('le plafond des TROIS quinzaines réelles est retrouvé', () => {
   // Mesuré dans les fichiers : le maximum de journées travaillées sur la feuille

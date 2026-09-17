@@ -6,8 +6,9 @@ import { ENC_FALLBACK_CLIENTS } from './ENC_FALLBACK_CLIENTS.jsx';
 import { ENC_REJET_LABELS } from './ENC_REJET_LABELS.jsx';
 import { encBrut } from './encBrut.jsx';
 
+import * as EncaissementsCanevas from '../shared/lib/encaissementsCanevas.js';
 function CaisseImportEncaissementsSub({ isControle, onApplied }) {
-            const EC = (typeof window !== 'undefined' && window.EncaissementsCanevas) || null;
+            const EC = (typeof window !== 'undefined' && EncaissementsCanevas) || null;
             const [active, setActive] = useState([]); // [{client_id, nom}]
             const [archivedNames, setArchivedNames] = useState(new Set());
             const [clientsLoaded, setClientsLoaded] = useState(false);

@@ -1,7 +1,7 @@
 /*
  * paieUtils.parite.test.js — la copie backend NE DOIT PAS diverger de l'originale.
  *
- * `functions/lib/paie/paieUtils.js` est une copie de `public/lib/paieUtils.js`,
+ * `functions/lib/paie/paieUtils.js` est une copie de `src/modules/shared/lib/paieUtils.js`,
  * imposée par le déploiement (Firebase ne publie que `functions/`, un require
  * vers `public/` fait crasher toutes les Cloud Functions au load).
  *
@@ -12,7 +12,7 @@
  * fonction, heures sup, transport, SMAG daté.
  *
  * S'il tombe : reporter la modification dans les DEUX fichiers, la source de
- * vérité restant `public/lib/paieUtils.js`.
+ * vérité restant `src/modules/shared/lib/paieUtils.js`.
  */
 'use strict';
 
@@ -21,7 +21,9 @@ const assert = require('node:assert');
 const path = require('node:path');
 
 const BACK = require(path.join(__dirname, '../paieUtils.js'));
-const FRONT = require(path.join(__dirname, '../../../../public/lib/paieUtils.js'));
+// Module ES (src/package.json : "type": "module") — require(esm) est natif
+// depuis Node 20.19 / 22.12 (pas de top-level await dans le module).
+const FRONT = require(path.join(__dirname, '../../../../src/modules/shared/lib/paieUtils.js'));
 
 /** Cas de calcul balayant les branches du modèle. */
 const CAS = [

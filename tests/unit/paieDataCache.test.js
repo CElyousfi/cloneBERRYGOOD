@@ -3,7 +3,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 
-const cache = require('../../public/lib/paieDataCache.js');
+const cache = require('./_esm').loadEsm('src/modules/shared/lib/paieDataCache.js');
 
 test('pointageKey encode les bornes de façon stable', () => {
   assert.strictEqual(cache.pointageKey('2026-01-01', '2026-06-09'), 'pointage:2026-01-01..2026-06-09');

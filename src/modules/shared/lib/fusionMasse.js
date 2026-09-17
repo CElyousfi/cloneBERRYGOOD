@@ -1,4 +1,3 @@
-'use strict';
 // @ts-check
 
 /**
@@ -297,22 +296,4 @@ function resumerExecution(lot, resultats, ignores) {
   return rapport;
 }
 
-// ============================================================================
-// UMD-style export (global navigateur + CommonJS pour node:test)
-// ============================================================================
-
-var FM_api = {
-  docIdFiche: docIdFiche,
-  masterDuGroupe: masterDuGroupe,
-  doublonsDuGroupe: doublonsDuGroupe,
-  estSelectionnable: estSelectionnable,
-  raisonNonSelectionnable: raisonNonSelectionnable,
-  clesSelectionnables: clesSelectionnables,
-  construireLot: construireLot,
-  signatureLot: signatureLot,
-  agregerApercu: agregerApercu,
-  resumerExecution: resumerExecution,
-};
-
-if (typeof module !== 'undefined' && module.exports) module.exports = FM_api;
-if (typeof window !== 'undefined') window.FusionMasse = FM_api;
+export { docIdFiche, masterDuGroupe, doublonsDuGroupe, estSelectionnable, raisonNonSelectionnable, clesSelectionnables, construireLot, signatureLot, agregerApercu, resumerExecution };
