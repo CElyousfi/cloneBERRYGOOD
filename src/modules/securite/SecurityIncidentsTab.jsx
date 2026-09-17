@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: securite | Déclaration(s): SecurityIncidentsTab */
+/* Module: securite | Déclaration(s): SecurityIncidentsTab */
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 
 // ─── Incidents Sécurité reçus par WhatsApp (lecture seule) ───────────

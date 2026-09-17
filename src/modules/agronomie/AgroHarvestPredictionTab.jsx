@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: agronomie | Déclaration(s): AgroHarvestPredictionTab */
+/* Module: agronomie | Déclaration(s): AgroHarvestPredictionTab */
 import { SimpleAreaChart } from '../shared/SimpleAreaChart.jsx';
 
 // ===================== HARVEST PREDICTION TAB =====================

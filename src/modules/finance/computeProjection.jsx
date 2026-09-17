@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: finance | Déclaration(s): computeProjection */
+/* Module: finance | Déclaration(s): computeProjection */
 
 
 function computeProjection(reelByWeek, budgetWeekly, momentum, currentWeek) {

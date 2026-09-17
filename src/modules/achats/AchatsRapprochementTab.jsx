@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: achats | Déclaration(s): AchatsRapprochementTab */
+/* Module: achats | Déclaration(s): AchatsRapprochementTab */
 import { _apiCache } from '../shared/_apiCache.jsx';
 import { cachedFetch } from '../shared/cachedFetch.jsx';
 import { loadBonsFromFirestore } from '../shared/loadBonsFromFirestore.jsx';

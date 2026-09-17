@@ -4,7 +4,7 @@
  * live des % dans l'écran Parcelles & Référentiel).
  *
  * ⚠️ COPIE STRICTE de functions/lib/parcelleGroupes/split.js. Duplication
- * VOLONTAIRE : le backend ne doit JAMAIS require('../public/…') (Firebase ne
+ * VOLONTAIRE : le backend ne doit JAMAIS require('../src/…') (Firebase ne
  * déploie que functions/ → Cannot find module au load de toutes les CF).
  * Les deux copies partagent les MÊMES fixtures de test :
  *   tests/unit/parcelleGroupUtils.test.js

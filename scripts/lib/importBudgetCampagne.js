@@ -38,7 +38,7 @@
  * totaux additionnés pour le contrôle de cohérence.
  *
  * DÉCISION FAMILLE vs OPÉRATION (miroir EXACT de la saisie manuelle,
- * `CBT_buildSavePayload` dans public/components/CampagneBudgetTab.jsx) :
+ * `CBT_buildSavePayload` dans src/modules/finance/campagneBudgetRules.jsx) :
  *  - une famille qui porte au moins une opération > 0 est écrite AU NIVEAU
  *    OPÉRATION, et sa valeur de famille est envoyée à 0 (= effacée) ;
  *  - une famille dont toutes les opérations sont vides (cas réel : « Récolte »,

@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: achats | Déclaration(s): AchatsBDCTab */
+/* Module: achats | Déclaration(s): AchatsBDCTab */
 import { formatModePaiement } from '../caisse/formatModePaiement.jsx';
 import { isModeComptant } from '../caisse/isModeComptant.jsx';
 import { isModeEspeces } from '../caisse/isModeEspeces.jsx';
@@ -405,7 +404,7 @@ import { ScanAttachmentButton } from './ScanAttachmentButton.jsx';
             const [receptionNumBL, setReceptionNumBL] = useState('');
             const [submittingReception, setSubmittingReception] = useState(false);
 
-            // Logique extraite dans public/lib/bdcReceptionUtils.js (réutilisée par
+            // Logique extraite dans shared/lib/bdcReceptionUtils.js (réutilisée par
             // MagBdcReceptionTab et MagBonsCommandeTab) — comportement identique.
             const getDeliveryData = (bdc, bls) => BdcReceptionUtils.computeDeliveryData(bdc.items, bls);
 

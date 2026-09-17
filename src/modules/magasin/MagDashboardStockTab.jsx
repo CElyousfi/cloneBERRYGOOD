@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: magasin | Déclaration(s): MagDashboardStockTab */
+/* Module: magasin | Déclaration(s): MagDashboardStockTab */
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 
 // ===================== MAGASINIER TABS =====================

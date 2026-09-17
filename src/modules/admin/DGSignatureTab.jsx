@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: admin | Déclaration(s): DGSignatureTab */
+/* Module: admin | Déclaration(s): DGSignatureTab */
 import { useEffect, useRef, useState } from '../shared/reactHooks.jsx';
 
 // ===================== DG SIGNATURE & CACHET =====================
@@ -214,11 +213,11 @@ import { useEffect, useRef, useState } from '../shared/reactHooks.jsx';
 
             // Signer le PDF final
             const processAndSign = async () => {
-                if (!pdfBytes || !window.PDFLib) return;
+                if (!pdfBytes || typeof PDFLib === 'undefined' || !PDFLib) return;
                 setProcessing(true);
                 setError(null);
                 try {
-                    const { PDFDocument, pushGraphicsState, popGraphicsState, concatTransformationMatrix } = window.PDFLib;
+                    const { PDFDocument, pushGraphicsState, popGraphicsState, concatTransformationMatrix } = PDFLib;
                     const pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: false }).catch(() => {
                         throw new Error('Ce PDF est protégé par un mot de passe ou corrompu.');
                     });

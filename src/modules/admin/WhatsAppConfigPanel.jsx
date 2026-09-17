@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: admin | Déclaration(s): WhatsAppConfigPanel */
+/* Module: admin | Déclaration(s): WhatsAppConfigPanel */
 import { Panel } from '../shared/Panel.jsx';
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 import { TemplateSimulator } from './TemplateSimulator.jsx';

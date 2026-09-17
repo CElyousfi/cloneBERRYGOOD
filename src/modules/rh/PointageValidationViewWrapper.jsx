@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: rh | Déclaration(s): PointageValidationViewWrapper */
+/* Module: rh | Déclaration(s): PointageValidationViewWrapper */
 
 
 // Adaptateur app-scope → composant séparé PointageValidationView.

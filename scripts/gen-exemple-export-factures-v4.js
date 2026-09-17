@@ -16,7 +16,7 @@
  * (incohérence saisie, donnée source).
  *
  * LECTURE SEULE Firestore (aucune écriture). Réutilise EXACTEMENT la logique de
- * public/lib/factureExportUtils.js (cascade, garde-fou, réconciliation),
+ * src/modules/shared/lib/factureExportUtils.js (cascade, garde-fou, réconciliation),
  * et reproduit le formatage (cellules numériques/date + autofilter) de
  * buildFacturesWorkbook côté app.
  *

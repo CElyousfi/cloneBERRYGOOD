@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: agronomie | Déclaration(s): AgroIrrigationTab */
+/* Module: agronomie | Déclaration(s): AgroIrrigationTab */
 import { computeNutrients } from './computeNutrients.jsx';
 import { displayCulture } from './displayCulture.jsx';
 

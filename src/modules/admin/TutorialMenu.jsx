@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: admin | Déclaration(s): TutorialMenu */
+/* Module: admin | Déclaration(s): TutorialMenu */
 import { PROFILES } from '../shared/PROFILES.jsx';
 import { getTutorials } from './getTutorials.jsx';
 

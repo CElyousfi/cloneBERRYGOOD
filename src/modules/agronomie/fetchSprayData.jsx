@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: agronomie | Déclaration(s): fetchSprayData */
+/* Module: agronomie | Déclaration(s): fetchSprayData */
 import { _dedupInflight } from '../shared/_dedupInflight.jsx';
 import { _meteoblueCache } from '../shared/_meteoblueCache.jsx';
 import { _meteoblueInflight } from '../shared/_meteoblueInflight.jsx';

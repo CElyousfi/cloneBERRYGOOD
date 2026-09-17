@@ -25,7 +25,8 @@ const {
   extractObjectKeys,
   findVarObjectBody,
   parseModuleExportsKeys,
-  parsePublicLibExports,
+  parseEsmExports,
+  parseLoadEsmPaths,
   parseRelativeRequires,
   resolveRequirePath,
   reachableFrom,
@@ -264,9 +265,9 @@ test('parseComponents: PascalCase seulement, avec numéro de ligne', () => {
     '}',                              // 4
     '  function Nested(a) {}',        // 5 — indenté, accepté
   ].join('\n');
-  assert.deepStrictEqual(parseComponents(src, 'public/app.jsx'), [
-    { name: 'MyTab', file: 'public/app.jsx', line: 2 },
-    { name: 'Nested', file: 'public/app.jsx', line: 5 },
+  assert.deepStrictEqual(parseComponents(src, 'src/modules/x/App.jsx'), [
+    { name: 'MyTab', file: 'src/modules/x/App.jsx', line: 2 },
+    { name: 'Nested', file: 'src/modules/x/App.jsx', line: 5 },
   ]);
 });
 
@@ -274,12 +275,12 @@ test('parseComponents: ligne correcte après une ligne vide (^[ \\t]* et non ^\\
   // `\s` inclut `\n` : `^\s*` démarrait le match sur la ligne vide précédente
   // et décalait 115 lignes sur 279 d'un cran vers le haut.
   const src = '\n\nfunction Foo() {}';
-  assert.deepStrictEqual(parseComponents(src, 'public/app.jsx'), [
-    { name: 'Foo', file: 'public/app.jsx', line: 3 },
+  assert.deepStrictEqual(parseComponents(src, 'src/modules/x/App.jsx'), [
+    { name: 'Foo', file: 'src/modules/x/App.jsx', line: 3 },
   ]);
 
   const indented = ['', '', '      function Bar(props) {', '  return null;', '}'].join('\n');
-  assert.strictEqual(parseComponents(indented, 'public/app.jsx')[0].line, 3);
+  assert.strictEqual(parseComponents(indented, 'src/modules/x/App.jsx')[0].line, 3);
 });
 
 test('parseComponents: forme `= function(` avec React.createElement', () => {
@@ -289,8 +290,8 @@ test('parseComponents: forme `= function(` avec React.createElement', () => {
     "  return React.createElement('svg', null);",    // 3
     '};',                                            // 4
   ].join('\n');
-  assert.deepStrictEqual(parseComponents(src, 'public/app.jsx'), [
-    { name: 'Gauge', file: 'public/app.jsx', line: 2 },
+  assert.deepStrictEqual(parseComponents(src, 'src/modules/x/App.jsx'), [
+    { name: 'Gauge', file: 'src/modules/x/App.jsx', line: 2 },
   ]);
 });
 
@@ -308,7 +309,7 @@ test('parseComponents: forme `= () =>` avec retour JSX (zéro React.createElemen
     '  );',
     '};',
   ].join('\n');
-  const found = parseComponents(src, 'public/app.jsx');
+  const found = parseComponents(src, 'src/modules/x/App.jsx');
   assert.strictEqual(found.length, 1);
   assert.strictEqual(found[0].name, 'NotificationPopup');
   assert.strictEqual(found[0].line, 1);
@@ -329,7 +330,7 @@ test('parseComponents: rejette les alias utilitaires window.X (pas des composant
     "const Guard = (typeof window !== 'undefined' && window.StockMovementGuard) || null;",
     "const MC = (typeof window !== 'undefined' && window.MagCommon) ? window.MagCommon : null;",
   ].join('\n');
-  assert.deepStrictEqual(parseComponents(src, 'public/app.jsx'), []);
+  assert.deepStrictEqual(parseComponents(src, 'src/modules/x/App.jsx'), []);
 });
 
 test('parseComponents: rejette une fonction utilitaire en expression sans rendu React', () => {
@@ -338,7 +339,7 @@ test('parseComponents: rejette une fonction utilitaire en expression sans rendu 
     '  return String(v) + " DH";',
     '};',
   ].join('\n');
-  assert.deepStrictEqual(parseComponents(src, 'public/app.jsx'), []);
+  assert.deepStrictEqual(parseComponents(src, 'src/modules/x/App.jsx'), []);
 });
 
 test('looksLikeComponentBody: les deux styles de rendu, et rien d\'autre', () => {
@@ -427,61 +428,27 @@ test('findVarObjectBody: variable absente -> null', () => {
   assert.strictEqual(findVarObjectBody('const other = {};', 'api'), null);
 });
 
-// --- 5. public/lib (UMD bricolé) ---
+// --- 5. Modules ES (src/modules/shared/lib) ---
 
-test('parsePublicLibExports: window.X = apiVar (forme dominante)', () => {
+test('parseEsmExports: export { a, b as c } + export function/const', () => {
   const src = [
-    'const __api = {',
-    '  computeTotals,',
-    '  formatQte,',
-    '};',
-    "if (typeof window !== 'undefined') window.InventaireUtils = __api;",
+    "import * as X from './x.js';",
+    'function a() {}',
+    'const b = 1;',
+    'export function d() {}',
+    'export const e = 2;',
+    'export { a, b as c };',
   ].join('\n');
-  const parsed = parsePublicLibExports(src);
-  assert.strictEqual(parsed.globalName, 'InventaireUtils');
-  assert.deepStrictEqual(parsed.functions, ['computeTotals', 'formatQte']);
+  assert.deepStrictEqual(parseEsmExports(src), ['a', 'c', 'd', 'e']);
 });
 
-test('parsePublicLibExports: window.X = { … } inline', () => {
-  const src = 'window.EmargementExcel = { genSansCnssXlsx: genSansCnssXlsx, genAvecCnssXlsx: genAvecCnssXlsx };';
-  const parsed = parsePublicLibExports(src);
-  assert.strictEqual(parsed.globalName, 'EmargementExcel');
-  assert.deepStrictEqual(parsed.functions, ['genSansCnssXlsx', 'genAvecCnssXlsx']);
+test('parseEsmExports: aucun export -> []', () => {
+  assert.deepStrictEqual(parseEsmExports('const x = 1;'), []);
 });
 
-test('parsePublicLibExports: UMD root.X = api + return de la factory', () => {
-  const src = [
-    '(function (root, factory) {',
-    '  var api = factory();',
-    '  if (root) root.PrimesV2 = api;',
-    '})(window, function () {',
-    '  return {',
-    '    norm: norm,',
-    '    searchWorkers: searchWorkers,',
-    '  };',
-    '});',
-  ].join('\n');
-  const parsed = parsePublicLibExports(src);
-  assert.strictEqual(parsed.globalName, 'PrimesV2');
-  assert.deepStrictEqual(parsed.functions, ['norm', 'searchWorkers']);
-});
-
-test('parsePublicLibExports: nom global depuis le commentaire d\'en-tête', () => {
-  const src = [
-    '/**',
-    ' * foo.js — exposé en window.FooLib',
-    ' */',
-    "'use strict';",
-  ].join('\n');
-  const parsed = parsePublicLibExports(src);
-  assert.strictEqual(parsed.globalName, 'FooLib');
-  assert.deepStrictEqual(parsed.functions, []);
-});
-
-test('parsePublicLibExports: source vide ne plante pas', () => {
-  const parsed = parsePublicLibExports('');
-  assert.strictEqual(parsed.globalName, null);
-  assert.deepStrictEqual(parsed.functions, []);
+test('parseLoadEsmPaths: chemins loadEsm(\'src/…\') des tests', () => {
+  const src = "const A = loadEsm('src/modules/shared/lib/a.js');\nconst B = require('./_esm').loadEsm(\"src/modules/x/B.jsx\", { sandbox });";
+  assert.deepStrictEqual(parseLoadEsmPaths(src), ['src/modules/shared/lib/a.js', 'src/modules/x/B.jsx']);
 });
 
 // --- 6. require-index ---
@@ -491,14 +458,14 @@ test('parseRelativeRequires: requires relatifs uniquement', () => {
   // test est lui-même scanné par le générateur, un chemin réel polluerait
   // docs/ai/require-index.json avec une fausse couverture.
   const src = [
-    "const a = require('../../public/lib/__fixture__.js');",
+    "const a = require('../../src/modules/shared/lib/__fixture__.js');",
     "const b = require('..');",
     "const c = require('./helper');",
     "const fs = require('fs');",
     "const pkg = require('firebase-admin');",
   ].join('\n');
   assert.deepStrictEqual(parseRelativeRequires(src), [
-    '../../public/lib/__fixture__.js',
+    '../../src/modules/shared/lib/__fixture__.js',
     '..',
     './helper',
   ]);
@@ -507,26 +474,26 @@ test('parseRelativeRequires: requires relatifs uniquement', () => {
 test('resolveRequirePath: ordre littéral > .js > .jsx > /index.js', () => {
   const files = new Set([
     '/repo/functions/lib/irrigation/index.js',
-    '/repo/public/lib/bdcWorkflow.js',
-    '/repo/public/components/MagSortieTab.jsx',
+    '/repo/src/modules/shared/lib/bdcWorkflow.js',
+    '/repo/src/modules/magasin/MagSortieTab.jsx',
     '/repo/functions/lib/a/b.json',
   ]);
   const exists = p => files.has(p);
 
   // 1. chemin littéral (extension déjà présente)
   assert.strictEqual(
-    resolveRequirePath('/repo/tests/unit', '../../public/lib/bdcWorkflow.js', exists),
-    '/repo/public/lib/bdcWorkflow.js'
+    resolveRequirePath('/repo/tests/unit', '../../src/modules/shared/lib/bdcWorkflow.js', exists),
+    '/repo/src/modules/shared/lib/bdcWorkflow.js'
   );
   // 2. extension .js implicite
   assert.strictEqual(
-    resolveRequirePath('/repo/tests/unit', '../../public/lib/bdcWorkflow', exists),
-    '/repo/public/lib/bdcWorkflow.js'
+    resolveRequirePath('/repo/tests/unit', '../../src/modules/shared/lib/bdcWorkflow', exists),
+    '/repo/src/modules/shared/lib/bdcWorkflow.js'
   );
   // 3. extension .jsx implicite
   assert.strictEqual(
-    resolveRequirePath('/repo/tests/unit', '../../public/components/MagSortieTab', exists),
-    '/repo/public/components/MagSortieTab.jsx'
+    resolveRequirePath('/repo/tests/unit', '../../src/modules/magasin/MagSortieTab', exists),
+    '/repo/src/modules/magasin/MagSortieTab.jsx'
   );
   // 4. require('..') sur un répertoire → /index.js
   assert.strictEqual(
@@ -562,14 +529,14 @@ test('reachableFrom: noeud inconnu du graphe ne plante pas', () => {
 test('isTargetFile: arbres cibles, extensions, exclusion __tests__', () => {
   assert.ok(isTargetFile('functions/lib/irrigation/index.js'));
   assert.ok(isTargetFile('functions/middleware/cors.js'));
-  assert.ok(isTargetFile('public/lib/bdcWorkflow.js'));
-  assert.ok(isTargetFile('public/components/MagSortieTab.jsx'));
+  assert.ok(isTargetFile('src/modules/shared/lib/bdcWorkflow.js'));
+  assert.ok(isTargetFile('src/modules/magasin/MagSortieTab.jsx'));
 
   assert.ok(!isTargetFile('functions/lib/irrigation/__tests__/nextPulse.test.js'));
   assert.ok(!isTargetFile('functions/index.js'));
   assert.ok(!isTargetFile('tests/unit/bdcWorkflow.test.js'));
   assert.ok(!isTargetFile('functions/lib/irrigation'));
-  assert.ok(!isTargetFile('public/lib/README.md'));
+  assert.ok(!isTargetFile('src/modules/shared/lib/README.md'));
 });
 
 test('isInTests: détecte un segment __tests__', () => {
@@ -597,24 +564,24 @@ test('renderActionsMap: bandeau, fingerprint, titre compté, méthode vide', () 
 
 test('renderComponentsMap: tab absent -> tiret', () => {
   const md = renderComponentsMap(
-    [{ name: 'MyTab', file: 'public/app.jsx', line: 7, tab: null }],
+    [{ name: 'MyTab', file: 'src/modules/x/App.jsx', line: 7, tab: null }],
     'sha256:cafe'
   );
   assert.ok(md.includes('# Code Map — Composants frontend (1)'));
-  assert.ok(md.includes('| MyTab | public/app.jsx:7 | — |'));
+  assert.ok(md.includes('| MyTab | src/modules/x/App.jsx:7 | — |'));
 });
 
 test('renderModulesMap: fonctions vides -> « — voir fichier — »', () => {
   const md = renderModulesMap(
     [
-      { file: 'public/lib/x.js', globalName: 'X', functions: [] },
-      { file: 'functions/lib/a/b.js', globalName: null, functions: ['foo', 'bar'] },
+      { file: 'src/modules/shared/lib/x.js', functions: [] },
+      { file: 'functions/lib/a/b.js', functions: ['foo', 'bar'] },
     ],
     'sha256:beef'
   );
   assert.ok(md.includes('# Code Map — Modules lib (2)'));
-  assert.ok(md.includes('| public/lib/x.js | X | — voir fichier — |'));
-  assert.ok(md.includes('| functions/lib/a/b.js | — | foo, bar |'));
+  assert.ok(md.includes('| src/modules/shared/lib/x.js | — voir fichier — |'));
+  assert.ok(md.includes('| functions/lib/a/b.js | foo, bar |'));
 });
 
 // --- 8. Fingerprints ---
@@ -641,16 +608,16 @@ test('fingerprintFor: 4 fingerprints indépendants et stables', () => {
  */
 function makeTempRepo() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'code-index-fp-'));
-  fs.mkdirSync(path.join(root, 'public/lib'), { recursive: true });
+  fs.mkdirSync(path.join(root, 'src/modules/shared/lib'), { recursive: true });
   fs.mkdirSync(path.join(root, 'tests/unit'), { recursive: true });
   fs.writeFileSync(
-    path.join(root, 'public/lib/a.js'),
+    path.join(root, 'src/modules/shared/lib/a.js'),
     "'use strict';\nconst b = require('./b.js');\nmodule.exports = { a: 1 };\n"
   );
-  fs.writeFileSync(path.join(root, 'public/lib/b.js'), "'use strict';\nmodule.exports = { b: 1 };\n");
+  fs.writeFileSync(path.join(root, 'src/modules/shared/lib/b.js'), "'use strict';\nmodule.exports = { b: 1 };\n");
   fs.writeFileSync(
     path.join(root, 'tests/unit/a.test.js'),
-    "const a = require('../../public/lib/a.js');\nassert.ok(a);\n"
+    "const a = require('../../src/modules/shared/lib/a.js');\nassert.ok(a);\n"
   );
   return root;
 }
@@ -672,7 +639,7 @@ test('fingerprint require-index (a): éditer le contenu NON-require d\'un test n
   );
 
   // Le payload non plus ne bouge pas — c'est bien le même invariant.
-  assert.deepStrictEqual(buildRequireIndex(root).index['public/lib/a.js'].directTests, [
+  assert.deepStrictEqual(buildRequireIndex(root).index['src/modules/shared/lib/a.js'].directTests, [
     'tests/unit/a.test.js',
   ]);
 
@@ -685,7 +652,7 @@ test('fingerprint require-index (b): changer un require() dans un test CHANGE l\
 
   fs.writeFileSync(
     path.join(root, 'tests/unit/a.test.js'),
-    "const b = require('../../public/lib/b.js');\nassert.ok(b);\n"
+    "const b = require('../../src/modules/shared/lib/b.js');\nassert.ok(b);\n"
   );
 
   assert.notStrictEqual(fingerprintFor(root, 'require-index'), before);
@@ -699,10 +666,10 @@ test('fingerprint require-index (c): changer un require() dans une source cible 
 
   // a.js ne require plus b.js → l'arête source→source disparaît, et avec elle
   // la couverture transitive de b.js.
-  fs.writeFileSync(path.join(root, 'public/lib/a.js'), "'use strict';\nmodule.exports = { a: 1 };\n");
+  fs.writeFileSync(path.join(root, 'src/modules/shared/lib/a.js'), "'use strict';\nmodule.exports = { a: 1 };\n");
 
   assert.notStrictEqual(fingerprintFor(root, 'require-index'), before);
-  assert.deepStrictEqual(buildRequireIndex(root).index['public/lib/b.js'].transitiveTests, []);
+  assert.deepStrictEqual(buildRequireIndex(root).index['src/modules/shared/lib/b.js'].transitiveTests, []);
 
   fs.rmSync(root, { recursive: true, force: true });
 });
@@ -711,7 +678,7 @@ test('fingerprint require-index (d): ajouter puis retirer une cible CHANGE l\'em
   const root = makeTempRepo();
   const before = fingerprintFor(root, 'require-index');
 
-  const added = path.join(root, 'public/lib/c.js');
+  const added = path.join(root, 'src/modules/shared/lib/c.js');
   fs.writeFileSync(added, "'use strict';\nmodule.exports = {};\n");
   const withAdded = fingerprintFor(root, 'require-index');
   assert.notStrictEqual(withAdded, before, 'ajout d\'une cible détecté');

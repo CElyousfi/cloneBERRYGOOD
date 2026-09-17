@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: finance | Déclaration(s): FinCodesAnalytiquesTab */
+/* Module: finance | Déclaration(s): FinCodesAnalytiquesTab */
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 
 // ===================== FINANCE: CODES ANALYTIQUES TAB =====================

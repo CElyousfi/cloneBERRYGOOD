@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: agronomie | Déclaration(s): matchCulture */
+/* Module: agronomie | Déclaration(s): matchCulture */
 
 
 // Helper partagé : filtre par culture pour les profils chef-culture (ex. chef_f5=Myrtille).

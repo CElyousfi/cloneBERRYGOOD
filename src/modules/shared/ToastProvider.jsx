@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): ToastProvider */
+/* Module: shared | Déclaration(s): ToastProvider */
 import { ToastContext } from './ToastContext.jsx';
 import { useState } from './reactHooks.jsx';
 

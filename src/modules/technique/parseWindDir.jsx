@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: technique | Déclaration(s): parseWindDir */
+/* Module: technique | Déclaration(s): parseWindDir */
 
 
 function parseWindDir(deg) {

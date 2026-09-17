@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: magasin | Déclaration(s): InventairePrixView */
+/* Module: magasin | Déclaration(s): InventairePrixView */
 import { useEffect, useRef, useState } from '../shared/reactHooks.jsx';
 
 function InventairePrixView() {

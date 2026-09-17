@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: qualite | Déclaration(s): QualiteValidationBonsTab */
+/* Module: qualite | Déclaration(s): QualiteValidationBonsTab */
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 
 // ===================== QUALITE: VALIDATION BONS APPORT TAB =====================

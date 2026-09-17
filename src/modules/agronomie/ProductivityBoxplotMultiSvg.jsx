@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: agronomie | Déclaration(s): ProductivityBoxplotMultiSvg */
+/* Module: agronomie | Déclaration(s): ProductivityBoxplotMultiSvg */
 import { computeBoxStats } from '../recolte/computeBoxStats.jsx';
 
 function ProductivityBoxplotMultiSvg({ treatments, myFarm }) {

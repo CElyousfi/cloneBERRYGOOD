@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: caisse | Déclaration(s): CAISSE_COLORS */
+/* Module: caisse | Déclaration(s): CAISSE_COLORS */
 
 
 // ===================== COMING SOON TAB =====================

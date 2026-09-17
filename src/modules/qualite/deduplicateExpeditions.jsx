@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: qualite | Déclaration(s): deduplicateExpeditions */
+/* Module: qualite | Déclaration(s): deduplicateExpeditions */
 
 
 // ===================== QUALITE INSPECTIONS TAB =====================

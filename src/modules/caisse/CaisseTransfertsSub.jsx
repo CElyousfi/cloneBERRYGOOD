@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: caisse | Déclaration(s): CaisseTransfertsSub */
+/* Module: caisse | Déclaration(s): CaisseTransfertsSub */
 import { formatMAD } from '../finance/formatMAD.jsx';
 import { useState } from '../shared/reactHooks.jsx';
 

@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: agronomie | Déclaration(s): AnalysesFoliairesAlertDashboard */
+/* Module: agronomie | Déclaration(s): AnalysesFoliairesAlertDashboard */
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 
 // ===================== ANALYSES FOLIAIRES ALERT (Dashboard Chef) =====================

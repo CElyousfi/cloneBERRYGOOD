@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Unit tests for public/lib/inventaireUtils.js
+ * Unit tests for src/modules/shared/lib/inventaireUtils.js
  * Run with: npm run test:unit
  *
  * Couvre : sous-totaux quantité PAR UNITÉ (jamais de somme mélangée), total

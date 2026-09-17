@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: agronomie | Déclaration(s): AgroAnalyseFoliairesTab */
+/* Module: agronomie | Déclaration(s): AgroAnalyseFoliairesTab */
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 
 // ===================== ANALYSES FOLIAIRES TAB =====================

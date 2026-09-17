@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: magasin | Déclaration(s): MagParcTab */
+/* Module: magasin | Déclaration(s): MagParcTab */
 import { KPICard } from '../shared/KPICard.jsx';
 import { Panel } from '../shared/Panel.jsx';
 

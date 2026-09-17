@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: finance | Déclaration(s): getBdcSociete */
+/* Module: finance | Déclaration(s): getBdcSociete */
 import { BDC_SOCIETES } from './BDC_SOCIETES.jsx';
 import { BDC_SOCIETE_DEFAULT } from './BDC_SOCIETE_DEFAULT.jsx';
 

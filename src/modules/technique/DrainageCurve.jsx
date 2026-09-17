@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: technique | Déclaration(s): DrainageCurve */
+/* Module: technique | Déclaration(s): DrainageCurve */
 
 
 function DrainageCurve({ group, drainPctFn, sunriseMin, sunsetMin }) {

@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: qualite | Déclaration(s): QualiteMarcheLocalTab */
+/* Module: qualite | Déclaration(s): QualiteMarcheLocalTab */
 import { Panel } from '../shared/Panel.jsx';
 import { loadBonsFromFirestore } from '../shared/loadBonsFromFirestore.jsx';
 import { useState } from '../shared/reactHooks.jsx';

@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: caisse | Déclaration(s): CAISSE_EXCEL_FORMATS */
+/* Module: caisse | Déclaration(s): CAISSE_EXCEL_FORMATS */
 
 
 // ---- Import Excel Sub (Achats/DG/Finance) ----

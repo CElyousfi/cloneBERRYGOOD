@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: technique | Déclaration(s): IrrigationRecoTab */
+/* Module: technique | Déclaration(s): IrrigationRecoTab */
 import { Panel } from '../shared/Panel.jsx';
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 

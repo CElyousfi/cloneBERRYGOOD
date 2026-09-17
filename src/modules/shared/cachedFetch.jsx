@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): cachedFetch */
+/* Module: shared | Déclaration(s): cachedFetch */
 import { CACHE_TTL } from './CACHE_TTL.jsx';
 import { _apiCache } from './_apiCache.jsx';
 import { _purgeLSCache } from './_purgeLSCache.jsx';

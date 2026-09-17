@@ -325,7 +325,7 @@ test('buildDigestPayload: résumé vide → payload cohérent, pas de reste', ()
 // ============================================================================
 // Réception — summarizePendingReception / detailArticles / buildReceptionPayload
 //
-// Référence fonctionnelle : l'onglet magasin (public/components/MagBdcReceptionTab.jsx)
+// Référence fonctionnelle : l'onglet magasin (src/modules/magasin/MagBdcReceptionTab.jsx)
 // charge les BdC en statut valide_dg,envoye,virement_lance,virement_signe et
 // exclut ceux entièrement livrés. Le module doit renvoyer les MÊMES BdC, à
 // ceci près que le "entièrement livré" est RECALCULÉ à partir des BL vivants.

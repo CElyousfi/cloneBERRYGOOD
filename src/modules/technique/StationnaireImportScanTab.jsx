@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: technique | Déclaration(s): StationnaireImportScanTab */
+/* Module: technique | Déclaration(s): StationnaireImportScanTab */
 import { PARCELLES_CULTURALES } from '../agronomie/PARCELLES_CULTURALES.jsx';
 import { getCycle } from '../agronomie/getCycle.jsx';
 import { useEffect, useRef, useState } from '../shared/reactHooks.jsx';

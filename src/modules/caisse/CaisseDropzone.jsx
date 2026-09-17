@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: caisse | Déclaration(s): CaisseDropzone */
+/* Module: caisse | Déclaration(s): CaisseDropzone */
 import { useState } from '../shared/reactHooks.jsx';
 
 function CaisseDropzone({ onFiles, cc }) {

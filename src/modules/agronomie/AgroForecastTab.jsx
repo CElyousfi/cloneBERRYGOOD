@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: agronomie | Déclaration(s): AgroForecastTab */
+/* Module: agronomie | Déclaration(s): AgroForecastTab */
 
 
 // ===================== FORECAST MÉTÉO INTÉRIEURE TAB =====================

@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): getActiveMarcheLocalClients */
+/* Module: shared | Déclaration(s): getActiveMarcheLocalClients */
 
 
 // Helper unique : clients marché local ACTIFS (exclut les archivés).

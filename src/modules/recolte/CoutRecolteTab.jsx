@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: recolte | Déclaration(s): CoutRecolteTab */
+/* Module: recolte | Déclaration(s): CoutRecolteTab */
 import { getCycle } from '../agronomie/getCycle.jsx';
 import { getHaByCycle } from '../agronomie/getHaByCycle.jsx';
 import { normalizeParcelle } from '../agronomie/normalizeParcelle.jsx';

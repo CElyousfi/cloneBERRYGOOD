@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: recolte | Déclaration(s): RecolteTab */
+/* Module: recolte | Déclaration(s): RecolteTab */
 import { normalizeParcelle } from '../agronomie/normalizeParcelle.jsx';
 import { WorkerLink } from '../rh/WorkerLink.jsx';
 import { KPICard } from '../shared/KPICard.jsx';

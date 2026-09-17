@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): SimpleBarChart */
+/* Module: shared | Déclaration(s): SimpleBarChart */
 
 
 // ===================== CUSTOM SVG CHARTS =====================

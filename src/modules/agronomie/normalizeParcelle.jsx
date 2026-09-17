@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: agronomie | Déclaration(s): normalizeParcelle */
+/* Module: agronomie | Déclaration(s): normalizeParcelle */
 import { DESIGNATION_MAP } from './DESIGNATION_MAP.jsx';
 
 // Normalise toute designation vers { variete, sousVariete, ferme, culture }

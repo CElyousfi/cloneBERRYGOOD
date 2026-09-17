@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: caisse | Déclaration(s): canevaActor */
+/* Module: caisse | Déclaration(s): canevaActor */
 
 
 function canevaActor(currentProfile, profileData) {

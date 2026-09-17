@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Unit tests for public/lib/caisseUtils.js
+ * Unit tests for src/modules/shared/lib/caisseUtils.js
  * Run with: npm run test:unit
  */
 

@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: finance | Déclaration(s): computeBudgetWeekly */
+/* Module: finance | Déclaration(s): computeBudgetWeekly */
 
 
 function computeBudgetWeekly(total, distribution) {

@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): _dedupInflight */
+/* Module: shared | Déclaration(s): _dedupInflight */
 
 
 import * as InflightDedup from './lib/inflightDedup.js';

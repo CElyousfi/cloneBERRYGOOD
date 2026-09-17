@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: agronomie | Déclaration(s): EvolutionTab */
+/* Module: agronomie | Déclaration(s): EvolutionTab */
 import { PROFILES } from '../shared/PROFILES.jsx';
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 

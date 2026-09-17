@@ -2,11 +2,8 @@
 // EN PREMIER : le contournement local (?testui=1) patche window.fetch et
 // firebaseAuth avant que _origFetch ne capture fetch et que l'app ne lise l'auth.
 import './shared/lib/localTestBypass.js';
-import './shared/legacyGlobals.js';
 import { DESIGNATION_MAP } from './agronomie/DESIGNATION_MAP.jsx';
 import { PARCELLES_CULTURALES } from './agronomie/PARCELLES_CULTURALES.jsx';
-import { sbParcelleHa } from './agronomie/sbParcelleHa.jsx';
-import { sbParcelleNom } from './agronomie/sbParcelleNom.jsx';
 import { BUDGET_BGF } from './finance/BUDGET_BGF.jsx';
 import { WorkerDetailProvider } from './rh/WorkerDetailProvider.jsx';
 import { APP_VERSION } from './shared/APP_VERSION.jsx';
@@ -14,7 +11,6 @@ import { App } from './shared/App.jsx';
 import { ErrorBoundary } from './shared/ErrorBoundary.jsx';
 import { ToastProvider } from './shared/ToastProvider.jsx';
 import { _origFetch } from './shared/_origFetch.jsx';
-import { deriveSubFerme } from './shared/deriveSubFerme.jsx';
 import { remapLegacyTab } from './shared/remapLegacyTab.jsx';
 import { sbLoad } from './shared/sbLoad.jsx';
 
@@ -67,16 +63,7 @@ window.fetch = async function(url, opts) {
             return _origFetch.call(this, url, opts);
         };
 
-// Consommé par public/components/AffectationAnalytiqueTable.jsx (hors scope d'app.jsx).
-        window.deriveSubFerme = deriveSubFerme;
-
 sbLoad();
-
-// Consommé par public/components/AffectationAnalytiqueTable.jsx (hors scope d'app.jsx).
-        window.sbParcelleHa = sbParcelleHa;
-
-// Consommé par public/components/CampagneAnalytiqueTab.jsx (hors scope d'app.jsx).
-        window.sbParcelleNom = sbParcelleNom;
 
 // Load budget from static JSON (shared across all devices)
         fetch('/budget_bgf.json?t=' + Date.now())
@@ -95,11 +82,6 @@ sbLoad();
                     if (stored) Object.assign(BUDGET_BGF, JSON.parse(stored));
                 } catch(e) {}
             });
-
-// Consommé par public/components/AffectationAnalytiqueTable.jsx (hors scope d'app.jsx).
-        // ⚠️ Sans cette exposition, le composant extrait retomberait silencieusement sur
-        // `[]` (le `typeof X !== 'undefined'` d'origine ne lève pas) → tous les Ha à 0.
-        window.PARCELLES_CULTURALES = PARCELLES_CULTURALES;
 
 PARCELLES_CULTURALES.forEach(pc => {
             const entry = { variete: pc.variete, sousVariete: pc.sousVariete, ferme: pc.ferme, culture: pc.culture };

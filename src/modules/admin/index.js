@@ -1,4 +1,4 @@
-/* Barrel admin — 20 fichiers */
+/* Barrel admin — 21 fichiers */
 export * from './AdminConsoleTab.jsx';
 export * from './BackupManagementPanel.jsx';
 export * from './BaremesPaiePanel.jsx';
@@ -19,3 +19,4 @@ export * from './TutorialMenu.jsx';
 export * from './WhatsAppConfigPanel.jsx';
 export * from './getTutorials.jsx';
 export * from './useTutorialEngine.jsx';
+export * from './BugReportsAdmin.jsx';

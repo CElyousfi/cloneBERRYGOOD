@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: caisse | Déclaration(s): CaisseImportUnsupportedCard */
+/* Module: caisse | Déclaration(s): CaisseImportUnsupportedCard */
 import { formatMAD } from '../finance/formatMAD.jsx';
 
 // Carte d'une caisse sans format Excel configuré (ex. Marché Local F1/F5).

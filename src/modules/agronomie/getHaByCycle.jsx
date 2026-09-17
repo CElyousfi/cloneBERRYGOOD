@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: agronomie | Déclaration(s): getHaByCycle */
+/* Module: agronomie | Déclaration(s): getHaByCycle */
 import { PARCELLES_CULTURALES } from './PARCELLES_CULTURALES.jsx';
 
 // Superficie pour une variété/sous-variété/ferme/cycle

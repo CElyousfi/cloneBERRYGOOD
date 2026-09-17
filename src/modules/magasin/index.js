@@ -1,4 +1,4 @@
-/* Barrel magasin — 12 fichiers */
+/* Barrel magasin — 24 fichiers */
 export * from './canonArt.jsx';
 export * from './InventairePrixView.jsx';
 export * from './InventaireStockView.jsx';
@@ -11,3 +11,14 @@ export * from './MagReceptionTab.jsx';
 export * from './MagSortieTab.jsx';
 export * from './MagStockIntrantsTab.jsx';
 export * from './MagTransfertTab.jsx';
+export * from './ArticleConversionFields.jsx';
+export * from './BCDoublonDialog.jsx';
+export * from './ConsoValoriseeTab.jsx';
+export * from './InventaireMouvementsPopup.jsx';
+export * from './MagBCScanModal.jsx';
+export * from './MagBCTab.jsx';
+export * from './MagBdcReceptionTab.jsx';
+export * from './MagBonsCommandeTab.jsx';
+export * from './MagMappingConsoTab.jsx';
+export * from './MagStockFilesTab.jsx';
+export * from './PmpDetailPopup.jsx';

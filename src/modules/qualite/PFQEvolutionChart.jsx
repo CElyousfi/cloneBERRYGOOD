@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: qualite | Déclaration(s): PFQEvolutionChart */
+/* Module: qualite | Déclaration(s): PFQEvolutionChart */
 import { useState } from '../shared/reactHooks.jsx';
 
 // PFQ Evolution Chart Component

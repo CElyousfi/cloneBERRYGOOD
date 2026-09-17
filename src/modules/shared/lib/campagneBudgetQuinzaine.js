@@ -20,7 +20,7 @@
  * ── CLÉ D'UNE QUINZAINE ──────────────────────────────────────────────────────
  * `Q` + numéro sur deux chiffres ('Q07'). MIROIR EXACT de `quinzaineKey` de
  * functions/lib/campagneBudget/validate.js (le backend ne peut pas requérir
- * public/, cf. CLAUDE.md) : un corpus partagé vérifie que les deux
+ * src/, cf. CLAUDE.md) : un corpus partagé vérifie que les deux
  * implémentations ne divergent pas. Elle est STRICTE — pas de « dernier nombre
  * de la chaîne » comme `CampagneRythme.quinzaineNum`, qui lit un libellé
  * d'affichage, pas une clé de persistance.

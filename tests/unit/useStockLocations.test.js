@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Unit tests for public/lib/useStockLocations.js — pure derivation only
+ * Unit tests for src/modules/shared/lib/useStockLocations.js — pure derivation only
  * (deriveStockLocations). Le hook React lui-même n'est pas testable sans DOM ;
  * la logique de fallback / dérivation, si.
  * Run with: npm run test:unit

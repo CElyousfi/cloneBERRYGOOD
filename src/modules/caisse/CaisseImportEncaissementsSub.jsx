@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: caisse | Déclaration(s): CaisseImportEncaissementsSub */
+/* Module: caisse | Déclaration(s): CaisseImportEncaissementsSub */
 import { getActiveMarcheLocalClients } from '../shared/getActiveMarcheLocalClients.jsx';
 import { useState } from '../shared/reactHooks.jsx';
 import { ENC_FALLBACK_CLIENTS } from './ENC_FALLBACK_CLIENTS.jsx';

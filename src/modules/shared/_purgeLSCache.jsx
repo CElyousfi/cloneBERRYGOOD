@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): _purgeLSCache */
+/* Module: shared | Déclaration(s): _purgeLSCache */
 
 
 // max localStorage cache_ entries before LRU trim

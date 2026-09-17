@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): _trimLSCacheIfNeeded */
+/* Module: shared | Déclaration(s): _trimLSCacheIfNeeded */
 import { CACHE_MAX_ENTRIES } from './CACHE_MAX_ENTRIES.jsx';
 
 function _trimLSCacheIfNeeded() {

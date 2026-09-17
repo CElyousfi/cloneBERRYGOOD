@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): ProfileLoadErrorScreen */
+/* Module: shared | Déclaration(s): ProfileLoadErrorScreen */
 
 
 // CORRECTIF (a) — écran d'erreur quand le profil est introuvable et qu'aucun

@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): NewVersionToast */
+/* Module: shared | Déclaration(s): NewVersionToast */
 import { useEffect, useState } from './reactHooks.jsx';
 
 // CORRECTIF (b) — toast "nouvelle version" non bloquant. La page ne se

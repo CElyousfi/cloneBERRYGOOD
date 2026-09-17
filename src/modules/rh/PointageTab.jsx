@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: rh | Déclaration(s): PointageTab */
+/* Module: rh | Déclaration(s): PointageTab */
 import { PARCELLES_CULTURALES } from '../agronomie/PARCELLES_CULTURALES.jsx';
 import { displayParcelle } from '../agronomie/displayParcelle.jsx';
 import { normalizeParcelle } from '../agronomie/normalizeParcelle.jsx';

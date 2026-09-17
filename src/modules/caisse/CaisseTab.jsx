@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: caisse | Déclaration(s): CaisseTab */
+/* Module: caisse | Déclaration(s): CaisseTab */
 import { cachedFetch } from '../shared/cachedFetch.jsx';
 import { useState } from '../shared/reactHooks.jsx';
 import { CaisseAvancesSub } from './CaisseAvancesSub.jsx';

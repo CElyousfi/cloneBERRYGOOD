@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: magasin | Déclaration(s): MagStockIntrantsTab */
+/* Module: magasin | Déclaration(s): MagStockIntrantsTab */
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 
 function MagStockIntrantsTab() {

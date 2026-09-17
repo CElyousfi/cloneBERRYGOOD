@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): STATUS_LABELS */
+/* Module: shared | Déclaration(s): STATUS_LABELS */
 
 
 // Sprint 2 — statuts enrichis. Codes DB inchangés (rétro-compat avec le

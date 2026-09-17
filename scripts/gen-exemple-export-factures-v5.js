@@ -15,7 +15,7 @@
  *     total facture reste exact. Lignes non saisies : taux/TVA = "—".
  *
  * LECTURE SEULE Firestore (aucune écriture). Réutilise EXACTEMENT la logique de
- * public/lib/factureExportUtils.js, et reproduit le formatage (cellules
+ * src/modules/shared/lib/factureExportUtils.js, et reproduit le formatage (cellules
  * numériques/date + autofilter) de buildFacturesWorkbook côté app.
  *
  * Pré-requis : ADC Firebase (gcloud auth application-default login).

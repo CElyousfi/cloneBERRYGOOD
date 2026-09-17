@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): saveCachedProfile */
+/* Module: shared | Déclaration(s): saveCachedProfile */
 import { CACHED_PROFILE_KEY } from './CACHED_PROFILE_KEY.jsx';
 
 function saveCachedProfile(profile, uid) {

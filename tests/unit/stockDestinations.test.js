@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Unit tests for public/lib/stockDestinations.js — résolution des options du
+ * Unit tests for src/modules/shared/lib/stockDestinations.js — résolution des options du
  * select « Magasin destination » (réception BDC).
  * Run with: npm run test:unit
  */

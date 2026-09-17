@@ -43,7 +43,7 @@ var CULTURE_COLORS = {
   Avocatier: { bg: '#d1fae5', text: '#065f46' },
 };
 
-// Délègue à la source de vérité partagée public/lib/cultureUtils.js (chargée
+// Délègue à la source de vérité partagée shared/lib/cultureUtils.js (chargée
 // AVANT ce composant dans index.html) : la copie locale du regex avait divergé
 // (variétés d'avocatier manquantes → « F2 ZUTANO » classé Framboise).
 // Repli 'Framboise' = défaut historique du module, si le lib n'est pas chargé.
@@ -799,7 +799,7 @@ function ParcellesReferentielTab(props) {
         ),
 
         // Groupes de parcelles (raccourci de saisie du Bon de Consommation).
-        // Composant séparé (public/components/ParcellesGroupesPanel.jsx) ; on
+        // Composant séparé (agronomie/ParcellesGroupesPanel.jsx) ; on
         // lui passe les lignes + la sbMap DÉJÀ chargées (pas de second fetch)
         // ainsi que la palette et le formatteur Ha de cet écran.
         // `visibleRows` (et non `currentRows`) : le panneau doit voir
@@ -832,7 +832,7 @@ function ParcellesReferentielTab(props) {
 }
 
 // Helper pur exposé pour les tests unitaires (pas de nouveau nom global :
-// accroché au composant déjà exposé, cf. collisions UMD de public/lib).
+// accroché au composant déjà exposé).
 ParcellesReferentielTab.filterRows = PRT_filterRows;
 ParcellesReferentielTab.initialHaVal = PRT_initialHaVal;
 ParcellesReferentielTab.buildSavePayload = PRT_buildSavePayload;

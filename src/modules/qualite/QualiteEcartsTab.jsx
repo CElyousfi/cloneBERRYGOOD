@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: qualite | Déclaration(s): QualiteEcartsTab */
+/* Module: qualite | Déclaration(s): QualiteEcartsTab */
 import { Panel } from '../shared/Panel.jsx';
 import { SimpleAreaChart } from '../shared/SimpleAreaChart.jsx';
 import { cachedFetch } from '../shared/cachedFetch.jsx';

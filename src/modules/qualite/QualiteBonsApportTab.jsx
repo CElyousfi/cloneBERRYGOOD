@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: qualite | Déclaration(s): QualiteBonsApportTab */
+/* Module: qualite | Déclaration(s): QualiteBonsApportTab */
 import { Panel } from '../shared/Panel.jsx';
 import { cachedFetch } from '../shared/cachedFetch.jsx';
 import { loadBonsFromFirestore } from '../shared/loadBonsFromFirestore.jsx';

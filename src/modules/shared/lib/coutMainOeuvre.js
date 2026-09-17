@@ -3,7 +3,7 @@
  *
  * Fonctions PURES, aucune I/O, `PaieUtils` INJECTÉ (jamais lu dans un global) :
  * c'est ce qui permet à ce fichier d'être copié tel quel dans
- * `functions/lib/paie/` sans qu'aucun `require('../public/…')` n'apparaisse —
+ * `functions/lib/paie/` sans qu'aucun `require('../src/…')` n'apparaisse —
  * Firebase ne déploie que `functions/`, et un tel require ferait crasher TOUTES
  * les Cloud Functions au chargement (mémoire projet backend-jamais-require-public).
  *
@@ -18,7 +18,7 @@
  * ── POURQUOI CE MODULE EXISTE ──────────────────────────────────────────────
  * Le coût de la main d'œuvre était calculé à DEUX endroits, avec deux résultats
  * différents pour la même quinzaine :
- *   - inline dans `QuinzaineTab` (public/app.jsx) pour les tuiles de l'écran ;
+ *   - inline dans `QuinzaineTab` pour les tuiles de l'écran ;
  *   - dans `functions/lib/paie/coutOuvrierCampagne.js` pour l'écran Campagne.
  * Sur la Quinzaine 03 : ~202 900 DH d'un côté, 182 511 DH de l'autre. Un écran
  * qui affiche deux fois le même coût sous deux montants ne se corrige pas en

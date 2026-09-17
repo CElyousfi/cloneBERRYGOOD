@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: caisse | Déclaration(s): CaisseWarnings */
+/* Module: caisse | Déclaration(s): CaisseWarnings */
 
 
 function CaisseWarnings({ warnings, ignored }) {

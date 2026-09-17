@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: rh | Déclaration(s): PointageDiversTab */
+/* Module: rh | Déclaration(s): PointageDiversTab */
 import { Panel } from '../shared/Panel.jsx';
 import { useState } from '../shared/reactHooks.jsx';
 import { FONCTIONS_ENUM } from './FONCTIONS_ENUM.jsx';

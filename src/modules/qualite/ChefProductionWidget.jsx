@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: qualite | Déclaration(s): ChefProductionWidget */
+/* Module: qualite | Déclaration(s): ChefProductionWidget */
 import { getCycle } from '../agronomie/getCycle.jsx';
 import { getHaByCycle } from '../agronomie/getHaByCycle.jsx';
 import { getPlantsByCycle } from '../agronomie/getPlantsByCycle.jsx';

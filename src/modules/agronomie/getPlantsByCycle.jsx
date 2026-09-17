@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: agronomie | Déclaration(s): getPlantsByCycle */
+/* Module: agronomie | Déclaration(s): getPlantsByCycle */
 import { PARCELLES_CULTURALES } from './PARCELLES_CULTURALES.jsx';
 
 // Nb plants pour myrtilles

@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): FarmTodoSection */
+/* Module: shared | Déclaration(s): FarmTodoSection */
 import { DG_FARMS } from '../admin/DG_FARMS.jsx';
 import { useEffect, useState } from './reactHooks.jsx';
 

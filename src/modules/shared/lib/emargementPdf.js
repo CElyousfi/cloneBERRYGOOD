@@ -210,7 +210,7 @@ async function genBulletins(workers, periode, smagBrutJournalier, options) {
     //   matricule, nom, prenom, equipe, journees, declare,
     //   cin,               // peut être null/undefined
     //   cnss,              // peut être null/undefined
-    //   salaireBase,       // smagBrutJournalier × journees (déjà calculé dans app.jsx)
+    //   salaireBase,       // smagBrutJournalier × journees (déjà calculé par l'écran)
     //   primeFonctionTotal,
     //   primeFonctionJour,
     //   ancienneteTotal,

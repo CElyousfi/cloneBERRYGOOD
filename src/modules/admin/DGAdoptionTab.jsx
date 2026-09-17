@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: admin | Déclaration(s): DGAdoptionTab */
+/* Module: admin | Déclaration(s): DGAdoptionTab */
 import { KPICard } from '../shared/KPICard.jsx';
 import { PROFILES } from '../shared/PROFILES.jsx';
 import { Panel } from '../shared/Panel.jsx';

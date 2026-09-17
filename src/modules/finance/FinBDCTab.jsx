@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: finance | Déclaration(s): FinBDCTab */
+/* Module: finance | Déclaration(s): FinBDCTab */
 import { formatModePaiement } from '../caisse/formatModePaiement.jsx';
 import { isModeVirement } from '../caisse/isModeVirement.jsx';
 import { PROFILES } from '../shared/PROFILES.jsx';

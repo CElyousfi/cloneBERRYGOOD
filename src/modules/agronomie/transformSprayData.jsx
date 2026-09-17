@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: agronomie | Déclaration(s): transformSprayData */
+/* Module: agronomie | Déclaration(s): transformSprayData */
 
 
 function transformSprayData(apiData) {

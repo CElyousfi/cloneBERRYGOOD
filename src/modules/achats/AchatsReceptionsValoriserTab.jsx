@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: achats | Déclaration(s): AchatsReceptionsValoriserTab */
+/* Module: achats | Déclaration(s): AchatsReceptionsValoriserTab */
 
 
 // ===================== ACHATS: RÉCEPTIONS À VALORISER =====================

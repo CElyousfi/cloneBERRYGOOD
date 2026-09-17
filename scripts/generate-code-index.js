@@ -41,8 +41,6 @@ const GENERATOR_VERSION = '1.0.0';
 const TARGET_TREES = [
   'functions/lib',
   'functions/middleware',
-  'public/lib',
-  'public/components',
   'src/modules',
 ];
 
@@ -545,59 +543,6 @@ function parseModuleExportsKeys(content) {
 }
 
 /**
- * Parse un module public/lib/*.js (UMD bricolé) : nom global + fonctions exposées.
- * Best-effort — ne lève jamais.
- * @param {string} content
- * @returns {{ globalName: string|null, functions: string[] }}
- */
-function parsePublicLibExports(content) {
-  /** @type {string|null} */
-  let globalName = null;
-  /** @type {string[]} */
-  let functions = [];
-
-  // Forme 1 : window.X = apiVar;  (forme dominante)
-  const varAssign = content.match(/window\.(\w+)\s*=\s*(\w+)\s*;/);
-  if (varAssign) {
-    globalName = varAssign[1];
-    const body = findVarObjectBody(content, varAssign[2]);
-    if (body) functions = extractObjectKeys(body);
-  }
-
-  // Forme 2 : window.X = { … } inline (emargementExcel, emargementPdf)
-  if (!globalName || functions.length === 0) {
-    const inline = content.match(/window\.(\w+)\s*=\s*\{([^}]*)\}/);
-    if (inline) {
-      if (!globalName) globalName = inline[1];
-      if (functions.length === 0) functions = extractObjectKeys(inline[2]);
-    }
-  }
-
-  // Forme 3 : UMD `root.X = api;` (authResilience, inflightDedup, primesImportParse, primesV2)
-  if (!globalName || functions.length === 0) {
-    const rootAssign = content.match(/root\.(\w+)\s*=\s*(\w+)\s*;/);
-    if (rootAssign && !globalName) globalName = rootAssign[1];
-    if (functions.length === 0) {
-      // L'API d'un UMD est retournée par la factory : dernier `return { … };`
-      const returnPattern = /return\s*\{([\s\S]*?)\n\s*\};/g;
-      let m;
-      let last = null;
-      while ((m = returnPattern.exec(content)) !== null) last = m[1];
-      if (last) functions = extractObjectKeys(last);
-    }
-  }
-
-  // Forme 4 : nom global depuis le commentaire d'en-tête
-  if (!globalName) {
-    const header = content.split('\n').slice(0, 10).join('\n');
-    const headerMatch = header.match(/window\.(\w+)/);
-    if (headerMatch) globalName = headerMatch[1];
-  }
-
-  return { globalName, functions };
-}
-
-/**
  * Parse les exports nommés d'un module ES (src/modules/shared/lib/*.js) :
  * `export { a, b as c };` et `export function/const/class x`.
  * Best-effort — ne lève jamais.
@@ -774,14 +719,12 @@ function collectActionsSources(root) {
 }
 
 /**
- * Liste les fichiers sources des composants : src/modules (le frontend) et,
- * tant qu'ils existent, les composants legacy de public/components.
+ * Liste les fichiers sources des composants : src/modules (le frontend).
  * @param {string} root
  * @returns {string[]}
  */
 function listComponentFiles(root) {
-  return walkFiles(root, 'src/modules', p => p.endsWith('.jsx'))
-    .concat(walkFiles(root, 'public/components', p => p.endsWith('.jsx')));
+  return walkFiles(root, 'src/modules', p => p.endsWith('.jsx'));
 }
 
 /**
@@ -800,7 +743,6 @@ function collectComponentsSources(root) {
  */
 function listModuleFiles(root) {
   return walkFiles(root, 'src/modules/shared/lib', p => p.endsWith('.js'))
-    .concat(walkFiles(root, 'public/lib', p => p.endsWith('.js')))
     .concat(walkFiles(root, 'functions/lib', p => p.endsWith('.js') && !isInTests(p)));
 }
 
@@ -905,7 +847,7 @@ function renderComponentsMap(components, fingerprint) {
 
 /**
  * Rendu de docs/ai/code-map-modules.md.
- * @param {Array<{ file: string, globalName: string|null, functions: string[] }>} modules
+ * @param {Array<{ file: string, functions: string[] }>} modules
  * @param {string} fingerprint
  * @returns {string}
  */
@@ -916,10 +858,9 @@ function renderModulesMap(modules, fingerprint) {
     description:
       'API publique de chaque module src/modules/shared/lib/ (exports ES) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d\'en réécrire un.',
     fingerprint,
-    headers: ['Fichier', 'Export global', 'Fonctions'],
+    headers: ['Fichier', 'Fonctions'],
     rows: modules.map(m => [
       m.file,
-      m.globalName || '—',
       m.functions.length > 0 ? m.functions.join(', ') : '— voir fichier —',
     ]),
   });
@@ -975,26 +916,20 @@ function buildComponents(root) {
 /**
  * Construit la liste des modules lib, triée par chemin.
  * @param {string} root
- * @returns {Array<{ file: string, globalName: string|null, functions: string[] }>}
+ * @returns {Array<{ file: string, functions: string[] }>}
  */
 function buildModules(root) {
-  /** @type {Array<{ file: string, globalName: string|null, functions: string[] }>} */
+  /** @type {Array<{ file: string, functions: string[] }>} */
   const modules = [];
   for (const rel of walkFiles(root, 'functions/lib', p => p.endsWith('.js') && !isInTests(p))) {
     const content = readFileSafe(path.join(root, rel));
     if (content === null) continue;
-    modules.push({ file: rel, globalName: null, functions: parseModuleExportsKeys(content) });
+    modules.push({ file: rel, functions: parseModuleExportsKeys(content) });
   }
   for (const rel of walkFiles(root, 'src/modules/shared/lib', p => p.endsWith('.js'))) {
     const content = readFileSafe(path.join(root, rel));
     if (content === null) continue;
-    modules.push({ file: rel, globalName: null, functions: parseEsmExports(content) });
-  }
-  for (const rel of walkFiles(root, 'public/lib', p => p.endsWith('.js'))) {
-    const content = readFileSafe(path.join(root, rel));
-    if (content === null) continue;
-    const parsed = parsePublicLibExports(content);
-    modules.push({ file: rel, globalName: parsed.globalName, functions: parsed.functions });
+    modules.push({ file: rel, functions: parseEsmExports(content) });
   }
   modules.sort((a, b) => a.file.localeCompare(b.file));
   return modules;
@@ -1241,7 +1176,6 @@ module.exports = {
   extractObjectKeys,
   findVarObjectBody,
   parseModuleExportsKeys,
-  parsePublicLibExports,
   parseRelativeRequires,
   parseEsmExports,
   parseLoadEsmPaths,

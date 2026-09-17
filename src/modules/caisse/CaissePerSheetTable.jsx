@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: caisse | Déclaration(s): CaissePerSheetTable */
+/* Module: caisse | Déclaration(s): CaissePerSheetTable */
 import { formatMAD } from '../finance/formatMAD.jsx';
 
 // Tableau "par feuille" partagé entre la preview et le rapport final.

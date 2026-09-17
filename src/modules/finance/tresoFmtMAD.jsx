@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: finance | Déclaration(s): tresoFmtMAD */
+/* Module: finance | Déclaration(s): tresoFmtMAD */
 
 
 function tresoFmtMAD(n) {

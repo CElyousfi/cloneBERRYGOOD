@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Unit tests for public/lib/growthUtils.js
+ * Unit tests for src/modules/shared/lib/growthUtils.js
  * Run with: npm run test:unit
  */
 

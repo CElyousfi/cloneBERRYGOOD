@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: caisse | Déclaration(s): CaisseImportSub */
+/* Module: caisse | Déclaration(s): CaisseImportSub */
 import { CAISSE_EXCEL_FORMATS } from './CAISSE_EXCEL_FORMATS.jsx';
 import { CaisseImportCard } from './CaisseImportCard.jsx';
 import { CaisseImportUnsupportedCard } from './CaisseImportUnsupportedCard.jsx';

@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: magasin | Déclaration(s): InventaireStockView */
+/* Module: magasin | Déclaration(s): InventaireStockView */
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 import { canonArt } from './canonArt.jsx';
 
@@ -121,7 +120,7 @@ function InventaireStockView() {
 
             // Export Excel de la sélection affichée (respecte filtres lieu/recherche + date).
             const exportExcel = () => {
-                if (!window.XLSX) return;
+                if (typeof XLSX === 'undefined' || !XLSX) return;
                 const cols = ['Lieu', 'Type', 'Article', 'Unité', 'Solde', 'Prix unitaire (DH)', 'Source', 'Prix total (DH)', 'Statut'];
                 const statutOf = (b) => b.balance <= 0 ? 'Rupture' : (b.seuil_alerte && b.balance <= b.seuil_alerte) ? 'Alerte' : 'OK';
                 const dataRows = filtered.map(b => [

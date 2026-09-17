@@ -1,6 +1,6 @@
 /**
  * scanHistoryDisplay.js — Pure display helpers for the "Scan Factures → Historique"
- * table (AchatsScanFacturesTab in public/app.jsx).
+ * table (AchatsScanFacturesTab).
  *
  * Context: invoice_scans documents come in TWO `analysis` shapes:
  *   - SCAN-IA format (live AI scans): analysis.fournisseur is an OBJECT {nom, ice},

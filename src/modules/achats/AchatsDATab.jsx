@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: achats | Déclaration(s): AchatsDATab */
+/* Module: achats | Déclaration(s): AchatsDATab */
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 
 // ===================== ACHATS: DEMANDES D'ACHAT TAB =====================

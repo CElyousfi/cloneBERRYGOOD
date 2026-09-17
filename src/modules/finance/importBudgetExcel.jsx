@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: finance | Déclaration(s): importBudgetExcel */
+/* Module: finance | Déclaration(s): importBudgetExcel */
 import { BUDGET_BGF } from './BUDGET_BGF.jsx';
 import { BUDGET_BGF_DEFAULT } from './BUDGET_BGF_DEFAULT.jsx';
 

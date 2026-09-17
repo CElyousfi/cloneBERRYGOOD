@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: admin | Déclaration(s): DGValidationsTab */
+/* Module: admin | Déclaration(s): DGValidationsTab */
 import { formatModePaiement } from '../caisse/formatModePaiement.jsx';
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 

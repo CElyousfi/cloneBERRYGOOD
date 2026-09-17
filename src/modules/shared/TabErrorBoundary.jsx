@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): TabErrorBoundary */
+/* Module: shared | Déclaration(s): TabErrorBoundary */
 
 
 // Error boundary par onglet — isole les crashs pour que seul l'onglet cassé affiche une erreur

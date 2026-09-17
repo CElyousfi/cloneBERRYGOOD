@@ -31,7 +31,7 @@
  * ferme la liste.
  *
  * SOURCE DE VÉRITÉ UNIQUE : création et édition partagent `renderFormFields`
- * dans public/app.jsx, qui appelle ce module. Aucune liste en dur ailleurs.
+ * dans AchatsCatalogueTab, qui appelle ce module. Aucune liste en dur ailleurs.
  */
 
 /**

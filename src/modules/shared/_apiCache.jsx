@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): _apiCache */
+/* Module: shared | Déclaration(s): _apiCache */
 
 
 // ===================== API CACHE (stale-while-revalidate + localStorage) =====================

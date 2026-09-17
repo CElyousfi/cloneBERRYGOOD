@@ -16,7 +16,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const { loadEsm } = require('./_esm');
+const { loadEsm, loadComponent } = require('./_esm');
 
 /**
  * Ramène une valeur produite DANS le sandbox vm vers le realm des tests :
@@ -51,16 +51,10 @@ function loadTab(withBudgetRules) {
   // est précisément celle qu'elles imposent.
   sandbox.window.CultureUtils = loadEsm('src/modules/shared/lib/cultureUtils.js', { sandbox: sandbox });
   sandbox.window.CampagneExportUtils = loadEsm('src/modules/shared/lib/campagneExportUtils.js', { sandbox: sandbox });
-  if (withBudgetRules) {
-    sandbox.window.AnalytiqueUtils = loadEsm('src/modules/shared/lib/analytiqueUtils.js', { sandbox: sandbox });
-    const file = path.join(__dirname, '../..', 'public/components/CampagneBudgetTab.jsx');
-    vm.runInContext(require('@babel/core').transformSync(fs.readFileSync(file, 'utf8'), {
-      presets: [require.resolve('@babel/preset-react')],
-      filename: file, babelrc: false, configFile: false,
-    }).code, sandbox);
-  }
-  vm.runInContext(read('public/components/CampagneAnalytiqueTab.jsx'), sandbox);
-  return sandbox.window.CampagneAnalytiqueTab;
+  // Sans règle : la règle métier du budget (CampagneBudgetTab) est servie
+  // absente au module — l'export doit dégrader vers le seul niveau famille.
+  if (!withBudgetRules) sandbox.window.CampagneBudgetTab = undefined;
+  return loadComponent('src/modules/finance/CampagneAnalytiqueTab.jsx', sandbox).CampagneAnalytiqueTab;
 }
 
 const Tab = loadTab();

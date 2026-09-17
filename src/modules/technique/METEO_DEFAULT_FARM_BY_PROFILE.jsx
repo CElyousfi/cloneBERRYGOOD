@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: technique | Déclaration(s): METEO_DEFAULT_FARM_BY_PROFILE */
+/* Module: technique | Déclaration(s): METEO_DEFAULT_FARM_BY_PROFILE */
 
 
 // Ferme par défaut pour l'affichage du widget météo Dashboard, pour les profils

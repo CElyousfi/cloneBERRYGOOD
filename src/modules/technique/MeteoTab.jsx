@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: technique | Déclaration(s): MeteoTab */
+/* Module: technique | Déclaration(s): MeteoTab */
 import { fetchSprayData } from '../agronomie/fetchSprayData.jsx';
 import { transformSprayData } from '../agronomie/transformSprayData.jsx';
 import { Panel } from '../shared/Panel.jsx';

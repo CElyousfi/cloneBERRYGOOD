@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: caisse | Déclaration(s): CanevaImportSub */
+/* Module: caisse | Déclaration(s): CanevaImportSub */
 import { CanevaFinanceQueue } from './CanevaFinanceQueue.jsx';
 import { CanevaUploadCard } from './CanevaUploadCard.jsx';
 

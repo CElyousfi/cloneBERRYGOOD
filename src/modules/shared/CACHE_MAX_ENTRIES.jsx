@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): CACHE_MAX_ENTRIES */
+/* Module: shared | Déclaration(s): CACHE_MAX_ENTRIES */
 
 
 // 5 minutes

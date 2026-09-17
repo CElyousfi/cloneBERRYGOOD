@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: agronomie | Déclaration(s): AgroFarmroadTab */
+/* Module: agronomie | Déclaration(s): AgroFarmroadTab */
 import { fetchMeteoblueData } from '../technique/fetchMeteoblueData.jsx';
 
 // ===================== FARMROAD TAB =====================

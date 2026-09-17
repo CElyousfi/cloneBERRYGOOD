@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: caisse | Déclaration(s): CaisseImportReportView */
+/* Module: caisse | Déclaration(s): CaisseImportReportView */
 import { formatMAD } from '../finance/formatMAD.jsx';
 import { CaissePerSheetTable } from './CaissePerSheetTable.jsx';
 import { CaisseWarnings } from './CaisseWarnings.jsx';

@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: technique | Déclaration(s): useGeolocation */
+/* Module: technique | Déclaration(s): useGeolocation */
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 
 // ===================== FINANCE TABS =====================

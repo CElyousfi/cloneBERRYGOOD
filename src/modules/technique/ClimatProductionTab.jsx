@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: technique | Déclaration(s): ClimatProductionTab */
+/* Module: technique | Déclaration(s): ClimatProductionTab */
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 
 // ===================== CLIMAT-PRODUCTION TAB =====================

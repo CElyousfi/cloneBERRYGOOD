@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: rh | Déclaration(s): nomOuvrier */
+/* Module: rh | Déclaration(s): nomOuvrier */
 
 
 // ===== IDENTITÉ OUVRIER — nom affichable =====

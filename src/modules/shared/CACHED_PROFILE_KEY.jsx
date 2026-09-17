@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): CACHED_PROFILE_KEY */
+/* Module: shared | Déclaration(s): CACHED_PROFILE_KEY */
 
 
 // CORRECTIF (a) — cache du dernier profil connu (localStorage).

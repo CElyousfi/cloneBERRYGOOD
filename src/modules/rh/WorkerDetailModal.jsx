@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: rh | Déclaration(s): WorkerDetailModal */
+/* Module: rh | Déclaration(s): WorkerDetailModal */
 
 
 function WorkerDetailModal({ workerPopup, setWorkerPopup, workerLoading }) {

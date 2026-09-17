@@ -25,7 +25,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const babel = require('@babel/core');
-const { loadEsm } = require('./_esm');
+const { loadEsm, loadComponent } = require('./_esm');
 
 const ROOT = path.join(__dirname, '../..');
 
@@ -75,7 +75,7 @@ function load() {
   // Lib de pivot RÉELLE — pose window.AnalytiqueUtils (UMD, `module` absent ici).
   sandbox.window.AnalytiqueUtils = loadEsm('src/modules/shared/lib/analytiqueUtils.js', { sandbox: sandbox });
 
-  // Dépendances que le panneau lit sur window (elles vivent dans app.jsx).
+  // Dépendances du panneau (importées ; servies ici en doubles via loadComponent).
   sandbox.window.PARCELLES_CULTURALES = [];
   sandbox.window.sbParcelleHa = function () { return 0; };
   sandbox.window.deriveSubFerme = function () { return ''; };
@@ -83,11 +83,7 @@ function load() {
   // Grille de présentation extraite (LOT 2a). Chargée SI PRÉSENTE : ces tests
   // ont été écrits et rendus verts AVANT l'extraction, contre le panneau
   // monolithique — c'est ce qui en fait une preuve d'iso-comportement.
-  const grille = path.join(ROOT, 'public/components/PivotAnalytiqueGrid.jsx');
-  if (fs.existsSync(grille)) vm.runInContext(readJsx('public/components/PivotAnalytiqueGrid.jsx'), sandbox);
-
-  vm.runInContext(readJsx('public/components/AffectationAnalytiqueTable.jsx'), sandbox);
-  return { Comp: sandbox.window.AffectationAnalytiqueTable, win: sandbox.window };
+  return { Comp: loadComponent('src/modules/finance/AffectationAnalytiqueTable.jsx', sandbox).AffectationAnalytiqueTable, win: sandbox.window };
 }
 
 // ---------------------------------------------------------------- données

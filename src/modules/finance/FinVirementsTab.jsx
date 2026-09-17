@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: finance | Déclaration(s): FinVirementsTab */
+/* Module: finance | Déclaration(s): FinVirementsTab */
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 
 // ===================== FINANCE: VIREMENTS TAB =====================

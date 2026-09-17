@@ -5,7 +5,7 @@
  * (functions/lib/campagneExport/campagneExportUtils.js et cultureUtils.js).
  *
  * Ces copies existent car le package déployé des Cloud Functions n'embarque QUE
- * functions/ ; le backend ne doit JAMAIS require('../public/lib/...') (throw
+ * functions/ ; le backend ne doit JAMAIS require('../src/…') (throw
  * "Cannot find module .../public/..." au runtime → TOUTES les CF tombent au
  * chargement). Le test vit ici, à la racine, parce que lui SEUL a le droit de
  * charger les deux arbres à la fois — cf. tests/unit/campagneUtilsBackend.test.js.

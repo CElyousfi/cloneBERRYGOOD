@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): MOIS_FR */
+/* Module: shared | Déclaration(s): MOIS_FR */
 
 
 // Sprint 3 — labels mois (utilisé par CaisseRapprochementSub)

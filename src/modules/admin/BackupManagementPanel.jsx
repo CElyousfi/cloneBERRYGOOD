@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: admin | Déclaration(s): BackupManagementPanel */
+/* Module: admin | Déclaration(s): BackupManagementPanel */
 import { Panel } from '../shared/Panel.jsx';
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 

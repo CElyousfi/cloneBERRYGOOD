@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: rh | Déclaration(s): DiversQuinzaineSub */
+/* Module: rh | Déclaration(s): DiversQuinzaineSub */
 import { Panel } from '../shared/Panel.jsx';
 import { useState } from '../shared/reactHooks.jsx';
 

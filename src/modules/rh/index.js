@@ -1,4 +1,4 @@
-/* Barrel rh — 23 fichiers */
+/* Barrel rh — 36 fichiers */
 export * from './DiversQuinzaineSub.jsx';
 export * from './EquipesTab.jsx';
 export * from './FONCTIONS_ENUM.jsx';
@@ -22,3 +22,9 @@ export * from './calculerPaieOuvrier.jsx';
 export * from './loadPointageDistinctDays.jsx';
 export * from './nomOuvrier.jsx';
 export * from './trouverPalierAnciennete.jsx';
+export * from './HsEmargementFooter.jsx';
+export * from './PointageValidationPanel.jsx';
+export * from './PointageValidationView.jsx';
+export * from './PrimesFixesTab.jsx';
+export * from './QuinzaineRecapCards.jsx';
+export * from './RapprochementPaiePopup.jsx';

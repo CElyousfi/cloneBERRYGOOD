@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): AuthenticatedApp */
+/* Module: shared | Déclaration(s): AuthenticatedApp */
 /* ─── ONGLETS EN CHARGEMENT DIFFÉRÉ ───────────────────────────────────────
    Les 112 onglets sont chargés à la demande, pas au boot. `renderTab` ne rend
    que l'onglet courant (`if (currentTab !== tabId) return null`) : les 111 autres
@@ -167,21 +166,14 @@ import { loadBonsFromFirestore } from './loadBonsFromFirestore.jsx';
 import { getVisibleProfiles } from './getVisibleProfiles.jsx';
 import { invalidateCache } from './invalidateCache.jsx';
 import { useEffect, useMemo, useRef, useState } from './reactHooks.jsx';
-import { lazyGlobalComponent } from './lazyGlobalComponent.jsx';
 
 import * as PaieDataCache from './lib/paieDataCache.js';
 import { BugReportButton } from './BugReportButton.jsx';
 import { BugReportsAdmin } from '../admin/BugReportsAdmin.jsx';
-/* ─── ONGLETS LEGACY EN CHARGEMENT DIFFÉRÉ ───────────────────────────────
-   Ces onglets vivent encore dans public/components/ comme scripts classiques
-   publiés sur `window`. index.html les chargeait tous au démarrage — 767 Ko
-   pour des écrans qu'un utilisateur ouvre rarement. Ils sont désormais tirés
-   au premier rendu, comme les onglets modulaires.
-
-   L'ordre des sources compte : les dépendances d'abord. CampagneAnalytiqueTab
-   lit window.CampagneBudgetTab pendant son exécution, MagBCTab lit ses trois
-   dialogues. Les charger en parallèle laisserait passer un undefined. */
-const CampagneAnalytiqueTabLazy = lazyGlobalComponent('CampagneAnalytiqueTab', ['components/CampagneBudgetTab.js', 'components/PivotAnalytiqueGrid.js', 'components/CampagneAnalytiqueTab.js']);
+/* ─── ONGLETS EN CHARGEMENT DIFFÉRÉ (suite) ───────────────────────────────
+   Anciens composants extraits en scripts classiques, désormais des modules ES : tirés
+   au premier rendu comme les autres onglets, un chunk chacun. */
+const CampagneAnalytiqueTabLazy = React.lazy(() => import('../finance/CampagneAnalytiqueTab.jsx').then(m => ({ default: m.CampagneAnalytiqueTab })));
 const MagBCTabLazy = React.lazy(() => import('../magasin/MagBCTab.jsx').then(m => ({ default: m.MagBCTab })));
 const ParcellesReferentielTabLazy = React.lazy(() => import('../agronomie/ParcellesReferentielTab.jsx').then(m => ({ default: m.ParcellesReferentielTab })));
 const PrimesFixesTabLazy = React.lazy(() => import('../rh/PrimesFixesTab.jsx').then(m => ({ default: m.PrimesFixesTab })));

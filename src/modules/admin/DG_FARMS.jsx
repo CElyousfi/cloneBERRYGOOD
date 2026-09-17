@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: admin | Déclaration(s): DG_FARMS */
+/* Module: admin | Déclaration(s): DG_FARMS */
 
 
 // ========== DG TASKS TAB ==========

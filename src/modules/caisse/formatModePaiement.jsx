@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: caisse | Déclaration(s): formatModePaiement */
+/* Module: caisse | Déclaration(s): formatModePaiement */
 
 
 // Helper: format mode_paiement (handles legacy values)

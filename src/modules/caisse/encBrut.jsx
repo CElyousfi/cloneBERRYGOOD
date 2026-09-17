@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: caisse | Déclaration(s): encBrut */
+/* Module: caisse | Déclaration(s): encBrut */
 import { ENC_BRUT_VIDE } from './ENC_BRUT_VIDE.jsx';
 
 function encBrut(item, brutKey, donneesHeader) {

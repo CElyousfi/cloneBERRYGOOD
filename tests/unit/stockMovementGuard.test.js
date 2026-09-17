@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Unit tests for public/lib/stockMovementGuard.js
+ * Unit tests for src/modules/shared/lib/stockMovementGuard.js
  * Run with: npm run test:unit
  */
 

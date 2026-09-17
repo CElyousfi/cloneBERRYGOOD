@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: agronomie | Déclaration(s): ProductivityTrendSvg */
+/* Module: agronomie | Déclaration(s): ProductivityTrendSvg */
 
 
 function ProductivityTrendSvg({ series, unit }) {

@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: finance | Déclaration(s): FinTelecomTab */
+/* Module: finance | Déclaration(s): FinTelecomTab */
 import { KPICard } from '../shared/KPICard.jsx';
 import { Panel } from '../shared/Panel.jsx';
 import { SimpleBarChart } from '../shared/SimpleBarChart.jsx';

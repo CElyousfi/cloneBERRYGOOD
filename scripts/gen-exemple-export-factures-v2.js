@@ -7,7 +7,7 @@
  * → juin 2026.
  *
  * LECTURE SEULE Firestore (aucune écriture). Réutilise EXACTEMENT la logique de
- * public/lib/factureExportUtils.js (TVA par ligne, garde-fou, réconciliation),
+ * src/modules/shared/lib/factureExportUtils.js (TVA par ligne, garde-fou, réconciliation),
  * et reproduit le formatage (cellules numériques/date + autofilter) de
  * buildFacturesWorkbook côté app.
  *

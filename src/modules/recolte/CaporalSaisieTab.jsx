@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: recolte | Déclaration(s): CaporalSaisieTab */
+/* Module: recolte | Déclaration(s): CaporalSaisieTab */
 import { Panel } from '../shared/Panel.jsx';
 import { useState } from '../shared/reactHooks.jsx';
 

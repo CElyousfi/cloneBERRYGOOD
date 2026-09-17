@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): App */
+/* Module: shared | Déclaration(s): App */
 import { AuthenticatedApp } from './AuthenticatedApp.jsx';
 import { LoginScreen } from './LoginScreen.jsx';
 import { NewVersionToast } from './NewVersionToast.jsx';

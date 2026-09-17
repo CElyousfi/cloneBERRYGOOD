@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: rh | Déclaration(s): FONCTIONS_ENUM */
+/* Module: rh | Déclaration(s): FONCTIONS_ENUM */
 
 
 // ===================== POINTAGE DIVERS (DVR) =====================

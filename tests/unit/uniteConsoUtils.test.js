@@ -4,7 +4,7 @@
  * uniteConsoUtils.test.js — copie FRONT de la conversion d'unité de
  * consommation, et surtout : ÉGALITÉ DE COMPORTEMENT avec la copie backend.
  *
- * La duplication public/lib ↔ functions/lib est volontaire (le backend ne peut
+ * La duplication src/modules/shared/lib ↔ functions/lib est volontaire (le backend ne peut
  * pas require('../public/…') : Firebase ne déploie que functions/). Le risque
  * n'est donc pas la duplication, c'est la DÉRIVE : une correction posée d'un
  * seul côté ferait diverger l'aperçu montré au magasinier de la déduction

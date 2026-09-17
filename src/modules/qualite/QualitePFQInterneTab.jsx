@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: qualite | Déclaration(s): QualitePFQInterneTab */
+/* Module: qualite | Déclaration(s): QualitePFQInterneTab */
 import { Panel } from '../shared/Panel.jsx';
 import { cachedFetch } from '../shared/cachedFetch.jsx';
 import { useEffect, useMemo, useState } from '../shared/reactHooks.jsx';

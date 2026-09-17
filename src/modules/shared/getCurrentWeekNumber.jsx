@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): getCurrentWeekNumber */
+/* Module: shared | Déclaration(s): getCurrentWeekNumber */
 
 
 // Get current week number (standard calendar week: Sun-Sat, matching backend & budget)

@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: technique | Déclaration(s): MapRenderer */
+/* Module: technique | Déclaration(s): MapRenderer */
 import { useEffect } from '../shared/reactHooks.jsx';
 
 // ===================== CHEF: AGRONOMIE TAB =====================

@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: caisse | Déclaration(s): ENC_REJET_LABELS */
+/* Module: caisse | Déclaration(s): ENC_REJET_LABELS */
 
 
 const ENC_REJET_LABELS = {

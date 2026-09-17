@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: finance | Déclaration(s): FuelWeeklyChart */
+/* Module: finance | Déclaration(s): FuelWeeklyChart */
 
 
 function FuelWeeklyChart({ data, cardMapping }) {

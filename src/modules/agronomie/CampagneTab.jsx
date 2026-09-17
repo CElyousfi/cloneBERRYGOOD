@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: agronomie | Déclaration(s): CampagneTab */
+/* Module: agronomie | Déclaration(s): CampagneTab */
 import { Panel } from '../shared/Panel.jsx';
 import { cachedFetch } from '../shared/cachedFetch.jsx';
 import { deriveSubFerme } from '../shared/deriveSubFerme.jsx';

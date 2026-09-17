@@ -2,7 +2,7 @@
 
 // Vue « Pivot analytique » de l'écran Campagne (LOT 2b) : branchement des
 // lignes de `campagne-analytique-detail` sur la grille partagée
-// public/components/PivotAnalytiqueGrid.jsx.
+// src/modules/finance/PivotAnalytiqueGrid.jsx.
 //
 // Ce que ce fichier protège :
 //   1. le MAPPING de champs (code → operationGroupe, famille → operationFamille,
@@ -26,7 +26,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const babel = require('@babel/core');
-const { loadEsm } = require('./_esm');
+const { loadEsm, loadComponent } = require('./_esm');
 
 const ROOT = path.join(__dirname, '../..');
 
@@ -81,10 +81,9 @@ function transform(rel) {
  * chargé est un cas réel : CDN lent, 404 après un déploiement partiel).
  */
 function loadTab(deps) {
-  const withCulture = !deps || deps.cultureUtils !== false;
-  // Modules du budget (LOT 2c) : chargés à la demande, pour pouvoir vérifier
-  // AUSSI le comportement sans eux — un <script> manquant doit dégrader vers le
-  // réalisé seul, jamais faire tomber la grille.
+  // Les helpers (culture, campagne, production, rapprochement, ventilation)
+  // sont IMPORTÉS par le composant : toujours présents, comme en prod. Seule
+  // la règle métier du budget (CampagneBudgetTab) reste omissible.
   const withBudget = !!(deps && deps.budget);
   const sandbox = { window: {}, console, document: undefined };
   sandbox.window.React = {
@@ -95,48 +94,11 @@ function loadTab(deps) {
     useMemo: function (fn) { return fn(); },
   };
   vm.createContext(sandbox);
-  // Dépendances RÉELLES (pas de stub) : le pivot et la résolution de culture
-  // testés ici sont précisément ceux de la prod.
-  if (withCulture) sandbox.window.CultureUtils = loadEsm('src/modules/shared/lib/cultureUtils.js', { sandbox: sandbox });
-  sandbox.window.AnalytiqueUtils = loadEsm('src/modules/shared/lib/analytiqueUtils.js', { sandbox: sandbox });
-  // Frontière du 1er juillet (source unique du « budget idéal »). Omissible :
-  // sans ce module, la part de campagne écoulée est INDÉTERMINABLE et la 4e
-  // sous-colonne ne doit pas être proposée — jamais une colonne de « — ».
-  if (!deps || deps.campagneUtils !== false) {
-    sandbox.window.CampagneUtils = loadEsm('src/modules/shared/lib/campagneUtils.js', { sandbox: sandbox });
-  }
-  // Kilos (ligne « Kg / JH » du bloc récolte). Omissible : sans ce module, la
-  // grille doit rendre son pied habituel, sans ligne de cadence — un <script>
-  // manquant ne fait pas tomber la récolte.
-  if (!deps || deps.production !== false) {
-    sandbox.window.CampagneProduction = loadEsm('src/modules/shared/lib/campagneProduction.js', { sandbox: sandbox });
-  }
-  // Rapprochement pointage ↔ grille. Omissible : sans ce module, le panneau de
-  // contrôle ne doit pas s'afficher (et surtout pas afficher un écart nul, qui
-  // se lirait « tout est rapproché »).
-  if (!deps || deps.rapprochement !== false) {
-    sandbox.window.CampagneRapprochement = loadEsm('src/modules/shared/lib/campagneRapprochement.js', { sandbox: sandbox });
-  }
-  // Ventilation d'une parcelle par quinzaine (pop-up au clic sur l'en-tête).
-  // Omissible : sans ce module, la pop-up doit le DIRE — une pop-up vide se
-  // lirait « cette parcelle n'a rien consommé ».
-  if (!deps || deps.parcelleQuinzaine !== false) {
-    sandbox.window.CampagneParcelleQuinzaine = loadEsm('src/modules/shared/lib/campagneParcelleQuinzaine.js', { sandbox: sandbox });
-  }
-  if (withBudget) {
-    sandbox.window.CampagneBudgetPivot = loadEsm('src/modules/shared/lib/campagneBudgetPivot.js', { sandbox: sandbox });
-    // Porteur de la RÈGLE MÉTIER (familleTotal / splitOpKey), injectée dans le
-    // builder par PivotView.
-    vm.runInContext(transform('public/components/CampagneBudgetTab.jsx'), sandbox);
-    // Les deux restes (LOT 3a). Omissible : sans ce module, la grille doit
-    // retomber sur Réalisé + Budget, jamais afficher deux colonnes de « — ».
-    if (!deps || deps.rythme !== false) {
-      sandbox.window.CampagneRythme = loadEsm('src/modules/shared/lib/campagneRythme.js', { sandbox: sandbox });
-    }
-  }
-  vm.runInContext(transform('public/components/PivotAnalytiqueGrid.jsx'), sandbox);
-  vm.runInContext(read('public/components/CampagneAnalytiqueTab.jsx'), sandbox);
-  return sandbox.window.CampagneAnalytiqueTab;
+  // Porteur de la RÈGLE MÉTIER (familleTotal / splitOpKey), injectée dans le
+  // builder par PivotView. Sans budget : servi absent au module (la grille
+  // dégrade vers le réalisé seul).
+  if (!withBudget) sandbox.window.CampagneBudgetTab = undefined;
+  return loadComponent('src/modules/finance/CampagneAnalytiqueTab.jsx', sandbox).CampagneAnalytiqueTab;
 }
 
 const Tab = loadTab();
@@ -414,22 +376,6 @@ test('famille à code GB inconnu — rangée sous AUTRE, et comptée dans le tot
   ]);
   // 1 800 + 1 200 : la famille AUTRE entre bien dans le total général.
   assert.strictEqual(cells(footRow(tables(tree)[0])).pop(), nb(3000) + ' | DH');
-});
-
-test('module manquant — message d\'erreur explicite, jamais une grille qui ment', () => {
-  // CultureUtils absent : sans garde, toutes les parcelles retombaient sur
-  // 'Framboise' et une grille titrée Framboise affichait des myrtilles.
-  const TabSansCulture = loadTab({ cultureUtils: false });
-  const tree = render(null, null, TabSansCulture);
-  assert.strictEqual(tables(tree).length, 0, 'aucune grille rendue');
-  assert.match(textOf(tree), /Affectation par Ha indisponible/);
-
-  // Ceinture de sécurité de la fonction pure elle-même : le groupe est nommé,
-  // pas silencieusement rebaptisé Framboise.
-  const groups = plain(TabSansCulture.byCulture(
-    TabSansCulture.pivotRows(DATA.rows, SB_MAP, DATA.haByRef), SB_MAP));
-  assert.deepStrictEqual(groups.map((g) => g.culture), [TabSansCulture.CULTURE_INCONNUE]);
-  assert.strictEqual(TabSansCulture.CULTURE_INCONNUE, 'Culture non résolue');
 });
 
 test('pop-up — le clic sur une cellule ouvre le détail, colonne Présences alimentée', () => {
@@ -1033,13 +979,6 @@ test('cadence — aucun bon : le pied du bloc récolte reste seul', () => {
   const piedRows = walk(section(grilles[1], 'tfoot')).filter((n) => n.type === 'tr');
   assert.strictEqual(piedRows.length, 2, 'la ligne existe, avec le barème…');
   assert.deepStrictEqual(cells(piedRows[1]).slice(1, 4), ['—', '18.0', '—']);
-  // …et sans le module de calcul, elle disparaît purement et simplement.
-  const TabSansProd = loadTab({ production: false, budget: true });
-  const sansProd = tables(render({
-    bons: [], budgetsByLabel: BUDGETS, opBudgetsByLabel: OP_BUDGETS, refOperations: REF_OPS,
-  }, null, TabSansProd))[1];
-  assert.strictEqual(
-    walk(section(sansProd, 'tfoot')).filter((n) => n.type === 'tr').length, 1);
 });
 
 test('récolte — son bloc est là AUSSI hors plein écran et en Coût DH', () => {
@@ -1195,13 +1134,6 @@ test('rapprochement — absent en plein écran, et sans données de coût', () =
   // Et sans détail par quinzaine, aucun panneau : rien à rapprocher.
   assert.strictEqual(textOf(render({ coutOuvrier: COUT_OUVRIER }))
     .indexOf('Rapprochement pointage'), -1);
-  // Module absent : pas de panneau non plus. Un écart affiché à zéro faute de
-  // calcul se lirait « tout est rapproché » — le pire des messages.
-  const TabSansRap = loadTab({ rapprochement: false });
-  const sansRap = render({ coutOuvrier: Object.assign({}, COUT_OUVRIER, {
-    parQuinzaine: [{ periode: 'Q01', jours: 1, base: 100, primes: 0, charges: 0, coutTotal: 100 }],
-  }) }, null, TabSansRap);
-  assert.strictEqual(textOf(sansRap).indexOf('Rapprochement pointage'), -1);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1270,9 +1202,3 @@ test('pop-up quinzaine — les JH sont ceux de CETTE parcelle, quinzaine par qui
   assert.strictEqual(totalPied.trim().split(/\s/)[0], (attendu / 2).toFixed(1));
 });
 
-test('pop-up quinzaine — module absent : elle le DIT, elle ne s\'affiche pas vide', () => {
-  const T = loadTab({ parcelleQuinzaine: false });
-  const tree = render(null, [false, false, null, false, '', false, 0,
-    { parcelle: 'F1- S5 MARAVILLA', ha: 2, color: '#8B2252', label: 'S5 Maravilla' }], T);
-  assert.match(textOf(tree), /module de ventilation non chargé/);
-});

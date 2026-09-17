@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: caisse | Déclaration(s): CaisseRapportsSub */
+/* Module: caisse | Déclaration(s): CaisseRapportsSub */
 import { formatMAD } from '../finance/formatMAD.jsx';
 import { useState } from '../shared/reactHooks.jsx';
 import { getCaisseColor } from './getCaisseColor.jsx';

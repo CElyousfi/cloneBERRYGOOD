@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: qualite | Déclaration(s): ChefValidationsTab */
+/* Module: qualite | Déclaration(s): ChefValidationsTab */
 import { PROFILES } from '../shared/PROFILES.jsx';
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 

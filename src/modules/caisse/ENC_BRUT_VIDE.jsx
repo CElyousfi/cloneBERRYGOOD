@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: caisse | Déclaration(s): ENC_BRUT_VIDE */
+/* Module: caisse | Déclaration(s): ENC_BRUT_VIDE */
 
 
 // Affiche une valeur BRUTE lue dans le fichier (rejets/doublons). Priorité

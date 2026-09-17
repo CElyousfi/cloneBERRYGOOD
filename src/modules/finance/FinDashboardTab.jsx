@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: finance | Déclaration(s): FinDashboardTab */
+/* Module: finance | Déclaration(s): FinDashboardTab */
 import { normalizeParcelle } from '../agronomie/normalizeParcelle.jsx';
 import { WorkerLink } from '../rh/WorkerLink.jsx';
 import { KPICard } from '../shared/KPICard.jsx';

@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: technique | Déclaration(s): meteoFermes */
+/* Module: technique | Déclaration(s): meteoFermes */
 
 
 // ===================== METEOBLUE API CONFIG =====================

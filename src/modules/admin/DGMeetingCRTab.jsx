@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: admin | Déclaration(s): DGMeetingCRTab */
+/* Module: admin | Déclaration(s): DGMeetingCRTab */
 import { PROFILES } from '../shared/PROFILES.jsx';
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 import { useToast } from '../shared/useToast.jsx';

@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: agronomie | Déclaration(s): parcelleConfig */
+/* Module: agronomie | Déclaration(s): parcelleConfig */
 import { PARCELLES_CULTURALES } from './PARCELLES_CULTURALES.jsx';
 import { getCycle } from './getCycle.jsx';
 

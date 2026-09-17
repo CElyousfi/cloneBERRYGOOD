@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: qualite | Déclaration(s): QualiteSuiviCalibreTab */
+/* Module: qualite | Déclaration(s): QualiteSuiviCalibreTab */
 import { Panel } from '../shared/Panel.jsx';
 import { useEffect, useMemo, useState } from '../shared/reactHooks.jsx';
 

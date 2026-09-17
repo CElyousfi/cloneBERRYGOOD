@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: rh | Déclaration(s): PaieTab */
+/* Module: rh | Déclaration(s): PaieTab */
 import { PAIE_BAREMES_DEFAULT } from '../admin/PAIE_BAREMES_DEFAULT.jsx';
 import { Panel } from '../shared/Panel.jsx';
 import { useEffect, useMemo, useState } from '../shared/reactHooks.jsx';

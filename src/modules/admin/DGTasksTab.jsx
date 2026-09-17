@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: admin | Déclaration(s): DGTasksTab */
+/* Module: admin | Déclaration(s): DGTasksTab */
 import { FarmTodoSection } from '../shared/FarmTodoSection.jsx';
 import { PROFILES } from '../shared/PROFILES.jsx';
 import { Panel } from '../shared/Panel.jsx';

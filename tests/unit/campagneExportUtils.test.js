@@ -1,6 +1,7 @@
 'use strict';
 
 const test = require('node:test');
+const { loadComponent } = require('./_esm');
 const assert = require('node:assert');
 const {
   SHEET_MAX,
@@ -707,19 +708,15 @@ test('feuille parcelle — AoA identique aux lignes typées (budget compris)', (
 
 const AU = require('./_esm').loadEsm('src/modules/shared/lib/analytiqueUtils.js');
 
-/** Miroir FRONT de la règle métier, chargé comme en prod (IIFE + faux window). */
+/** Miroir FRONT de la règle métier, chargé comme en prod (module ES + faux window). */
 const RULES = (function () {
   const fs = require('node:fs');
   const pathMod = require('node:path');
   const vm = require('node:vm');
-  const file = pathMod.join(__dirname, '../../public/components/CampagneBudgetTab.jsx');
+
   const sandbox = { window: { React: { createElement: function () {} } }, console };
   vm.createContext(sandbox);
-  vm.runInContext(require('@babel/core').transformSync(fs.readFileSync(file, 'utf8'), {
-    presets: [require.resolve('@babel/preset-react')],
-    filename: file, babelrc: false, configFile: false,
-  }).code, sandbox);
-  return sandbox.window.CampagneBudgetTab;
+  return loadComponent('src/modules/finance/CampagneBudgetTab.jsx', sandbox).CampagneBudgetTab;
 })();
 
 /** Lignes de buildVarieteView : Taille 30 JH (GB09), Récolte 15 JH (GB08). */

@@ -3,7 +3,7 @@
  *
  * Fetch UNE fois /api/stock?action=get-locations et expose la liste dérivée des
  * magasins / stations / parcelles. Source de vérité unique pour supprimer la
- * divergence des `const MAGASINS = ['F1','F2','F5','F6']` hardcodés dans app.jsx.
+ * divergence des `const MAGASINS = ['F1','F2','F5','F6']` hardcodés dans les écrans magasin.
  *
  * Tant que le fetch n'a pas répondu, retourne un FALLBACK
  * (magasins = ['F1','F2','F5','F6']) afin de ne pas casser le 1er render.

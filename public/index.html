@@ -1411,19 +1411,10 @@
             </div>
         </div>
     </div>
-    <!-- Liste canonique des catégories d'article (select fermé de la fiche article). -->
-    <!-- Modèle de coût M.O — consomme PaieUtils par INJECTION, donc l'ordre des
-         <script> n'a pas d'importance ici (rien n'est lu au chargement). -->
-        <!-- Plafond de journées déclarables. PUR, INJECTÉ dans coutMainOeuvre :
-         l'ordre des <script> est indifférent, rien n'est lu au chargement. -->
-        <!-- Lecture du fichier de paie + rapprochement. PURS, sans dépendance :
-         l'ordre des <script> est indifférent, rien n'est lu au chargement. -->
-    <!-- Ventilation d'UNE parcelle quinzaine par quinzaine. PURE, sans
-         dépendance : l'ordre des <script> est indifférent. -->
-    <!-- Sélection FERMÉE de l'article du bon de consommation. AVANT
-         components/MagBCTab.js, qui lit window.ArticleSelect. -->
-    <script defer src="components/PivotAnalytiqueGrid.js?v=mtrj445m"></script>
-    <script defer src="components/AffectationAnalytiqueTable.js?v=mtrj445m"></script>
+    <!-- Le frontend : bundle Vite (src/modules/bootstrap.jsx), écrit par
+         `npm run build`. Les modules sont différés par nature : ils s'exécutent
+         après l'analyse du document, une fois les bibliothèques CDN ci-dessus
+         chargées. -->
     <script type="module" src="/app.modular.js"></script>
 </body>
 </html>

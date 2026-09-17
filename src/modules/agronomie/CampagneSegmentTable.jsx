@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: agronomie | Déclaration(s): CampagneSegmentTable */
+/* Module: agronomie | Déclaration(s): CampagneSegmentTable */
 import { Panel } from '../shared/Panel.jsx';
 import { getHa } from './getHa.jsx';
 import { getKgExport } from './getKgExport.jsx';

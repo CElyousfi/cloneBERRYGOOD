@@ -9,7 +9,6 @@ const os = require('os');
 const {
   normalizeForClassify,
   classifyByKeywords,
-  parseWindowExports,
   parseCFExports,
   parseFirebaseRewrites,
   parseFirestoreCollections,
@@ -93,31 +92,6 @@ test('classifyByKeywords: ex-aequo réel quand scores identiques -> confidence l
   assert.strictEqual(result.confidence, 'low', 'ex-aequo doit donner confidence low');
   // En cas d'ex-aequo, le premier dans l'ordre des clés doit gagner
   assert.strictEqual(result.domain, 'alpha', 'premier domaine doit être choisi en cas d\'ex-aequo');
-});
-
-// --- 4. parseWindowExports ---
-
-test('parseWindowExports: export window simple', () => {
-  const src = "if (typeof window !== 'undefined') window.PaieUtils = __api;";
-  const result = parseWindowExports(src);
-  assert.deepStrictEqual(result, ['PaieUtils']);
-});
-
-test('parseWindowExports: exports multiples', () => {
-  const src = "window.Foo = a;\nwindow.Bar = b;";
-  const result = parseWindowExports(src);
-  assert.deepStrictEqual(result, ['Foo', 'Bar']);
-});
-
-test('parseWindowExports: pas de doublons', () => {
-  const src = "window.Foo = a;\nwindow.Foo = b;";
-  const result = parseWindowExports(src);
-  assert.deepStrictEqual(result, ['Foo']);
-});
-
-test('parseWindowExports: retourne [] si aucun export', () => {
-  const result = parseWindowExports('const x = 1;');
-  assert.deepStrictEqual(result, []);
 });
 
 // --- 5. parseCFExports ---
@@ -346,8 +320,8 @@ test('isExcludedFromGitCoupling: docs/ exclu', () => {
   assert.strictEqual(isExcludedFromGitCoupling('docs/README.md'), true);
 });
 
-test('isExcludedFromGitCoupling: public/lib/paieUtils.js non exclu', () => {
-  assert.strictEqual(isExcludedFromGitCoupling('public/lib/paieUtils.js'), false);
+test('isExcludedFromGitCoupling: src/modules/shared/lib/paieUtils.js non exclu', () => {
+  assert.strictEqual(isExcludedFromGitCoupling('src/modules/shared/lib/paieUtils.js'), false);
 });
 
 // --- 12. Absence de chemins absolus ---
@@ -419,7 +393,7 @@ test('domains backend.services liste les services racine classifiés', async () 
 
 // --- 17. Stabilité du fingerprint (contrat Category A / Category B) ---
 // Category A (dans le fingerprint) : docs/ai/domains.json, firebase.json, firestore.rules,
-//   functions/index.js, src/modules/**/*.jsx, public/lib/*.js, public/components/*.jsx,
+//   functions/index.js, src/modules/**/*.jsx, src/modules/shared/lib/*.js,
 //   functions/lib/__entries__ (liste), functions/__root_services__ (liste)
 // Category B (exclu) : heatmap git, commit counts, fenêtre 90j, HEAD, timestamps, Date.now()
 
@@ -472,8 +446,8 @@ test('[stabilité] modification source Category A → fingerprint différent', a
   };
   ['docs/ai/domains.json', 'firebase.json', 'firestore.rules',
    'functions/index.js'].forEach(copyFile);
-  // Copier lib, components, functions/lib si existants
-  for (const dir of ['public/lib', 'public/components', 'functions/lib']) {
+  // Copier functions/lib si existant
+  for (const dir of ['functions/lib']) {
     const srcDir = path.join(ROOT, dir);
     if (fs.existsSync(srcDir)) {
       const dstDir = path.join(tmpRoot, dir);

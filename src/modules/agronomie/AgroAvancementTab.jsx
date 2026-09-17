@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: agronomie | Déclaration(s): AgroAvancementTab */
+/* Module: agronomie | Déclaration(s): AgroAvancementTab */
 import { displayCulture } from './displayCulture.jsx';
 
 // =============================================

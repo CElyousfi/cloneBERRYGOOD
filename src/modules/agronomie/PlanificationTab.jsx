@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: agronomie | Déclaration(s): PlanificationTab */
+/* Module: agronomie | Déclaration(s): PlanificationTab */
 import { Panel } from '../shared/Panel.jsx';
 import { useState } from '../shared/reactHooks.jsx';
 

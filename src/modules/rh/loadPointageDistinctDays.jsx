@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: rh | Déclaration(s): loadPointageDistinctDays */
+/* Module: rh | Déclaration(s): loadPointageDistinctDays */
 
 
 // Lit sql_mirror_pointage entre minDate et maxDate (IDs YYYY-MM-DD)

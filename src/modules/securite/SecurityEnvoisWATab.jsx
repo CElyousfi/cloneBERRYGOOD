@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: securite | Déclaration(s): SecurityEnvoisWATab */
+/* Module: securite | Déclaration(s): SecurityEnvoisWATab */
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 
 // ─── Registres reçus par WhatsApp (lecture seule) ────────────────────

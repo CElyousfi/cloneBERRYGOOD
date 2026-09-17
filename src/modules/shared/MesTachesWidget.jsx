@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): MesTachesWidget */
+/* Module: shared | Déclaration(s): MesTachesWidget */
 import { useEffect, useState } from './reactHooks.jsx';
 
 // ========== MES TACHES WIDGET (cross-profile) ==========

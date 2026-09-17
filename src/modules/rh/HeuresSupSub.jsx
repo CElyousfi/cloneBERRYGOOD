@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: rh | Déclaration(s): HeuresSupSub */
+/* Module: rh | Déclaration(s): HeuresSupSub */
 import { KPICard } from '../shared/KPICard.jsx';
 import { Panel } from '../shared/Panel.jsx';
 import { cachedFetch } from '../shared/cachedFetch.jsx';

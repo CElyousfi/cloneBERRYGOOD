@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: finance | Déclaration(s): FinFacturesTab */
+/* Module: finance | Déclaration(s): FinFacturesTab */
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 import { buildFacturesWorkbook } from './buildFacturesWorkbook.jsx';
 

@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: qualite | Déclaration(s): ChefInspectionsPanel */
+/* Module: qualite | Déclaration(s): ChefInspectionsPanel */
 import { Panel } from '../shared/Panel.jsx';
 import { cachedFetch } from '../shared/cachedFetch.jsx';
 import { useState } from '../shared/reactHooks.jsx';

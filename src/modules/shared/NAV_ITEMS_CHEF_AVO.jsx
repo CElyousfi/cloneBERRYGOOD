@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): NAV_ITEMS_CHEF_AVO */
+/* Module: shared | Déclaration(s): NAV_ITEMS_CHEF_AVO */
 
 
 const NAV_ITEMS_CHEF_AVO = [

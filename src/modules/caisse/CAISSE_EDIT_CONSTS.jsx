@@ -1,4 +1,4 @@
-/* Porté depuis public/app.jsx (sync upstream 3a6576d..5cd084e) — verbatim.
+/* Porté du monolithe (sync upstream 3a6576d..5cd084e) — verbatim.
    Module: caisse | Déclaration(s): CAISSE_STATUTS_EDITABLES, CAISSE_TYPES_EDITABLES, CAISSE_FIELD_LABELS */
 
 // Statuts d'un bon de caisse encore modifiables (miroir UI de la garde

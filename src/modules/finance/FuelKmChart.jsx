@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: finance | Déclaration(s): FuelKmChart */
+/* Module: finance | Déclaration(s): FuelKmChart */
 
 
 function FuelKmChart({ suiviKm }) {

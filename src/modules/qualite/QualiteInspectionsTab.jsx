@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: qualite | Déclaration(s): QualiteInspectionsTab */
+/* Module: qualite | Déclaration(s): QualiteInspectionsTab */
 import { KPICard } from '../shared/KPICard.jsx';
 import { Panel } from '../shared/Panel.jsx';
 import { cachedFetch } from '../shared/cachedFetch.jsx';

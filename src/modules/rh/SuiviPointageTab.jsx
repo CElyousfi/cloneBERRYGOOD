@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: rh | Déclaration(s): SuiviPointageTab */
+/* Module: rh | Déclaration(s): SuiviPointageTab */
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 
 import { QuinzaineCampagneSelect } from '../shared/QuinzaineCampagneSelect.jsx';

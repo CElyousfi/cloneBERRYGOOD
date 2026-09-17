@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: magasin | Déclaration(s): MagTransfertTab */
+/* Module: magasin | Déclaration(s): MagTransfertTab */
 import { cachedFetch } from '../shared/cachedFetch.jsx';
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 import { useStockLocations } from './useStockLocations.jsx';

@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: rh | Déclaration(s): QuinzaineTab */
+/* Module: rh | Déclaration(s): QuinzaineTab */
 import { matchCulture } from '../agronomie/matchCulture.jsx';
 import { Panel } from '../shared/Panel.jsx';
 import { SimpleBarChart } from '../shared/SimpleBarChart.jsx';
@@ -23,6 +22,7 @@ import { QuinzaineRecapCards } from './QuinzaineRecapCards.jsx';
 import { nomOuvrier } from './nomOuvrier.jsx';
 import { sbParcelle } from '../shared/sbParcelleState.js';
 import { RapprochementPaiePopup } from './RapprochementPaiePopup.jsx';
+import { AffectationAnalytiqueTable } from '../finance/AffectationAnalytiqueTable.jsx';
 // ===================== QUINZAINE TAB =====================
         function QuinzaineTab({ data, farmFilter, farmLabel, avoSubFilter, cultureFilter, currentProfile, onNavigateToPrimes }) {
             const [apiData, setApiData] = useState(null);
@@ -1772,14 +1772,14 @@ import { RapprochementPaiePopup } from './RapprochementPaiePopup.jsx';
                     )}
 
                     {/* Affectation Analytique — extrait dans
-                        public/components/AffectationAnalytiqueTable.jsx (iso-comportement).
+                        finance/AffectationAnalytiqueTable.jsx (iso-comportement).
                         Garde `window.X &&` : une référence nue à un global non posé
                         crashe TOUT le rendu (mémoire projet tab-bare-global-ref-crash).
                         Rendu ici SANS condition sur les lignes : le composant porte
                         lui-même le test `_analytiqueSourceRows.length > 0` (il a besoin
                         d'être monté pour rendre le pop-up de détail). */}
-                    {window.AffectationAnalytiqueTable && (
-                        <window.AffectationAnalytiqueTable
+                    {AffectationAnalytiqueTable && (
+                        <AffectationAnalytiqueTable
                             analytiqueData={analytiqueData}
                             apiData={apiData}
                             selectedPeriode={selectedPeriode}

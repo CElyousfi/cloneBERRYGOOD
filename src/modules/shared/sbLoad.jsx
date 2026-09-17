@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): sbLoad */
+/* Module: shared | Déclaration(s): sbLoad */
 
 
 // ===== RÉFÉRENTIEL PARCELLES SMART BERRY =====

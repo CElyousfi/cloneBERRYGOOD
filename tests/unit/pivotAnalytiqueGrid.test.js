@@ -1,6 +1,6 @@
 'use strict';
 
-// Tests de la grille de présentation public/components/PivotAnalytiqueGrid.jsx.
+// Tests de la grille de présentation src/modules/finance/PivotAnalytiqueGrid.jsx.
 //
 // L'iso-comportement du panneau Affectation Analytique est couvert ailleurs
 // (tests/unit/affectationAnalytiqueTable.test.js, écrit AVANT l'extraction).
@@ -18,6 +18,7 @@
 // subsiste qu'à UNE seule série (rendu historique de l'écran Quinzaine).
 
 const test = require('node:test');
+const { loadComponent } = require('./_esm');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -47,15 +48,10 @@ function createElement(type, props, ...children) {
 }
 
 const Grid = (function () {
-  const file = path.join(ROOT, 'public/components/PivotAnalytiqueGrid.jsx');
-  const code = babel.transformSync(fs.readFileSync(file, 'utf8'), {
-    presets: [require.resolve('@babel/preset-react')],
-    filename: file, babelrc: false, configFile: false,
-  }).code;
+
   const sandbox = { window: { React: { createElement: createElement, Fragment: 'Fragment' } } };
   vm.createContext(sandbox);
-  vm.runInContext(code, sandbox);
-  return sandbox.window.PivotAnalytiqueGrid;
+  return loadComponent('src/modules/finance/PivotAnalytiqueGrid.jsx', sandbox).PivotAnalytiqueGrid;
 })();
 
 // ---------------------------------------------------------------- helpers

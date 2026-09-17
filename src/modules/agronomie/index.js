@@ -1,4 +1,4 @@
-/* Barrel agronomie — 49 fichiers */
+/* Barrel agronomie — 53 fichiers */
 export * from './AgroAnalyseFoliairesTab.jsx';
 export * from './AgroAvancementTab.jsx';
 export * from './AgroCompositionTab.jsx';
@@ -48,3 +48,6 @@ export * from './parcelleConfig.jsx';
 export * from './sbParcelleHa.jsx';
 export * from './sbParcelleNom.jsx';
 export * from './transformSprayData.jsx';
+export * from './ParcellesGroupesPanel.jsx';
+export * from './ParcellesParamsTab.jsx';
+export * from './ParcellesReferentielTab.jsx';

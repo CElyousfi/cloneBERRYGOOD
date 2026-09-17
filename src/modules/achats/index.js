@@ -1,4 +1,4 @@
-/* Barrel achats — 15 fichiers */
+/* Barrel achats — 17 fichiers */
 export * from './AchatsAnalysesFoliairesTab.jsx';
 export * from './AchatsBDCTab.jsx';
 export * from './AchatsBonApportTab.jsx';
@@ -14,3 +14,5 @@ export * from './AchatsReceptionsValoriserTab.jsx';
 export * from './AchatsScanBLTab.jsx';
 export * from './AchatsScanFacturesTab.jsx';
 export * from './AchatsVentePlastiqueTab.jsx';
+export * from './FactureDetailPopup.jsx';
+export * from './ScanAttachmentButton.jsx';

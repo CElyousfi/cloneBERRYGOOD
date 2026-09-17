@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: admin | Déclaration(s): BaremesPaiePanel */
+/* Module: admin | Déclaration(s): BaremesPaiePanel */
 import { Panel } from '../shared/Panel.jsx';
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 import { PAIE_BAREMES_DEFAULT } from './PAIE_BAREMES_DEFAULT.jsx';

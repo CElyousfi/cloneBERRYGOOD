@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: qualite | Déclaration(s): DQRDailyTab */
+/* Module: qualite | Déclaration(s): DQRDailyTab */
 import { KPICard } from '../shared/KPICard.jsx';
 import { cachedFetch } from '../shared/cachedFetch.jsx';
 import { useEffect, useMemo, useState } from '../shared/reactHooks.jsx';

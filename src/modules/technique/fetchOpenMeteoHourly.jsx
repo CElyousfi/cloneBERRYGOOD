@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: technique | Déclaration(s): fetchOpenMeteoHourly */
+/* Module: technique | Déclaration(s): fetchOpenMeteoHourly */
 import { _openMeteoCache } from '../shared/_openMeteoCache.jsx';
 import { OPEN_METEO_CACHE_TTL } from './OPEN_METEO_CACHE_TTL.jsx';
 import { meteoFermes } from './meteoFermes.jsx';

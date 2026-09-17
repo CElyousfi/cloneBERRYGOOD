@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): PROFILES */
+/* Module: shared | Déclaration(s): PROFILES */
 
 
 // ===================== CONFIGURATION =====================

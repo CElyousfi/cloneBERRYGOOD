@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: recolte | Déclaration(s): HorsRecolteSuiviTab */
+/* Module: recolte | Déclaration(s): HorsRecolteSuiviTab */
 import { PARCELLES_CULTURALES } from '../agronomie/PARCELLES_CULTURALES.jsx';
 import { displayParcelle } from '../agronomie/displayParcelle.jsx';
 import { getCycle } from '../agronomie/getCycle.jsx';

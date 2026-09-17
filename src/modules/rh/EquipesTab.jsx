@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: rh | Déclaration(s): EquipesTab */
+/* Module: rh | Déclaration(s): EquipesTab */
 import { cachedFetch } from '../shared/cachedFetch.jsx';
 import { useState } from '../shared/reactHooks.jsx';
 import { WorkerLink } from './WorkerLink.jsx';

@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: qualite | Déclaration(s): QualiteProductionTab */
+/* Module: qualite | Déclaration(s): QualiteProductionTab */
 import { computeMomentum } from '../agronomie/computeMomentum.jsx';
 import { getCycle } from '../agronomie/getCycle.jsx';
 import { getHaByCycle } from '../agronomie/getHaByCycle.jsx';
@@ -179,7 +178,7 @@ import { useState } from '../shared/reactHooks.jsx';
                         console.log('Excel + JSON sauvegardés dans Storage');
                     } catch(err) { console.warn('Storage upload skipped:', err.message); }
                     // 2026-09-14 (production readiness) : `_lastImportTs` n'était jamais déclarée
-                    // (même dans le monolithe public/app.jsx:18645 — inoffensif là-bas car un
+                    // (déjà dans le monolithe — inoffensif là-bas car un
                     // script classique en mode non-strict crée juste une variable globale
                     // implicite). Un module ES est TOUJOURS en mode strict : cette même ligne y
                     // levait un ReferenceError à CHAQUE import PFQ réussi, empêchant la mise à

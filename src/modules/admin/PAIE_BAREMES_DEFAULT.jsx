@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: admin | Déclaration(s): PAIE_BAREMES_DEFAULT */
+/* Module: admin | Déclaration(s): PAIE_BAREMES_DEFAULT */
 import { __PaieUtils } from '../rh/__PaieUtils.jsx';
 
 const PAIE_BAREMES_DEFAULT = __PaieUtils.PAIE_BAREMES_DEFAULT || {

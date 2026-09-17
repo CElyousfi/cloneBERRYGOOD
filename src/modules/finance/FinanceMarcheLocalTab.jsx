@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: finance | Déclaration(s): FinanceMarcheLocalTab */
+/* Module: finance | Déclaration(s): FinanceMarcheLocalTab */
 import { KPICard } from '../shared/KPICard.jsx';
 import { Panel } from '../shared/Panel.jsx';
 import { loadBonsFromFirestore } from '../shared/loadBonsFromFirestore.jsx';

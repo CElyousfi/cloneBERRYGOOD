@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: admin | Déclaration(s): useTutorialEngine */
+/* Module: admin | Déclaration(s): useTutorialEngine */
 
 
 function useTutorialEngine(setCurrentTab, setSidebarOpen) {

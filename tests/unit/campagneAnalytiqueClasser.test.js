@@ -23,7 +23,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const babel = require('@babel/core');
-const { loadEsm } = require('./_esm');
+const { loadEsm, loadComponent } = require('./_esm');
 
 const ROOT = path.join(__dirname, '../..');
 
@@ -92,9 +92,7 @@ function loadTab(stubs) {
   sandbox.window.CampagneProduction = loadEsm('src/modules/shared/lib/campagneProduction.js', { sandbox: sandbox });
   sandbox.window.CampagneRapprochement = loadEsm('src/modules/shared/lib/campagneRapprochement.js', { sandbox: sandbox });
   sandbox.window.CampagneParcelleQuinzaine = loadEsm('src/modules/shared/lib/campagneParcelleQuinzaine.js', { sandbox: sandbox });
-  vm.runInContext(transform('public/components/PivotAnalytiqueGrid.jsx'), sandbox);
-  vm.runInContext(read('public/components/CampagneAnalytiqueTab.jsx'), sandbox);
-  return sandbox.window.CampagneAnalytiqueTab;
+  return loadComponent('src/modules/finance/CampagneAnalytiqueTab.jsx', sandbox).CampagneAnalytiqueTab;
 }
 
 // -------------------------------------------------------------- fixtures

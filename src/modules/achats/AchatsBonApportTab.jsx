@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: achats | Déclaration(s): AchatsBonApportTab */
+/* Module: achats | Déclaration(s): AchatsBonApportTab */
 import { PARCELLES_CULTURALES } from '../agronomie/PARCELLES_CULTURALES.jsx';
 import { normalizeParcelle } from '../agronomie/normalizeParcelle.jsx';
 import { getActiveMarcheLocalClients } from '../shared/getActiveMarcheLocalClients.jsx';

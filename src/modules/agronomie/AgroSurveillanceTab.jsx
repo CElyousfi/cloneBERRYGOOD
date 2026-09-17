@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: agronomie | Déclaration(s): AgroSurveillanceTab */
+/* Module: agronomie | Déclaration(s): AgroSurveillanceTab */
 import { FARMS } from '../shared/FARMS.jsx';
 import { FARM_NAMES } from '../shared/FARM_NAMES.jsx';
 import { useEffect, useState } from '../shared/reactHooks.jsx';

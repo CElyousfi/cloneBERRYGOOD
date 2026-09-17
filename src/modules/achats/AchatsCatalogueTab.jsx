@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: achats | Déclaration(s): AchatsCatalogueTab */
+/* Module: achats | Déclaration(s): AchatsCatalogueTab */
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 
 import * as ArticleCategories from '../shared/lib/articleCategories.js';
@@ -38,7 +37,7 @@ import { ArticleConversionFields } from '../magasin/ArticleConversionFields.jsx'
 
             const actor = () => ({ uid: currentProfile, profileId: currentProfile, name: profileData?.name||currentProfile, email: profileData?.email||'' });
 
-            // Logique PURE d'orchestration (public/lib/fusionMasse.js) : sélection
+            // Logique PURE d'orchestration (shared/lib/fusionMasse.js) : sélection
             // fail-closed, adressage par docId, signature du lot chiffré, comptes
             // rendus. Rien de tout ça ne vit dans le monolithe.
             const FM = FusionMasse || {};
@@ -197,7 +196,7 @@ import { ArticleConversionFields } from '../magasin/ArticleConversionFields.jsx'
             };
 
             // unite_consommation / stock_par_unite_consommation : conversion
-            // « unité de consommation → unité de stock » (public/lib/uniteConsoUtils.js).
+            // « unité de consommation → unité de stock » (shared/lib/uniteConsoUtils.js).
             // Optionnelles : absentes, on consomme dans l'unité de stock et rien ne change.
             const openDetail = (a) => { setSelectedArticle(a); setEditMode(false); setEditForm({ nom:a.nom, reference:a.reference||'', reference_technique:a.reference_technique||'', unite:a.unite||'U', prix_ht:a.prix_ht||0, taux_tva:a.taux_tva||20, prix_ttc:a.prix_ttc||0, categorie:a.categorie||'', sous_categorie:a.sous_categorie||'', type:a.type||'', multi_ferme:a.multi_ferme||false, unite_consommation:a.unite_consommation||'', stock_par_unite_consommation:(a.stock_par_unite_consommation===null||a.stock_par_unite_consommation===undefined)?'':String(a.stock_par_unite_consommation) }); };
             const closeDetail = () => { setSelectedArticle(null); setEditMode(false); };
@@ -253,7 +252,7 @@ import { ArticleConversionFields } from '../magasin/ArticleConversionFields.jsx'
                     <div style={{display:'flex',alignItems:'center',gap:8,gridColumn:'1/-1'}}><input type="checkbox" checked={form.multi_ferme} onChange={e=>setForm(f=>({...f,multi_ferme:e.target.checked}))} /><label style={{fontSize:12}}>Multi-ferme</label></div>
                     {/* Conversion « unité de consommation → unité de stock ».
                         Composant PARTAGÉ avec l'écran de saisie d'un bon
-                        (public/components/ArticleConversionFields.jsx) : c'est lui
+                        (magasin/ArticleConversionFields.jsx) : c'est lui
                         qui porte la phrase « 1 L = 1,32 KG », seule formulation
                         non ambiguë du facteur. À l'ÉDITION seulement — la
                         création d'article (`create-article`) n'écrit pas encore

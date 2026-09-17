@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): _bonsCache, _bonsCacheTime, loadBonsFromFirestore */
+/* Module: shared | Déclaration(s): _bonsCache, _bonsCacheTime, loadBonsFromFirestore */
 
 
 // Fonction utilitaire : charger TOUS les bons depuis Firestore

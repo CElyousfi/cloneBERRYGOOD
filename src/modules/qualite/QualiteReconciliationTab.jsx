@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: qualite | Déclaration(s): QualiteReconciliationTab */
+/* Module: qualite | Déclaration(s): QualiteReconciliationTab */
 import { Panel } from '../shared/Panel.jsx';
 import { cachedFetch } from '../shared/cachedFetch.jsx';
 import { useState } from '../shared/reactHooks.jsx';

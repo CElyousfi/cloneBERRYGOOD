@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: recolte | Déclaration(s): ChargementSub */
+/* Module: recolte | Déclaration(s): ChargementSub */
 import { WorkerLink } from '../rh/WorkerLink.jsx';
 import { KPICard } from '../shared/KPICard.jsx';
 import { Panel } from '../shared/Panel.jsx';

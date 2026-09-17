@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: admin | Déclaration(s): AdminConsoleTab */
+/* Module: admin | Déclaration(s): AdminConsoleTab */
 import { PROFILES } from '../shared/PROFILES.jsx';
 import { Panel } from '../shared/Panel.jsx';
 import { useEffect, useState } from '../shared/reactHooks.jsx';

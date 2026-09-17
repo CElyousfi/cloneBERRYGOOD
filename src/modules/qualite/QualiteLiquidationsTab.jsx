@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: qualite | Déclaration(s): QualiteLiquidationsTab */
+/* Module: qualite | Déclaration(s): QualiteLiquidationsTab */
 import { normalizeParcelle } from '../agronomie/normalizeParcelle.jsx';
 import { KPICard } from '../shared/KPICard.jsx';
 import { Panel } from '../shared/Panel.jsx';

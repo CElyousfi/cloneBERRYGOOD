@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): DashboardTab */
+/* Module: shared | Déclaration(s): DashboardTab */
 import { AnalysesFoliairesAlertDashboard } from '../agronomie/AnalysesFoliairesAlertDashboard.jsx';
 import { displayParcelle } from '../agronomie/displayParcelle.jsx';
 import { matchCulture } from '../agronomie/matchCulture.jsx';

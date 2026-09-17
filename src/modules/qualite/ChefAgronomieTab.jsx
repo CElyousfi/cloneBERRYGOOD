@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: qualite | Déclaration(s): ChefAgronomieTab */
+/* Module: qualite | Déclaration(s): ChefAgronomieTab */
 import { AgroAnalyseFoliairesTab } from '../agronomie/AgroAnalyseFoliairesTab.jsx';
 import { AgroFarmroadTab } from '../agronomie/AgroFarmroadTab.jsx';
 import { AgroForecastTab } from '../agronomie/AgroForecastTab.jsx';

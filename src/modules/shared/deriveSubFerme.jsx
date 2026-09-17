@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): deriveSubFerme */
+/* Module: shared | Déclaration(s): deriveSubFerme */
 
 
 function deriveSubFerme(refParcelle, parcelle) {

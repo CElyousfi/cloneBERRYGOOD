@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: caisse | Déclaration(s): CaisseTransactionsSub */
+/* Module: caisse | Déclaration(s): CaisseTransactionsSub */
 import { formatMAD } from '../finance/formatMAD.jsx';
 import { CAISSE_STATUTS_EDITABLES, CAISSE_TYPES_EDITABLES, CAISSE_FIELD_LABELS } from './CAISSE_EDIT_CONSTS.jsx';
 import { STATUS_LABELS } from '../shared/STATUS_LABELS.jsx';
@@ -270,7 +269,7 @@ import { CaisseSaisieSub } from './CaisseSaisieSub.jsx';
             React.useEffect(() => { load(); }, [filterCaisse, filterStatus, filterDateFrom, filterDateTo]);
 
             const exportExcel = () => {
-                if (!window.XLSX) return alert('XLSX non disponible');
+                if (typeof XLSX === 'undefined' || !XLSX) return alert('XLSX non disponible');
                 // Export the visible (post-filter, post-search) list so what you see is what you export.
                 const exportList = (typeof displayedTransactions !== 'undefined' && displayedTransactions) ? displayedTransactions : transactions;
                 const ws = XLSX.utils.json_to_sheet(exportList.map(tx => ({
@@ -428,7 +427,7 @@ import { CaisseSaisieSub } from './CaisseSaisieSub.jsx';
                 setReassignOpen(false);
             };
             const bulkExport = () => {
-                if (!window.XLSX) return alert('XLSX non disponible');
+                if (typeof XLSX === 'undefined' || !XLSX) return alert('XLSX non disponible');
                 const ids = selectedIds;
                 const subset = displayedTransactions.filter((tx) => ids.has(tx.id));
                 if (subset.length === 0) return;

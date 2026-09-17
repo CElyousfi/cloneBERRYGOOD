@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): _openMeteoCache */
+/* Module: shared | Déclaration(s): _openMeteoCache */
 
 
 // ===================== OPEN-METEO (fallback "Hier") =====================

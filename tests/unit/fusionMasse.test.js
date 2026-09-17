@@ -1,7 +1,7 @@
 'use strict';
 
 /*
- * FUSION EN MASSE — logique pure d'orchestration (public/lib/fusionMasse.js).
+ * FUSION EN MASSE — logique pure d'orchestration (src/modules/shared/lib/fusionMasse.js).
  *
  * MUTATIONS QUI DOIVENT FAIRE ROUGIR CE FICHIER :
  *  - un groupe sans maître déterminé devient sélectionnable ;

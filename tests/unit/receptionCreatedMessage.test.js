@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Tests de buildReceptionCreatedMessage (public/lib/bdcReceptionUtils.js).
+ * Tests de buildReceptionCreatedMessage (src/modules/shared/lib/bdcReceptionUtils.js).
  * Run with: npm run test:unit
  *
  * Ce message est le SEUL endroit où un humain apprend qu'un article vient

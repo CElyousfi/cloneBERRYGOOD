@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): _origFetch */
+/* Module: shared | Déclaration(s): _origFetch */
 
 
 // Patch fetch to auto-inject Firebase Auth token on /api/ calls

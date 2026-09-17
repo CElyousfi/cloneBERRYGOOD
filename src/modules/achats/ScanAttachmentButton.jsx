@@ -119,7 +119,7 @@ function ScanAttachmentButton(props) {
       // Exclut ce déclencheur d'un éventuel "Fullscreen auto" : sur Safari,
       // requestFullscreen déclenché sur le même geste que l'ouverture du picker
       // tue le picker. Le plein écran automatique est DÉSACTIVÉ depuis le
-      // 2026-08-22 (app.jsx) : l'attribut est conservé comme garde-fou si la
+      // 2026-08-22 : l'attribut est conservé comme garde-fou si la
       // fonctionnalité revient.
       'data-no-fullscreen': '',
       // A <label> cannot be `disabled`; during upload we neutralize it via

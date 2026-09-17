@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: technique | Déclaration(s): StationnaireAnalyseTab */
+/* Module: technique | Déclaration(s): StationnaireAnalyseTab */
 import { PARCELLES_CULTURALES } from '../agronomie/PARCELLES_CULTURALES.jsx';
 import { getCycle } from '../agronomie/getCycle.jsx';
 import { SimpleAreaChart } from '../shared/SimpleAreaChart.jsx';

@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: technique | Déclaration(s): MeteoAlertsDashboard */
+/* Module: technique | Déclaration(s): MeteoAlertsDashboard */
 import { fetchSprayData } from '../agronomie/fetchSprayData.jsx';
 import { transformSprayData } from '../agronomie/transformSprayData.jsx';
 import { useEffect, useState } from '../shared/reactHooks.jsx';

@@ -286,7 +286,7 @@ function installLocalTestBypass() {
     return Promise.resolve(jsonResponse({ success: true, _testui: true, note: 'unmocked-api-route' }));
   };
 
-  // Patch cachedFetch too if it exists in window (defined in app.jsx after this script)
+  // Patch cachedFetch too if it exists in window (historique : posé après ce script)
   // Strategy: replace its cache early so it doesn't memoize 503s. We override _apiCache
   // by setting an opener.
   Object.defineProperty(window, '_testuiActive', { value: true, configurable: false, writable: false });

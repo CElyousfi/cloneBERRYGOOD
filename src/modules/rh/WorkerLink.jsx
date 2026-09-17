@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: rh | Déclaration(s): WorkerLink */
+/* Module: rh | Déclaration(s): WorkerLink */
 import { WorkerDetailContext } from './WorkerDetailContext.jsx';
 
 // ===================== WORKER DETAIL SHARED COMPONENTS =====================

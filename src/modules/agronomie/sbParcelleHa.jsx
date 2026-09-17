@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: agronomie | Déclaration(s): sbParcelleHa */
+/* Module: agronomie | Déclaration(s): sbParcelleHa */
 
 
 import { sbParcelle } from '../shared/sbParcelleState.js';

@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): SimpleAreaChart */
+/* Module: shared | Déclaration(s): SimpleAreaChart */
 
 
 function SimpleAreaChart({ data, dataKeys, colors, xKey, height = 220, showLabelsFor }) {

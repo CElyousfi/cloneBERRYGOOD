@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): LoginScreen */
+/* Module: shared | Déclaration(s): LoginScreen */
 import { InstallGuide } from './InstallGuide.jsx';
 import { useState } from './reactHooks.jsx';
 

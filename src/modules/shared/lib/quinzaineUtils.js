@@ -5,7 +5,7 @@
  *
  * Source of truth for the Transport (indemnité) computation shared by the two
  * screens that used to duplicate it and diverged by 240 DH (Quinzaine 01):
- *   - Écran Quinzaine  (app.jsx, "RECAP QUINZAINE EN COURS")
+ *   - Écran Quinzaine  (QuinzaineTab, "RECAP QUINZAINE EN COURS")
  *   - Écran Primes     (PrimesRecapSub)
  *
  * Root cause of the 240 DH divergence (spec docs/spec-quinzaine-cout-charge.md §Lot 1):

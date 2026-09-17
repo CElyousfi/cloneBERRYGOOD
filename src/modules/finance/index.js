@@ -1,4 +1,4 @@
-/* Barrel finance — 34 fichiers */
+/* Barrel finance — 45 fichiers */
 export * from './BDC_SOCIETES.jsx';
 export * from './BDC_SOCIETE_DEFAULT.jsx';
 export * from './BUDGET_BGF.jsx';
@@ -33,3 +33,10 @@ export * from './importBudgetExcel.jsx';
 export * from './tresoFmtDate.jsx';
 export * from './tresoFmtMAD.jsx';
 export * from './tresoParseDMY.jsx';
+export * from './AffectationAnalytiqueTable.jsx';
+export * from './CampagneAnalytiqueTab.jsx';
+export * from './CampagneBudgetTab.jsx';
+export * from './CampagneConsoView.jsx';
+export * from './CampagnePivotView.jsx';
+export * from './CampagneVarieteView.jsx';
+export * from './PivotAnalytiqueGrid.jsx';

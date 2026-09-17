@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: finance | Déclaration(s): FinDeleteArticlesTab */
+/* Module: finance | Déclaration(s): FinDeleteArticlesTab */
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 
 // ===================== FINANCE: SUPPRESSION ARTICLES TAB =====================

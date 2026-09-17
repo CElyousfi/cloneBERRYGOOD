@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): InstallGuide */
+/* Module: shared | Déclaration(s): InstallGuide */
 import { useState } from './reactHooks.jsx';
 
 // ===================== INSTALL GUIDE COMPONENT =====================

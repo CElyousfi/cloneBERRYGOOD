@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: agronomie | Déclaration(s): ProductivityTreatmentDetail */
+/* Module: agronomie | Déclaration(s): ProductivityTreatmentDetail */
 import { ProductivityHistogramSvg } from './ProductivityHistogramSvg.jsx';
 import { ProductivityTrendSvg } from './ProductivityTrendSvg.jsx';
 

@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: magasin | Déclaration(s): MagInventaireTab */
+/* Module: magasin | Déclaration(s): MagInventaireTab */
 import { useState } from '../shared/reactHooks.jsx';
 import { InventairePrixView } from './InventairePrixView.jsx';
 import { InventaireStockView } from './InventaireStockView.jsx';

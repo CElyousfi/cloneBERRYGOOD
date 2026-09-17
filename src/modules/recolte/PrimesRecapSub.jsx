@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: recolte | Déclaration(s): PrimesRecapSub */
+/* Module: recolte | Déclaration(s): PrimesRecapSub */
 import { Panel } from '../shared/Panel.jsx';
 import { cachedFetch } from '../shared/cachedFetch.jsx';
 import { invalidateCache } from '../shared/invalidateCache.jsx';

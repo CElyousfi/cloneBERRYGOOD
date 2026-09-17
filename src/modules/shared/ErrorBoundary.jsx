@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): ErrorBoundary */
+/* Module: shared | Déclaration(s): ErrorBoundary */
 
 
 // Error boundary pour capturer les erreurs React

@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: caisse | Déclaration(s): CanevaUploadCard */
+/* Module: caisse | Déclaration(s): CanevaUploadCard */
 import { callCanevaStock } from '../shared/callCanevaStock.jsx';
 import { useState } from '../shared/reactHooks.jsx';
 import { CaisseDropzone } from './CaisseDropzone.jsx';

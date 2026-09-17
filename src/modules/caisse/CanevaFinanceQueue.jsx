@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: caisse | Déclaration(s): CanevaFinanceQueue */
+/* Module: caisse | Déclaration(s): CanevaFinanceQueue */
 import { callCanevaStock } from '../shared/callCanevaStock.jsx';
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 import { CanevaSummaryView } from './CanevaSummaryView.jsx';

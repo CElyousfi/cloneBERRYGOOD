@@ -1,7 +1,7 @@
 /* Référentiel parcelles Smart Berry — état partagé entre écrans.
  *
- * Anciennement deux globales du navigateur (window.SB_PARCELLE_REF,
- * window.SB_PARCELLE_CAMPAGNE). Même cycle de vie : `undefined` tant que rien
+ * Anciennement deux globales du navigateur (SB_PARCELLE_REF et
+ * SB_PARCELLE_CAMPAGNE sur window). Même cycle de vie : `undefined` tant que rien
  * n'a chargé, rempli par sbLoad() au démarrage, réécrit après chaque
  * sauvegarde (Parcelles & Référentiel, Campagne, Bons de consommation).
  *

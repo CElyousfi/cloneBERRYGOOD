@@ -1,4 +1,4 @@
-/* Barrel caisse — 40 fichiers */
+/* Barrel caisse — 44 fichiers */
 export * from './CAISSE_COLORS.jsx';
 export * from './CAISSE_EDIT_CONSTS.jsx';
 export * from './CAISSE_EXCEL_FORMATS.jsx';
@@ -39,3 +39,7 @@ export * from './isModeComptant.jsx';
 export * from './isModeEspeces.jsx';
 export * from './isModeFacilite.jsx';
 export * from './isModeVirement.jsx';
+export * from './CaisseDetailPopup.jsx';
+export * from './CaisseParametresSub.jsx';
+export * from './CaisseRevueValidation.jsx';
+export * from './CaisseSaisieSub.jsx';

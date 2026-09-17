@@ -23,7 +23,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const babel = require('@babel/core');
-const { loadEsm } = require('./_esm');
+const { loadEsm, loadComponent } = require('./_esm');
 
 const ROOT = path.join(__dirname, '../..');
 
@@ -77,12 +77,8 @@ function loadTab(withRules) {
   sandbox.window.CultureUtils = loadEsm('src/modules/shared/lib/cultureUtils.js', { sandbox: sandbox });
   sandbox.window.AnalytiqueUtils = loadEsm('src/modules/shared/lib/analytiqueUtils.js', { sandbox: sandbox });
   sandbox.window.CampagneExportUtils = loadEsm('src/modules/shared/lib/campagneExportUtils.js', { sandbox: sandbox });
-  if (withRules !== false) {
-    vm.runInContext(transform('public/components/CampagneBudgetTab.jsx'), sandbox);
-  }
-  vm.runInContext(transform('public/components/PivotAnalytiqueGrid.jsx'), sandbox);
-  vm.runInContext(read('public/components/CampagneAnalytiqueTab.jsx'), sandbox);
-  return sandbox.window.CampagneAnalytiqueTab;
+  if (withRules === false) sandbox.window.CampagneBudgetTab = undefined;
+  return loadComponent('src/modules/finance/CampagneAnalytiqueTab.jsx', sandbox).CampagneAnalytiqueTab;
 }
 
 const Tab = loadTab();

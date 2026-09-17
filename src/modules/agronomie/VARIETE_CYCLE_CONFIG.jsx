@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: agronomie | Déclaration(s): VARIETE_CYCLE_CONFIG */
+/* Module: agronomie | Déclaration(s): VARIETE_CYCLE_CONFIG */
 
 
 // Configuration cycle par variété (framboises principalement).

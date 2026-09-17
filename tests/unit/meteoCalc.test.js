@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Unit tests for public/lib/meteoCalc.js
+ * Unit tests for src/modules/shared/lib/meteoCalc.js
  * Run with: npm run test:unit
  */
 

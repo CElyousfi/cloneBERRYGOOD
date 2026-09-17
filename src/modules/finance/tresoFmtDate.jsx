@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: finance | Déclaration(s): tresoFmtDate */
+/* Module: finance | Déclaration(s): tresoFmtDate */
 
 
 function tresoFmtDate(d) {

@@ -5,7 +5,7 @@
  * (functions/lib/mappingConso/campagneUtils.js).
  *
  * Cette copie existe car le package déployé des Cloud Functions n'embarque QUE
- * functions/ ; le backend ne doit JAMAIS require('../public/lib/...') (throw
+ * functions/ ; le backend ne doit JAMAIS require('../src/…') (throw
  * "Cannot find module .../public/..." au runtime — hotfix fix/campagne-backend-require).
  *
  * On garantit ici : (1) campagneCourante existe côté backend, (2) la copie

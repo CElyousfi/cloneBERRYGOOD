@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: agronomie | Déclaration(s): computeNutrients */
+/* Module: agronomie | Déclaration(s): computeNutrients */
 
 
 function computeNutrients(dayData, products) {

@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: agronomie | Déclaration(s): AgroParcellesTab */
+/* Module: agronomie | Déclaration(s): AgroParcellesTab */
 import { useState } from '../shared/reactHooks.jsx';
 import { displayCulture } from './displayCulture.jsx';
 

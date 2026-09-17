@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: caisse | Déclaration(s): CaisseRapprochementSub */
+/* Module: caisse | Déclaration(s): CaisseRapprochementSub */
 import { formatMAD } from '../finance/formatMAD.jsx';
 import { MOIS_FR } from '../shared/MOIS_FR.jsx';
 import { STATUS_LABELS } from '../shared/STATUS_LABELS.jsx';

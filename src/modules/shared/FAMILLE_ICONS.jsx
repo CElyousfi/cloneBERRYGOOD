@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): FAMILLE_ICONS */
+/* Module: shared | Déclaration(s): FAMILLE_ICONS */
 
 
 // ===================== HORS RECOLTE TAB =====================

@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: admin | Déclaration(s): TUTORIAL_REGISTRY */
+/* Module: admin | Déclaration(s): TUTORIAL_REGISTRY */
 
 
 // ===================== TUTORIAL REGISTRY =====================

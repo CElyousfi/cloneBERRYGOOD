@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): callCanevaStock */
+/* Module: shared | Déclaration(s): callCanevaStock */
 
 
 // ===== Import canevas Stock (Achats → validation Finance) =====

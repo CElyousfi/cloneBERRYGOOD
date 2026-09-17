@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: rh | Déclaration(s): __PaieDataCache */
+/* Module: rh | Déclaration(s): __PaieDataCache */
 
 
 // Cache module-level (TTL 5 min) des lectures Firestore lourdes du tab Paie.

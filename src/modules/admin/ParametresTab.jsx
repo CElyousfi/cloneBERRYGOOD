@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: admin | Déclaration(s): ParametresTab */
+/* Module: admin | Déclaration(s): ParametresTab */
 import { Panel } from '../shared/Panel.jsx';
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 import { BaremesPaiePanel } from './BaremesPaiePanel.jsx';

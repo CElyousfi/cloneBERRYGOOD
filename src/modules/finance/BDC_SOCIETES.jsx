@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: finance | Déclaration(s): BDC_SOCIETES */
+/* Module: finance | Déclaration(s): BDC_SOCIETES */
 
 
 const BDC_SOCIETES = {

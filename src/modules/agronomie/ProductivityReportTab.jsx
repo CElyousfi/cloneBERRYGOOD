@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: agronomie | Déclaration(s): ProductivityReportTab */
+/* Module: agronomie | Déclaration(s): ProductivityReportTab */
 import { ProductivityBoxplotMultiSvg } from './ProductivityBoxplotMultiSvg.jsx';
 import { ProductivityFarmSummaryBanner } from './ProductivityFarmSummaryBanner.jsx';
 import { ProductivityTreatmentDetail } from './ProductivityTreatmentDetail.jsx';

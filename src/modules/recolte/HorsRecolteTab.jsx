@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: recolte | Déclaration(s): HorsRecolteTab */
+/* Module: recolte | Déclaration(s): HorsRecolteTab */
 import { FAMILLE_ICONS } from '../shared/FAMILLE_ICONS.jsx';
 import { KPICard } from '../shared/KPICard.jsx';
 import { Panel } from '../shared/Panel.jsx';

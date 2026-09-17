@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: finance | Déclaration(s): BDC_SOCIETE_DEFAULT */
+/* Module: finance | Déclaration(s): BDC_SOCIETE_DEFAULT */
 
 
 // Sociétés émettrices des Bons de Commande, indexées par ferme.

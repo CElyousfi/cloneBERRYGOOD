@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: finance | Déclaration(s): BUDGET_BGF_DEFAULT */
+/* Module: finance | Déclaration(s): BUDGET_BGF_DEFAULT */
 
 
 // ===== BUDGET BGF — Objectifs par variété (chargés depuis localStorage ou fallback hardcodé) =====

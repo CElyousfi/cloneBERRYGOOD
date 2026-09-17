@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): getVisibleProfiles */
+/* Module: shared | Déclaration(s): getVisibleProfiles */
 import { PROFILES } from './PROFILES.jsx';
 
 // Profils accessibles dans le sélecteur de profil, selon le profil RÉEL de l'utilisateur.

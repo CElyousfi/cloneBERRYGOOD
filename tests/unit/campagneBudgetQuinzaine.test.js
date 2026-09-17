@@ -3,11 +3,11 @@
 // BUDGET DE LA QUINZAINE EN COURS (LOT 3b) — logique pure + rendu.
 //
 // Couvre :
-//  1. public/lib/campagneBudgetQuinzaine.js (clés, options, report, décoration,
+//  1. src/modules/shared/lib/campagneBudgetQuinzaine.js (clés, options, report, décoration,
 //     ratio de consommation) ;
 //  2. la NON-DIVERGENCE des trois miroirs imposés par « le backend ne peut pas
 //     requérir public/ » : quinzaineKey (front/back) et resolveCulture
-//     (public/lib/cultureUtils.js vs functions/lib/campagneBudget/culture.js) ;
+//     (src/modules/shared/lib/cultureUtils.js vs functions/lib/campagneBudget/culture.js) ;
 //  3. la série RATIO de PivotAnalytiqueGrid : un pourcentage ne doit JAMAIS être
 //     sommé dans les totaux ;
 //  4. la saisie (CampagneBudgetTab) : payload, gating avocatier, report en un
@@ -22,7 +22,7 @@ const babel = require('@babel/core');
 
 const ROOT = path.join(__dirname, '../..');
 
-const { loadEsm } = require('./_esm');
+const { loadEsm, loadComponent } = require('./_esm');
 const CBQ = loadEsm('src/modules/shared/lib/campagneBudgetQuinzaine.js');
 const backendBudget = require('../../functions/lib/campagneBudget/validate');
 const backendCulture = require('../../functions/lib/campagneBudget/culture');
@@ -270,8 +270,7 @@ function loadGrid() {
     },
   };
   vm.createContext(sandbox);
-  vm.runInContext(transform('public/components/PivotAnalytiqueGrid.jsx'), sandbox);
-  return sandbox.window.PivotAnalytiqueGrid;
+  return loadComponent('src/modules/finance/PivotAnalytiqueGrid.jsx', sandbox).PivotAnalytiqueGrid;
 }
 
 const Grid = loadGrid();
@@ -384,8 +383,7 @@ const CBT = (function () {
   };
   vm.createContext(sandbox);
   sandbox.window.CultureUtils = loadEsm('src/modules/shared/lib/cultureUtils.js', { sandbox: sandbox });
-  vm.runInContext(transform('public/components/CampagneBudgetTab.jsx'), sandbox);
-  return sandbox.window.CampagneBudgetTab;
+  return loadComponent('src/modules/finance/CampagneBudgetTab.jsx', sandbox).CampagneBudgetTab;
 })();
 
 test('saisie — quinzaineApplicable : framboise et myrtille oui, avocatier et inconnu non', () => {
@@ -508,10 +506,7 @@ function loadPivotTab() {
   sandbox.window.CampagneBudgetPivot = loadEsm('src/modules/shared/lib/campagneBudgetPivot.js', { sandbox: sandbox });
   sandbox.window.CampagneRythme = loadEsm('src/modules/shared/lib/campagneRythme.js', { sandbox: sandbox });
   sandbox.window.CampagneBudgetQuinzaine = loadEsm('src/modules/shared/lib/campagneBudgetQuinzaine.js', { sandbox: sandbox });
-  vm.runInContext(transform('public/components/CampagneBudgetTab.jsx'), sandbox);
-  vm.runInContext(transform('public/components/PivotAnalytiqueGrid.jsx'), sandbox);
-  vm.runInContext(read('public/components/CampagneAnalytiqueTab.jsx'), sandbox);
-  return sandbox.window.CampagneAnalytiqueTab;
+  return loadComponent('src/modules/finance/CampagneAnalytiqueTab.jsx', sandbox).CampagneAnalytiqueTab;
 }
 
 const PivotTab = loadPivotTab();

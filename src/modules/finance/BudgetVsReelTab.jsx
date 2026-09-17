@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: finance | Déclaration(s): BudgetVsReelTab */
+/* Module: finance | Déclaration(s): BudgetVsReelTab */
 import { computeMomentum } from '../agronomie/computeMomentum.jsx';
 import { PROFILES } from '../shared/PROFILES.jsx';
 import { SimpleAreaChart } from '../shared/SimpleAreaChart.jsx';

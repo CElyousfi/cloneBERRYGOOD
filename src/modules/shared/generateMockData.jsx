@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): generateMockData */
+/* Module: shared | Déclaration(s): generateMockData */
 import { parcelleConfig } from '../agronomie/parcelleConfig.jsx';
 import { meteoFermes } from '../technique/meteoFermes.jsx';
 import { FARMS } from './FARMS.jsx';

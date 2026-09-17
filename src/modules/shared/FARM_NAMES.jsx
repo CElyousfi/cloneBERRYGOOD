@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): FARM_NAMES */
+/* Module: shared | Déclaration(s): FARM_NAMES */
 
 
 const FARM_NAMES = {

@@ -39,14 +39,7 @@ function routesDeclarees() {
 
 /** Fichiers SOURCE du front : tout src/modules (jamais le bundle, qui les dupliquerait). */
 function fichiersFront() {
-  const out = require('./_sources').listModuleFiles().slice();
-  // Couche legacy (public/components, public/lib), tant qu'elle existe.
-  [['public/components', '.jsx'], ['public/lib', '.js']].forEach(([dir, ext]) => {
-    const abs = path.join(RACINE, dir);
-    if (!fs.existsSync(abs)) return;
-    fs.readdirSync(abs).forEach((f) => { if (f.endsWith(ext)) out.push(path.join(abs, f)); });
-  });
-  return out.filter((f) => fs.existsSync(f));
+  return require('./_sources').listModuleFiles().slice();
 }
 
 test('toute route /api/ appelée par le front est déclarée dans firebase.json', () => {

@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: admin | Déclaration(s): DGParametresTab */
+/* Module: admin | Déclaration(s): DGParametresTab */
 import { PROFILES } from '../shared/PROFILES.jsx';
 import { useState } from '../shared/reactHooks.jsx';
 

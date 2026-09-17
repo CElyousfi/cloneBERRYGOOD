@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: securite | Déclaration(s): SecurityScanRegistreTab */
+/* Module: securite | Déclaration(s): SecurityScanRegistreTab */
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 import { useGeolocation } from '../technique/useGeolocation.jsx';
 

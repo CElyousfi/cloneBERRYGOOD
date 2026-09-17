@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): _meteoblueCache */
+/* Module: shared | Déclaration(s): _meteoblueCache */
 
 
 const _meteoblueCache = {};

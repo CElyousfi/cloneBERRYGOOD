@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): loadCachedProfile */
+/* Module: shared | Déclaration(s): loadCachedProfile */
 import { CACHED_PROFILE_KEY } from './CACHED_PROFILE_KEY.jsx';
 
 function loadCachedProfile() {

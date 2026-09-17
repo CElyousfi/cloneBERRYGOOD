@@ -1,4 +1,4 @@
-/* Barrel shared — 73 fichiers */
+/* Barrel shared — 75 fichiers */
 export * from './APP_VERSION.jsx';
 export * from './AVO_SUB_FARMS.jsx';
 export * from './App.jsx';
@@ -72,3 +72,5 @@ export * from './remapLegacyTab.jsx';
 export * from './saveCachedProfile.jsx';
 export * from './sbLoad.jsx';
 export * from './useToast.jsx';
+export * from './BugReportButton.jsx';
+export * from './QuinzaineCampagneSelect.jsx';

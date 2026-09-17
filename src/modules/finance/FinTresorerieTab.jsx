@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: finance | Déclaration(s): FinTresorerieTab */
+/* Module: finance | Déclaration(s): FinTresorerieTab */
 import { getSatFriWeek } from '../shared/getSatFriWeek.jsx';
 import { useEffect, useMemo, useState } from '../shared/reactHooks.jsx';
 import { tresoFmtDate } from './tresoFmtDate.jsx';

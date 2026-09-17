@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): ReconnectingBanner */
+/* Module: shared | Déclaration(s): ReconnectingBanner */
 
 
 // CORRECTIF (a) — bannière non bloquante affichée quand `me` échoue

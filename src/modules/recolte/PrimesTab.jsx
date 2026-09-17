@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: recolte | Déclaration(s): PrimesTab */
+/* Module: recolte | Déclaration(s): PrimesTab */
 import { DiversQuinzaineSub } from '../rh/DiversQuinzaineSub.jsx';
 import { HeuresSupSub } from '../rh/HeuresSupSub.jsx';
 import { JourFerieSub } from '../rh/JourFerieSub.jsx';

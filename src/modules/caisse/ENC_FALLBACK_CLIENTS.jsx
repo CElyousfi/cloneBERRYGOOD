@@ -1,10 +1,9 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: caisse | Déclaration(s): ENC_FALLBACK_CLIENTS */
+/* Module: caisse | Déclaration(s): ENC_FALLBACK_CLIENTS */
 
 
 // ---- Import Encaissements (canevas marché local) — DRY-RUN (sous-lot 4.2) ----
         // UI fine uniquement : toute la logique métier (parse, contrôles, modèle)
-        // vit dans EncaissementsCanevas (public/lib/encaissementsCanevas.js).
+        // vit dans EncaissementsCanevas (shared/lib/encaissementsCanevas.js).
         // GARDE-FOU : AUCUN write Firestore, AUCUN bouton « Appliquer ». Le chemin
         // d'écriture est le sous-lot 4.3.
 import * as EncaissementsCanevas from '../shared/lib/encaissementsCanevas.js';

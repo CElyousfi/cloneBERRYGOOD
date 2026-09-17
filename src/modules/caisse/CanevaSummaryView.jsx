@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: caisse | Déclaration(s): CanevaSummaryView */
+/* Module: caisse | Déclaration(s): CanevaSummaryView */
 
 
 // Résumé d'un dry-run canevas : compteurs, jours nouveaux/modifiés, écarts, warnings.

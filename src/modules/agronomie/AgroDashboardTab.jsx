@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: agronomie | Déclaration(s): AgroDashboardTab */
+/* Module: agronomie | Déclaration(s): AgroDashboardTab */
 
 
 // ===================== AGRONOMIE TABS (DONNÉES RÉELLES — Make.com / BR_Consommation) =====================

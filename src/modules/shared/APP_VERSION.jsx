@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): APP_VERSION */
+/* Module: shared | Déclaration(s): APP_VERSION */
 
 
 // Version de l'app. CORRECTIF (b) "soft checkVersion" :
@@ -8,7 +7,7 @@
         // fausses "déconnexions"). À la place on signale une nouvelle version via un
         // CustomEvent que <NewVersionToast> écoute → reload UNIQUEMENT sur clic
         // utilisateur. La comparaison de version est la fonction pure testable
-        // AuthResilience.isNewAppVersion (public/lib/authResilience.js).
+        // AuthResilience.isNewAppVersion (shared/lib/authResilience.js).
         const APP_VERSION = '20260415b';
 
 export { APP_VERSION };

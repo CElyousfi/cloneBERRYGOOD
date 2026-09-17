@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: agronomie | Déclaration(s): AgroGrowthTab */
+/* Module: agronomie | Déclaration(s): AgroGrowthTab */
 import { SimpleAreaChart } from '../shared/SimpleAreaChart.jsx';
 import { useEffect, useMemo, useState } from '../shared/reactHooks.jsx';
 import { PARCELLES_CULTURALES } from './PARCELLES_CULTURALES.jsx';

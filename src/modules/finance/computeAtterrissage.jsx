@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: finance | Déclaration(s): computeAtterrissage */
+/* Module: finance | Déclaration(s): computeAtterrissage */
 
 
 function computeAtterrissage(reelByWeek, budgetWeekly, momentum, currentWeek) {

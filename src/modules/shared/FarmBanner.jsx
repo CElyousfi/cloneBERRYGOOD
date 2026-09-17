@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): FarmBanner */
+/* Module: shared | Déclaration(s): FarmBanner */
 import { FARM_NAMES } from './FARM_NAMES.jsx';
 import { generateMockData } from './generateMockData.jsx';
 

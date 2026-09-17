@@ -22,6 +22,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { loadComponent } = require('./_esm');
 
 const ROOT = path.join(__dirname, '../..');
 
@@ -33,13 +34,8 @@ const backend = require(path.join(ROOT, 'functions/lib/campagneBudget/validate.j
 const front = (function () {
   const sandbox = { window: { React: { createElement: function () {} } }, console };
   vm.createContext(sandbox);
-  const file = path.join(ROOT, 'public/components/CampagneBudgetTab.jsx');
-  const code = require('@babel/core').transformSync(fs.readFileSync(file, 'utf8'), {
-    presets: [require.resolve('@babel/preset-react')],
-    filename: file, babelrc: false, configFile: false,
-  }).code;
-  vm.runInContext(code, sandbox);
-  return sandbox.window.CampagneBudgetTab;
+
+  return loadComponent('src/modules/finance/CampagneBudgetTab.jsx', sandbox).CampagneBudgetTab;
 })();
 
 const REGLES = {

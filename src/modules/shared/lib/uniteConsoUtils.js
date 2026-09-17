@@ -52,7 +52,7 @@
  * traiter se voit, au lieu d'être absorbé en silence.
  *
  * ⚠️ COPIE STRICTE dans functions/lib/uniteConso/conversionUnite.js.
- * Duplication VOLONTAIRE : le backend ne doit JAMAIS require('../public/…')
+ * Duplication VOLONTAIRE : le backend ne doit JAMAIS require('../src/…')
  * (Firebase ne déploie que functions/ → Cannot find module au chargement de
  * TOUTES les Cloud Functions). L'égalité de comportement entre les deux copies
  * est verrouillée par tests/unit/uniteConsoUtils.test.js.

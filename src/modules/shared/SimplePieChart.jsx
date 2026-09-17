@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): SimplePieChart */
+/* Module: shared | Déclaration(s): SimplePieChart */
 
 
 function SimplePieChart({ data, colors, size = 200 }) {

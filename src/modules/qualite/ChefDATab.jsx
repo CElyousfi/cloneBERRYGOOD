@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: qualite | Déclaration(s): ChefDATab */
+/* Module: qualite | Déclaration(s): ChefDATab */
 import { PROFILES } from '../shared/PROFILES.jsx';
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 

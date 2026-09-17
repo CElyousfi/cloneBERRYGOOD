@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: agronomie | Déclaration(s): AgroPhytoTab */
+/* Module: agronomie | Déclaration(s): AgroPhytoTab */
 import { displayCulture } from './displayCulture.jsx';
 
 function AgroPhytoTab({ data, getAlias, getFerme, farmFilter }) {

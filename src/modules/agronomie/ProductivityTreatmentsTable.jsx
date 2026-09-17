@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: agronomie | Déclaration(s): ProductivityTreatmentsTable */
+/* Module: agronomie | Déclaration(s): ProductivityTreatmentsTable */
 
 
 function ProductivityTreatmentsTable({ treatments, myFarm, onSelectTreatment, selectedTitle }) {

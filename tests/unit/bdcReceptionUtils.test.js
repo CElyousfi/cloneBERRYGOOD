@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Unit tests for public/lib/bdcReceptionUtils.js — computeDeliveryData().
+ * Unit tests for src/modules/shared/lib/bdcReceptionUtils.js — computeDeliveryData().
  * Run with: npm run test:unit
  *
  * Extrait de AchatsBDCTab.getDeliveryData (public/app.jsx) pour être réutilisé

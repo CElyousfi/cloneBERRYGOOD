@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): invalidateCache */
+/* Module: shared | Déclaration(s): invalidateCache */
 import { _apiCache } from './_apiCache.jsx';
 
 function invalidateCache(urlPattern) {

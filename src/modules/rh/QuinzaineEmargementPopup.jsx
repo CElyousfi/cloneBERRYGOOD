@@ -79,7 +79,7 @@ function QuinzaineEmargementPopup({ coutMap, cultureFilter, currentPeriode, emar
         });
 
     const _hasPdf = !!(EmargementPdf);
-    const _hasXlsx = !!(EmargementExcel && window.XLSX);
+    const _hasXlsx = !!(EmargementExcel && typeof XLSX !== 'undefined' && XLSX);
 
     const _rowStyle = function (color) {
         return { width: '100%', padding: '10px 16px', borderRadius: 8, background: color, color: '#fff', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 };

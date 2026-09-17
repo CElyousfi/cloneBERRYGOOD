@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: technique | Déclaration(s): parsePictocode */
+/* Module: technique | Déclaration(s): parsePictocode */
 
 
 function parsePictocode(code) {

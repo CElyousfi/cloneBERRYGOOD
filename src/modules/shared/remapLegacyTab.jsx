@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): remapLegacyTab */
+/* Module: shared | Déclaration(s): remapLegacyTab */
 
 
 // Remap centralisé des tabs legacy retirés du menu (sous-lot 4.4).

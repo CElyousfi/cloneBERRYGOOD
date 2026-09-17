@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): NAV_ITEMS_FINANCE */
+/* Module: shared | Déclaration(s): NAV_ITEMS_FINANCE */
 
 
 const NAV_ITEMS_FINANCE = [

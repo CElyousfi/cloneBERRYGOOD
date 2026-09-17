@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: rh | Déclaration(s): WorkerDetailProvider */
+/* Module: rh | Déclaration(s): WorkerDetailProvider */
 import { useState } from '../shared/reactHooks.jsx';
 import { WorkerDetailContext } from './WorkerDetailContext.jsx';
 import { WorkerDetailModal } from './WorkerDetailModal.jsx';

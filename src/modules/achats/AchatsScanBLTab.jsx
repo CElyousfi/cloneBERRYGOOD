@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: achats | Déclaration(s): AchatsScanBLTab */
+/* Module: achats | Déclaration(s): AchatsScanBLTab */
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 
 // ===================== ACHATS: SCAN BL TAB =====================

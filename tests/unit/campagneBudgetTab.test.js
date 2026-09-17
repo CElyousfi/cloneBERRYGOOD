@@ -1,6 +1,6 @@
 'use strict';
 
-// Charge le composant IIFE (public/components/CampagneBudgetTab.jsx) dans un
+// Charge le composant (src/modules/finance/CampagneBudgetTab.jsx) dans un
 // faux `window` (React stubé) — même technique que
 // tests/unit/parcellesGroupesPanel.test.js : pas de DOM, pas de RTL (limitation
 // documentée du repo), mais React.createElement renvoie un arbre inspectable.
@@ -14,16 +14,13 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { loadComponent } = require('./_esm');
 
 // Miroir backend de la règle de total de famille — importé pour vérifier que
 // les deux implémentations ne divergent PAS (le backend ne peut pas requérir
-// public/, la duplication est imposée ; c'est donc au test de la surveiller).
+// src/, la duplication est imposée ; c'est donc au test de la surveiller).
 const backendBudget = require('../../functions/lib/campagneBudget/validate');
 
-const SRC = fs.readFileSync(
-  path.join(__dirname, '../../public/components/CampagneBudgetTab.jsx'),
-  'utf8'
-);
 
 /**
  * Ramène une valeur produite DANS le sandbox vm vers le realm des tests.
@@ -89,9 +86,7 @@ function load(stateOverrides, spy, extraWindow) {
     },
     useMemo: function (fn) { return fn(); },
   };
-  vm.createContext(sandbox);
-  vm.runInContext(SRC, sandbox);
-  return sandbox.window.CampagneBudgetTab;
+  return loadComponent('src/modules/finance/CampagneBudgetTab.jsx', sandbox).CampagneBudgetTab;
 }
 
 /** Index des useState de CampagneBudgetTab, dans l'ordre des appels. */
@@ -737,14 +732,6 @@ test('parcelleAffichable — culture INCONNUE reste visible (liste d\'exclusion,
     true
   );
   assert.deepStrictEqual(plain(CBT_CU.CULTURES_MASQUEES), ['Avocatier']);
-});
-
-test('parcelleAffichable — sans CultureUtils chargé, rien n\'est masqué', () => {
-  // Le module est un <script> séparé : un 404 ne doit pas faire disparaître des
-  // parcelles de l'écran de saisie.
-  assert.strictEqual(CBT.cultureRow({ label: 'F2 ZUTANO' }, {}), '');
-  assert.strictEqual(CBT.parcelleAffichable({ label: 'F2 ZUTANO' }, {}), true);
-  assert.strictEqual(CBT.parcelleAffichable(null, null), true);
 });
 
 // ------------------------------------------------------------------- portée

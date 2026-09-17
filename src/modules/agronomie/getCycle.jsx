@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: agronomie | Déclaration(s): getCycle */
+/* Module: agronomie | Déclaration(s): getCycle */
 
 
 // Détecte le cycle à partir d'une date

@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: achats | Déclaration(s): AchatsScanFacturesTab */
+/* Module: achats | Déclaration(s): AchatsScanFacturesTab */
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 
 import * as ScanHistoryDisplay from '../shared/lib/scanHistoryDisplay.js';

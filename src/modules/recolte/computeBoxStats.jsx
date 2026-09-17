@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: recolte | Déclaration(s): computeBoxStats */
+/* Module: recolte | Déclaration(s): computeBoxStats */
 
 
 function computeBoxStats(values) {

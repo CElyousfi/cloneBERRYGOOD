@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: technique | Déclaration(s): MeteoPrevisionExterieure */
+/* Module: technique | Déclaration(s): MeteoPrevisionExterieure */
 import { Panel } from '../shared/Panel.jsx';
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 import { fetchOpenMeteoHourly } from './fetchOpenMeteoHourly.jsx';

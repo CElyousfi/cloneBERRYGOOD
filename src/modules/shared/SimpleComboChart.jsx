@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): SimpleComboChart */
+/* Module: shared | Déclaration(s): SimpleComboChart */
 
 
 function SimpleComboChart({ data, xKey, lineKey, barKey, lineColor, barColor, height = 200, lineMode = 'continuous' }) {

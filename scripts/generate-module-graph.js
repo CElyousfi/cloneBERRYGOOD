@@ -78,26 +78,6 @@ function classifyByKeywords(name, domains) {
 }
 
 /**
- * Parse window\.([A-Z][a-zA-Z0-9]+)\s*= dans une chaîne source.
- * Retourne un tableau de noms uniques, dans l'ordre d'apparition.
- * @param {string} source
- * @returns {string[]}
- */
-function parseWindowExports(source) {
-  const pattern = /window\.([A-Z][a-zA-Z0-9]+)\s*=/g;
-  const seen = new Set();
-  const results = [];
-  let match;
-  while ((match = pattern.exec(source)) !== null) {
-    if (!seen.has(match[1])) {
-      seen.add(match[1]);
-      results.push(match[1]);
-    }
-  }
-  return results;
-}
-
-/**
  * Parse ^exports\.([a-zA-Z][a-zA-Z0-9_]*)\s*= (multiline) dans une chaîne.
  * Retourne un tableau de noms uniques, dans l'ordre d'apparition.
  * @param {string} source
@@ -334,23 +314,6 @@ function collectFingerprintSources(root) {
     if (content !== null) sources.push({ path: rel, content });
   }
 
-  // public/lib/*.js et public/components/*.jsx : couche legacy, tant qu'elle existe
-  const libDir = path.join(root, 'public/lib');
-  if (fs.existsSync(libDir)) {
-    const libFiles = fs.readdirSync(libDir).filter(f => f.endsWith('.js')).sort();
-    for (const f of libFiles) {
-      const content = readFileSafe(path.join(libDir, f));
-      if (content !== null) sources.push({ path: `public/lib/${f}`, content });
-    }
-  }
-  const compDir = path.join(root, 'public/components');
-  if (fs.existsSync(compDir)) {
-    const compFiles = fs.readdirSync(compDir).filter(f => f.endsWith('.jsx')).sort();
-    for (const f of compFiles) {
-      const content = readFileSafe(path.join(compDir, f));
-      if (content !== null) sources.push({ path: `public/components/${f}`, content });
-    }
-  }
 
   // functions/lib/ : liste des entrées seulement (pas le contenu)
   // git ls-files pour exclure .DS_Store et autres artefacts filesystem non-trackés
@@ -408,26 +371,18 @@ async function generateGraph(root, outPath) {
   // 2. Collecter les sources pour le fingerprint
   const fingerprintSources = collectFingerprintSources(root);
 
-  // 3. Scanner les helpers : src/modules/shared/lib/*.js (+ public/lib/*.js legacy tant qu'il existe)
-  const libDir = path.join(root, 'public/lib');
-  const libFiles = walkFiles(root, 'src/modules/shared/lib', f => f.endsWith('.js')).concat(
-    fs.existsSync(libDir)
-      ? fs.readdirSync(libDir).filter(f => f.endsWith('.js')).sort().map(f => `public/lib/${f}`)
-      : []
-  );
+  // 3. Scanner les helpers partagés : src/modules/shared/lib/*.js
+  const libFiles = walkFiles(root, 'src/modules/shared/lib', f => f.endsWith('.js'));
 
-  /** @type {Array<{ file: string, windowExport: string|null, domain: string|null, confidence: string, hasTests: boolean, testFile: string|null }>} */
+  /** @type {Array<{ file: string, domain: string|null, confidence: string, hasTests: boolean, testFile: string|null }>} */
   const libs = [];
   for (const relPath of libFiles) {
     const f = path.basename(relPath);
-    const content = readFileSafe(path.join(root, relPath)) || '';
-    const windowExports = parseWindowExports(content);
     const classified = classifyByKeywords(f.replace('.js', ''), domains);
     const testFile = `tests/unit/${f.replace('.js', '.test.js')}`;
     const hasTests = fs.existsSync(path.join(root, testFile));
     libs.push({
       file: relPath,
-      windowExport: windowExports.length > 0 ? windowExports[0] : null,
       domain: classified.domain,
       confidence: classified.confidence,
       hasTests,
@@ -435,26 +390,19 @@ async function generateGraph(root, outPath) {
     });
   }
 
-  // 4. Scanner public/components/*.jsx (seulement .jsx)
-  const compDir = path.join(root, 'public/components');
-  const compFiles = fs.existsSync(compDir)
-    ? fs.readdirSync(compDir).filter(f => f.endsWith('.jsx')).sort()
-    : [];
+  // 4. Scanner les composants : src/modules/**/*.jsx (hors barrels et bootstrap)
+  const compFiles = walkFiles(root, 'src/modules', f => f.endsWith('.jsx') && f !== 'bootstrap.jsx');
 
-  /** @type {Array<{ file: string, componentName: string, windowExport: string|null, domain: string|null, confidence: string, hasTests: boolean, testFile: string|null }>} */
+  /** @type {Array<{ file: string, componentName: string, domain: string|null, confidence: string, hasTests: boolean, testFile: string|null }>} */
   const components = [];
-  for (const f of compFiles) {
-    const relPath = `public/components/${f}`;
-    const content = readFileSafe(path.join(root, relPath)) || '';
-    const windowExports = parseWindowExports(content);
-    const baseName = f.replace('.jsx', '');
+  for (const relPath of compFiles) {
+    const baseName = path.basename(relPath, '.jsx');
     const classified = classifyByKeywords(baseName, domains);
-    const testFile = `tests/unit/${baseName}.test.js`;
+    const testFile = `tests/unit/${baseName[0].toLowerCase() + baseName.slice(1)}.test.js`;
     const hasTests = fs.existsSync(path.join(root, testFile));
     components.push({
       file: relPath,
       componentName: baseName,
-      windowExport: windowExports.length > 0 ? windowExports[0] : null,
       domain: classified.domain,
       confidence: classified.confidence,
       hasTests,
@@ -865,7 +813,6 @@ if (require.main === module) {
 module.exports = {
   normalizeForClassify,
   classifyByKeywords,
-  parseWindowExports,
   parseCFExports,
   parseFirebaseRewrites,
   parseFirestoreCollections,

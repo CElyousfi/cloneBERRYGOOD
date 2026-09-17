@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: technique | Déclaration(s): GDDTrackingTab */
+/* Module: technique | Déclaration(s): GDDTrackingTab */
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 
 // ===================== GDD TRACKING WIDGET =====================

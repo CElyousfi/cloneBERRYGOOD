@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): DashboardAssocieTab */
+/* Module: shared | Déclaration(s): DashboardAssocieTab */
 import { QualiteLiquidationsTab } from '../qualite/QualiteLiquidationsTab.jsx';
 import { QualiteProductionTab } from '../qualite/QualiteProductionTab.jsx';
 

@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: finance | Déclaration(s): buildLiquidationsView */
+/* Module: finance | Déclaration(s): buildLiquidationsView */
 
 
 // ===================== FIN LIQUIDATIONS TAB =====================
@@ -19,7 +18,7 @@
                 .filter(d => d.rows && d.rows.length > 0 && d.week != null)
                 .map(d => {
                     // Dedup rows by receiptId — a same receipt can appear on multiple rows (grade splits)
-                    // Matches QualiteLiquidationsTab logic at app.jsx:15647 for consistent totals.
+                    // Matches QualiteLiquidationsTab logic for consistent totals.
                     const byRid = {};
                     (d.rows || []).forEach(r => {
                         const rid = r.receiptId || ('row_' + Math.random());

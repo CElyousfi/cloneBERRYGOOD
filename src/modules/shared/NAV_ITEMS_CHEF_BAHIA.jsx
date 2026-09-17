@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: shared | Déclaration(s): NAV_ITEMS_CHEF_BAHIA */
+/* Module: shared | Déclaration(s): NAV_ITEMS_CHEF_BAHIA */
 
 
 // Chef de ferme BAHIA — accès restreint : DA + suivi, météo, pointage & quinzaine BAHIA (consultation).

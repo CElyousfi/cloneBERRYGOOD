@@ -1,5 +1,4 @@
-/* Migré depuis public/app.jsx — extraction verbatim (non-régression).
-   Module: achats | Déclaration(s): AchatsVentePlastiqueTab */
+/* Module: achats | Déclaration(s): AchatsVentePlastiqueTab */
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 
 // ===================== ACHATS: VENTE PLASTIQUE TAB =====================

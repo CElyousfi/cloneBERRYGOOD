@@ -7,7 +7,7 @@
  *   - the "Paie" tab (PaieTab) — periodic cost computation
  *   - the "Pointage du jour" worker popup — per-day estimated breakdown
  *
- * Phase 1 (2026-06) — initial creation. Extracted (single source) from app.jsx:
+ * Phase 1 (2026-06) — initial creation. Extracted (single source) from the monolith:
  *   trouverPalierAnciennete / calculerPaieOuvrier / PAIE_BAREMES_DEFAULT,
  *   plus new resolveSmagForDate (dated SMAG) and computeWorkerPaie (full breakdown
  *   with prime de fonction + prime transport).
