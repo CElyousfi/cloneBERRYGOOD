@@ -13,7 +13,7 @@ admin.initializeApp({
 
 const db = admin.firestore();
 
-const { parseLiquidationXlsx } = require("./src/modules/finance/emailService");
+const { parseLiquidationXlsx } = require("../../functions/src/modules/finance/emailService");
 
 async function main() {
   const xlsPath = process.argv[2] || path.join(__dirname, "..", "RECEIPT BLUE.xls");

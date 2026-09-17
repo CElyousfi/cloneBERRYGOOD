@@ -5,7 +5,7 @@
 // Dry-run by default. Pass --apply to actually delete.
 // Usage: node functions/cleanup-duplicate-liquidations.js [--apply]
 
-require("dotenv").config({ path: require("path").join(__dirname, ".env") });
+require("dotenv").config({ path: require("path").join(__dirname, "../../functions/.env") });
 const admin = require("firebase-admin");
 
 admin.initializeApp({

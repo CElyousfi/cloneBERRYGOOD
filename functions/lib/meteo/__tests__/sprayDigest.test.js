@@ -989,7 +989,7 @@ test('template Meta : meteo_spray_digest_img déclaré en IMAGE, corps identique
   const fs = require('fs');
   const path = require('path');
   const src = fs.readFileSync(
-    path.join(__dirname, '..', '..', '..', 'create-whatsapp-templates.js'), 'utf8');
+    path.join(__dirname, '..', '..', '..', '..', 'scripts', 'backend-oneoff', 'create-whatsapp-templates.js'), 'utf8');
 
   const bodyOf = (name) => {
     const idx = src.indexOf('name: "' + name + '"');

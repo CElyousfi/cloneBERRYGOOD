@@ -8,7 +8,7 @@
 //   - functions/.env with IMAP_HOST/IMAP_PORT/IMAP_USER/IMAP_PASSWORD/IMAP_MAILBOX
 //   - gcloud ADC set up (gcloud auth application-default login)
 
-require("dotenv").config({ path: require("path").join(__dirname, ".env") });
+require("dotenv").config({ path: require("path").join(__dirname, "../../functions/.env") });
 
 const { ImapFlow } = require("imapflow");
 const { simpleParser } = require("mailparser");

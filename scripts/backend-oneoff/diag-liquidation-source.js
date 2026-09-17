@@ -9,7 +9,7 @@
 // Usage: node functions/diag-liquidation-source.js
 // Defaults: picks the most recent "LIQUIDATION RASP" email in IMAP
 
-require("dotenv").config({ path: require("path").join(__dirname, ".env") });
+require("dotenv").config({ path: require("path").join(__dirname, "../../functions/.env") });
 
 const fs = require("fs");
 const path = require("path");

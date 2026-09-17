@@ -4,7 +4,7 @@
 // Dry-run by default. Pass --apply to actually update Firestore.
 // Usage: node functions/fix-cascade-ferme.js [--apply]
 
-require("dotenv").config({ path: require("path").join(__dirname, ".env") });
+require("dotenv").config({ path: require("path").join(__dirname, "../../functions/.env") });
 const admin = require("firebase-admin");
 
 admin.initializeApp({

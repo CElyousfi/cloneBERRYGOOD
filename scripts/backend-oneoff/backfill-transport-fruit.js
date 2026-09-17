@@ -4,7 +4,7 @@
 // Dry-run par défaut. Pass --apply pour écrire en prod.
 // Usage: node functions/backfill-transport-fruit.js [chemin/excel.xlsx] [--apply]
 
-require("dotenv").config({ path: require("path").join(__dirname, ".env") });
+require("dotenv").config({ path: require("path").join(__dirname, "../../functions/.env") });
 const admin = require("firebase-admin");
 const XLSX = require("xlsx");
 const path = require("path");

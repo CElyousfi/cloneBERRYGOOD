@@ -1,5 +1,5 @@
 // Grab an OLDER liquidation PDF (from bulk .eml wrappers) to compare locale format
-require("dotenv").config({ path: require("path").join(__dirname, ".env") });
+require("dotenv").config({ path: require("path").join(__dirname, "../../functions/.env") });
 const fs = require("fs");
 const path = require("path");
 const { ImapFlow } = require("imapflow");

@@ -5,8 +5,8 @@
  *
  * Usage: cd functions && node audit-recolte-fallback.js
  */
-const { db: db_firestore } = require("./config/firebase");
-const { getPointageMeta, getPointageRowsForPeriode } = require("./src/shared/firestoreDataService");
+const { db: db_firestore } = require("../../functions/config/firebase");
+const { getPointageMeta, getPointageRowsForPeriode } = require("../../functions/src/shared/firestoreDataService");
 
 function quantiteToKg(quantiteUnite, operation) {
   const q = quantiteUnite || 0;

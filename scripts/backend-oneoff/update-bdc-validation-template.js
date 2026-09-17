@@ -28,7 +28,7 @@
 
 'use strict'
 
-const { db } = require('./config/firebase')
+const { db } = require('../../functions/config/firebase')
 
 const DRY_RUN = process.argv.includes('--dry-run')
 

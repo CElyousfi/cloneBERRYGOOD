@@ -905,7 +905,7 @@ test('template Meta : meteo_alerte_7j_img déclaré en IMAGE, corps identique au
   const fs = require('fs');
   const path = require('path');
   const src = fs.readFileSync(
-    path.join(__dirname, '..', '..', '..', 'create-whatsapp-templates.js'), 'utf8');
+    path.join(__dirname, '..', '..', '..', '..', 'scripts', 'backend-oneoff', 'create-whatsapp-templates.js'), 'utf8');
 
   const bodyOf = (name) => {
     const idx = src.indexOf('name: "' + name + '"');
