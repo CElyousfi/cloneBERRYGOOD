@@ -1414,25 +1414,8 @@
     <!-- Local-only UI test bypass (no-op except on localhost?testui=1). See public/lib/local-test-bypass.js -->
     <script src="lib/local-test-bypass.js?v=mtrj445m"></script>
     <!-- Pure auth/version decision helpers — loaded NON-defer so window.AuthResilience
-         exists before app.js (deferred) runs its checkVersion IIFE. See public/lib/authResilience.js -->
+         exists before app.modular.js runs its checkVersion IIFE. See public/lib/authResilience.js -->
     <script src="lib/authResilience.js?v=mtrj445m"></script>
-    <!-- Drapeau MODULAR_FRONTEND — chargé NON-defer : le sélecteur d'entrée en bas
-         de page s'exécute pendant l'analyse du document et a besoin de
-         window.FeatureFlags DÉJÀ défini. Voir public/lib/featureFlags.js -->
-    <script src="lib/featureFlags.js?v=mtrj445m"></script>
-    <script>
-      // Décision de bascule prise ICI, une seule fois, et AVANT les balises de
-      // composants ci-dessous : certaines ne doivent pas être chargées quand le
-      // frontend modulaire est actif, puisqu'il va les chercher lui-même à
-      // l'ouverture de l'onglet concerné. Le sélecteur d'entrée en bas de page
-      // réutilise cette même valeur — `resolveModularFrontend` a des effets de
-      // bord (mémorisation du choix d'URL, purge du marqueur de boot) et ne doit
-      // donc être appelée qu'une fois par chargement.
-      window.__SB_MODULAR__ = (function () {
-        try { return !!(window.FeatureFlags && window.FeatureFlags.resolveModularFrontend().modular); }
-        catch (e) { return false; }
-      })();
-    </script>
     <script defer src="lib/caisseUtils.js?v=mtrj445m"></script>
     <script defer src="lib/encaissementsCanevas.js?v=mtrj445m"></script>
     <script defer src="lib/growthUtils.js?v=mtrj445m"></script>
@@ -1482,20 +1465,13 @@
     <script defer src="components/BugReportsAdmin.js?v=mtrj445m"></script>
     <script defer src="components/PointageValidationPanel.js?v=mtrj445m"></script>
     <script defer src="components/PointageValidationView.js?v=mtrj445m"></script>
-    <script>if(!window.__SB_MODULAR__)document.write('<script defer src="components/MagMappingConsoTab.js?v=mtrj445m"><\/script>')</script>
-    <script>if(!window.__SB_MODULAR__)document.write('<script defer src="components/MagBonsCommandeTab.js?v=mtrj445m"><\/script>')</script>
-    <script>if(!window.__SB_MODULAR__)document.write('<script defer src="components/MagBdcReceptionTab.js?v=mtrj445m"><\/script>')</script>
     <script defer src="lib/imageDownscale.js?v=mtrj445m"></script>
     <script defer src="lib/bcScanMatch.js?v=mtrj445m"></script>
     <script defer src="lib/uniteConsoUtils.js?v=mtrj445m"></script>
     <!-- Sélection FERMÉE de l'article du bon de consommation. AVANT
          components/MagBCTab.js, qui lit window.ArticleSelect. -->
     <script defer src="lib/articleSelect.js?v=mtrj445m"></script>
-    <script>if(!window.__SB_MODULAR__)document.write('<script defer src="components/BCDoublonDialog.js?v=mtrj445m"><\/script>')</script>
     <script defer src="components/ArticleConversionFields.js?v=mtrj445m"></script>
-    <script>if(!window.__SB_MODULAR__)document.write('<script defer src="components/MagBCScanModal.js?v=mtrj445m"><\/script>')</script>
-    <script>if(!window.__SB_MODULAR__)document.write('<script defer src="components/MagBCTab.js?v=mtrj445m"><\/script>')</script>
-    <script>if(!window.__SB_MODULAR__)document.write('<script defer src="components/ParcellesParamsTab.js?v=mtrj445m"><\/script>')</script>
     <script defer src="components/PmpDetailPopup.js?v=mtrj445m"></script>
     <script defer src="components/CaisseSaisieSub.js?v=mtrj445m"></script>
     <script defer src="components/CaisseParametresSub.js?v=mtrj445m"></script>
@@ -1504,93 +1480,16 @@
     <script defer src="components/InventaireMouvementsPopup.js?v=mtrj445m"></script>
     <script defer src="components/FactureDetailPopup.js?v=mtrj445m"></script>
     <script defer src="components/ScanAttachmentButton.js?v=mtrj445m"></script>
-    <script>if(!window.__SB_MODULAR__)document.write('<script defer src="components/ConsoValoriseeTab.js?v=mtrj445m"><\/script>')</script>
-    <script>if(!window.__SB_MODULAR__)document.write('<script defer src="components/PrimesFixesTab.js?v=mtrj445m"><\/script>')</script>
-    <script>if(!window.__SB_MODULAR__)document.write('<script defer src="components/ParcellesGroupesPanel.js?v=mtrj445m"><\/script>')</script>
-    <script>if(!window.__SB_MODULAR__)document.write('<script defer src="components/ParcellesReferentielTab.js?v=mtrj445m"><\/script>')</script>
     <script defer src="lib/campagneRapprochement.js?v=mtrj445m"></script>
     <script defer src="lib/campagneProduction.js?v=mtrj445m"></script>
     <script defer src="components/RapprochementPaiePopup.js?v=mtrj445m"></script>
-    <script>if(!window.__SB_MODULAR__)document.write('<script defer src="components/CampagneAnalytiqueTab.js?v=mtrj445m"><\/script>')</script>
-    <script>if(!window.__SB_MODULAR__)document.write('<script defer src="components/MagStockFilesTab.js?v=mtrj445m"><\/script>')</script>
     <script defer src="components/QuinzaineCampagneSelect.js?v=mtrj445m"></script>
     <script defer src="components/PivotAnalytiqueGrid.js?v=mtrj445m"></script>
     <script defer src="components/AffectationAnalytiqueTable.js?v=mtrj445m"></script>
     <script defer src="components/QuinzaineRecapCards.js?v=mtrj445m"></script>
-    <script>if(!window.__SB_MODULAR__)document.write('<script defer src="components/CampagneBudgetTab.js?v=mtrj445m"><\/script>')</script>
     <script defer src="components/HsEmargementFooter.js?v=mtrj445m"></script>
     <script defer src="lib/emargementPdf.js?v=mtrj445m"></script>
     <script defer src="lib/emargementExcel.js?v=mtrj445m"></script>
-    <!-- ═══ SÉLECTEUR D'ENTRÉE — monolithe app.js ou bundle ES app.modular.js ═══
-         Les deux rendent la MÊME interface ; seule l'architecture diffère. Le
-         choix vient de window.FeatureFlags (drapeau MODULAR_FRONTEND), défaut
-         monolithe.
-
-         `document.write` est ici le bon outil, et le seul qui convienne : une
-         balise insérée dynamiquement (createElement + append) s'exécute HORS de
-         la file `defer` et peut donc partir AVANT les lib/ et components/
-         ci-dessus, dont l'entrée dépend entièrement. Écrite pendant l'analyse,
-         elle garde sa place dans l'ordre du document. Le script est de même
-         origine : l'intervention des navigateurs sur document.write ne vise que
-         les scripts tiers.
-
-         Le `?v=` est repris de la balise featureFlags ci-dessus : la page ne
-         contient qu'UNE source de version, et le cache-bust du build continue
-         de la mettre à jour sans rien savoir de ce sélecteur. -->
-    <script>
-      (function () {
-        var flags = window.FeatureFlags;
-        var tag = document.querySelector('script[src*="lib/featureFlags.js"]');
-        var query = tag ? String(tag.getAttribute('src') || '').split('?')[1] : '';
-        var v = query ? '?' + query : '';
-
-        // Décision déjà prise en haut de page (window.__SB_MODULAR__) : les
-        // balises de composants en dépendaient. On la relit, on ne la refait pas.
-        var modular = !!window.__SB_MODULAR__;
-
-        if (!modular) {
-          document.write('<script defer src="app.js' + v + '"><\/script>');
-          return;
-        }
-
-        // Le boot modulaire est marqué « non confirmé » AVANT d'être tenté : si
-        // le bundle ne démarre pas, le marqueur survit et le chargement suivant
-        // retombe seul sur le monolithe (cf. public/lib/featureFlags.js).
-        flags.markBootPending();
-        document.write('<script type="module" src="app.modular.js' + v + '"><\/script>');
-
-        // Preuve de rendu : React remplace le contenu de #root, donc la
-        // disparition de #splash-screen atteste que l'application est montée.
-        // On sonde plutôt qu'on n'attend un délai fixe : un onglet fermé avant
-        // l'échéance laisserait sinon un faux marqueur d'échec.
-        var deadline = Date.now() + 20000;
-        var poll = setInterval(function () {
-          if (!document.getElementById('splash-screen')) {
-            clearInterval(poll);
-            flags.markBootOk();
-          } else if (Date.now() > deadline) {
-            clearInterval(poll);
-          }
-        }, 200);
-      })();
-    </script>
-    <!-- Rafraîchissement du drapeau pour le PROCHAIN chargement. C'est ce qui
-         rend la bascule pilotable à distance : un opérateur bascule
-         app_settings/feature_flags, et les postes s'alignent au rechargement
-         suivant. Jamais sur le chargement courant — on ne change pas de
-         frontend sous les pieds de l'utilisateur.
-         La lecture attend une session authentifiée : firestore.rules impose
-         `request.auth != null` sur app_settings. Toute erreur est avalée dans
-         featureFlags.refresh() : ne pas joindre Firestore ne doit rien casser. -->
-    <script>
-      (function () {
-        try {
-          if (!window.FeatureFlags || !window.firebase || !firebase.auth) return;
-          firebase.auth().onAuthStateChanged(function (user) {
-            if (user && firebase.firestore) window.FeatureFlags.refresh(firebase.firestore());
-          });
-        } catch (e) { /* pas de Firebase ici : rien à rafraîchir */ }
-      })();
-    </script>
+    <script type="module" src="/app.modular.js"></script>
 </body>
 </html>

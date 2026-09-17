@@ -10,9 +10,6 @@
  * <script> n'est injectée qu'au premier rendu de l'onglet. C'est la contrepartie
  * de `React.lazy` pour du code qui n'est pas un module.
  *
- * Le chemin LEGACY (`?modular=0`) n'utilise rien de tout ceci : le monolithe lit
- * `window.X` directement au rendu, sans mécanisme d'attente. index.html continue
- * donc de charger ces scripts d'emblée quand le drapeau désigne le monolithe.
  */
 
 /** Une promesse par source : deux onglets qui partagent une dépendance ne la chargent qu'une fois. */
@@ -21,7 +18,7 @@ const __enCours = new Map();
 /** Reprend le `?v=` des balises de la page — même cache-bust que le reste du frontend. */
 function versionQuery() {
   try {
-    const tag = document.querySelector('script[src*="lib/featureFlags.js"]');
+    const tag = document.querySelector('script[src*="lib/authResilience.js"]');
     const q = String(tag && tag.getAttribute('src') || '').split('?')[1];
     return q ? '?' + q : '';
   } catch (e) { return ''; }

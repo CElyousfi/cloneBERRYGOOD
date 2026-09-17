@@ -1,34 +1,28 @@
-/* Assemble dist-vercel/ : site statique déployable (frontend migré).
-   - tout public/ (lib, components, assets, JSON, sw.js, manifest…) SAUF le monolithe
-   - app.modular.js  : bundle ES issu de src/modules/
-   - index.html      : copie conforme de public/index.html, <script app.js> -> module ES
-   - legacy.html     : le monolithe d'origine, pour comparaison côte à côte
+/* Assemble dist-vercel/ : site statique déployable.
+   - tout public/ (index.html, app.modular.js, chunks/, lib, components, assets, JSON, sw.js, manifest…)
+   Pré-requis : `npm run build` (Vite écrit app.modular.js et chunks/ dans public/).
 */
 const fs=require('fs'),p=require('path');
 const ROOT=p.resolve(__dirname,'../..');
 const OUT=p.join(ROOT,'dist-vercel');
 const PUB=p.join(ROOT,'public');
-const BUNDLE=p.join(ROOT,'dist-migrated/app.modular.js');
+const BUNDLE=p.join(PUB,'app.modular.js');
 
-if(!fs.existsSync(BUNDLE)){ console.error('🛑 dist-migrated/app.modular.js absent — lance `npm run migrate:build` d\'abord.'); process.exit(1); }
+if(!fs.existsSync(BUNDLE)){ console.error('🛑 public/app.modular.js absent — lance `npm run build` d\'abord.'); process.exit(1); }
 
 fs.rmSync(OUT,{recursive:true,force:true});
 fs.mkdirSync(OUT,{recursive:true});
 
-// 1. copier public/ sauf app.jsx (source 5,6 Mo, inutile en ligne)
+// 1. copier public/
 let copied=0,bytes=0;
 (function walk(src,dst){
   fs.mkdirSync(dst,{recursive:true});
   for(const e of fs.readdirSync(src,{withFileTypes:true})){
-    if(e.name==='app.jsx') continue;                 // source du monolithe : non déployée
     const s=p.join(src,e.name), d=p.join(dst,e.name);
     if(e.isDirectory()) walk(s,d);
     else { fs.copyFileSync(s,d); copied++; bytes+=fs.statSync(s).size; }
   }
 })(PUB,OUT);
-
-// 2. bundle migré
-fs.copyFileSync(BUNDLE,p.join(OUT,'app.modular.js'));
 
 // 2bis. MODE DÉMO (DEMO_NO_AUTH=1) — uniquement dans la sortie de build.
 // public/lib/local-test-bypass.js n'est JAMAIS modifié : l'hébergement Firebase
@@ -70,7 +64,7 @@ if (process.env.DEMO_NO_AUTH === '1') {
   }
   // Le bypass renvoyait `success: true` avec une charge utile VIDE. L'app
   // enregistre alors un objet sans ses tableaux (ex. nouveauxData.workers) puis
-  // lit .length dessus -> ErrorBoundary sur 5 écrans (app.jsx:4931).
+  // lit .length dessus -> ErrorBoundary sur 5 écrans.
   // Renvoyer `success: false` supprimait le plantage mais affichait
   // « Erreur chargement ». On renvoie donc un succès avec des tableaux vides
   // BIEN FORMÉS : les écrans se rendent proprement, sans données.
@@ -102,37 +96,7 @@ if (process.env.DEMO_NO_AUTH === '1') {
   console.log('  mode normal : écran de connexion actif (DEMO_NO_AUTH non défini)');
 }
 
-// 3. index.html (modulaire) + legacy.html (monolithe)
-//
-// La page choisit désormais son entrée AU CHARGEMENT, via le drapeau
-// MODULAR_FRONTEND (public/lib/featureFlags.js). Ce script n'a donc plus de
-// balise à substituer : il PRÉ-POSITIONNE le drapeau, chaque sortie forçant
-// l'un des deux frontends. C'est plus robuste que l'ancienne substitution
-// d'ancre, qui se périmait au premier cache-bust.
-const source=fs.readFileSync(p.join(PUB,'index.html'),'utf8');
-const FLAGS_TAG_RE=/(<script[^>]+src="lib\/featureFlags\.js(?:\?v=[^"]*)?"><\/script>)/;
-if(!FLAGS_TAG_RE.test(source)){ console.error('🛑 balise lib/featureFlags.js introuvable dans public/index.html'); process.exit(1); }
-
-/** Force le drapeau avant que le sélecteur d'entrée ne le lise. */
-function seedFlag(html,value,label){
-  const out=html.replace(FLAGS_TAG_RE,'$1\n'+
-    '    <!-- '+label+' : drapeau forcé par le build, cette page ne bascule pas. -->\n'+
-    '    <script>try{localStorage.setItem(\'sb_flag_modular_frontend\',\''+value+'\');'+
-    'localStorage.removeItem(\'sb_modular_boot_pending\');}catch(e){}</script>');
-  if(out===html){ console.error('🛑 injection du drapeau sans effet'); process.exit(1); }
-  return out;
-}
-
-// index.html — interface D'ORIGINE, servie par le build modulaire (334 modules ES).
-// C'est le livrable de non-régression : même UI, architecture modulaire.
-fs.writeFileSync(p.join(OUT,'index.html'),seedFlag(source,'1','Préversion modulaire'));
-
-// legacy.html — le monolithe, conservé comme référence de comparaison côte à côte.
-fs.writeFileSync(p.join(OUT,'legacy.html'),seedFlag(source,'0','Référence monolithe'));
-
 const size=d=>{let t=0;(function w(x){for(const e of fs.readdirSync(x,{withFileTypes:true})){const f=p.join(x,e.name);e.isDirectory()?w(f):t+=fs.statSync(f).size;}})(d);return t;};
 console.log('dist-vercel/ assemblé');
 console.log('  fichiers copiés depuis public/ :',copied);
-console.log('  index.html   -> interface d\'origine servie par le build modulaire (334 modules)');
-console.log('  legacy.html  -> monolithe app.js (référence de comparaison)');
 console.log('  taille totale:',(size(OUT)/1048576).toFixed(1),'Mo');
