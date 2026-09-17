@@ -795,9 +795,9 @@ test('generate: écrit les 4 sorties dans un répertoire temporaire', () => {
   assert.strictEqual(json._meta.schemaVersion, 1);
   assert.ok(/^sha256:[0-9a-f]{16}$/.test(json._meta.sourceFingerprint));
 
-  // Cas de validation 1 — require relatif explicite depuis tests/unit
+  // Cas de validation 1 — loadEsm('src/…') depuis tests/unit
   assert.ok(
-    json.index['public/lib/bdcWorkflow.js'].directTests.includes('tests/unit/bdcWorkflow.test.js'),
+    json.index['src/modules/shared/lib/bdcWorkflow.js'].directTests.includes('tests/unit/bdcWorkflow.test.js'),
     'bdcWorkflow.js couvert par son test unitaire'
   );
   // Cas de validation 2 — require('../cors') sans extension

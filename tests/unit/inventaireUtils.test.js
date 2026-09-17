@@ -10,7 +10,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { computeInventaireTotals, formatQteParUnite, boundedLedger } = require('../../public/lib/inventaireUtils');
+const { computeInventaireTotals, formatQteParUnite, boundedLedger } = require('./_esm').loadEsm('src/modules/shared/lib/inventaireUtils.js');
 
 test('computeInventaireTotals: sous-totaux par unité + total DH', () => {
   const rows = [

@@ -7,7 +7,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const U = require('../../public/lib/caisseUtils.js');
+const U = require('./_esm').loadEsm('src/modules/shared/lib/caisseUtils.js');
 
 // Fixed reference date used across tests.
 const NOW = new Date('2026-05-15T12:00:00Z');

@@ -7,7 +7,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const W = require('../../public/lib/bdcWorkflow.js');
+const W = require('./_esm').loadEsm('src/modules/shared/lib/bdcWorkflow.js');
 
 test('DIRECT_DG_FARMS contains the 6 farms without chef de ferme + Toutes (multi-ferme)', () => {
   assert.deepEqual(W.DIRECT_DG_FARMS, ['Avocatier', 'F2', 'F3', 'F4', 'F6', 'BAHIA', 'Toutes']);

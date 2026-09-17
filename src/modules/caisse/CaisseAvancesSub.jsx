@@ -3,6 +3,7 @@
 import { formatMAD } from '../finance/formatMAD.jsx';
 import { useMemo, useState } from '../shared/reactHooks.jsx';
 
+import * as CaisseUtils from '../shared/lib/caisseUtils.js';
 // ---- Sprint 3 — Avances Sub ----
         // Vue agrégée par bénéficiaire des avances non régularisées.
         function CaisseAvancesSub({ caisses, isControle }) {
@@ -34,10 +35,10 @@ import { useMemo, useState } from '../shared/reactHooks.jsx';
             };
 
             const aggregated = useMemo(() => {
-                if (!window.CaisseUtils || !window.CaisseUtils.aggregateAvances) {
+                if (!CaisseUtils || !CaisseUtils.aggregateAvances) {
                     return { byBeneficiaire: new Map(), unidentifiedCount: 0 };
                 }
-                return window.CaisseUtils.aggregateAvances(allAvances, new Date(), { showSoldees });
+                return CaisseUtils.aggregateAvances(allAvances, new Date(), { showSoldees });
             }, [allAvances, showSoldees]);
 
             // Tableau trié : par soldeDu DESC, puis par ancienneté DESC

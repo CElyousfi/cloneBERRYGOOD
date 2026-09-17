@@ -1,16 +1,11 @@
 /**
  * growthUtils.js — Pure helpers for the "Suivi Croissance Framboise" screen.
  *
- * Loaded twice:
- *   - In the browser via <script src="lib/growthUtils.js"> → exposes window.GrowthUtils
- *   - In node:test via require('./growthUtils.js') → exposes module.exports
- *
  * All functions are pure (no DOM, no network, no Firestore).
  *
  * Item « Suivi croissance framboise (points de contrôle) » — 2026-06.
  */
 // @ts-check
-'use strict';
 
 // ============================================================================
 // CONSTANTS
@@ -216,17 +211,4 @@ function validateMeasurement(m) {
   return { valid: true };
 }
 
-// ============================================================================
-// UMD-style export (browser global + CommonJS for node:test)
-// ============================================================================
-
-const __growthUtilsApi = {
-  // constants
-  FRAMBOISE_CULTURE, ALL_VARIETES, MAX_LENGTH_CM,
-  // functions
-  framboiseParcelles, varietesFramboise, buildGrowthSeries,
-  validateMeasurement, normalizeCheckpoints,
-};
-
-if (typeof module !== 'undefined' && module.exports) module.exports = __growthUtilsApi
-if (typeof window !== 'undefined') window.GrowthUtils = __growthUtilsApi
+export { FRAMBOISE_CULTURE, ALL_VARIETES, MAX_LENGTH_CM, framboiseParcelles, varietesFramboise, buildGrowthSeries, validateMeasurement, normalizeCheckpoints };

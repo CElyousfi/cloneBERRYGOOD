@@ -6,6 +6,7 @@ import { useState } from '../shared/reactHooks.jsx';
 import { TXN_TYPE_LABELS } from './TXN_TYPE_LABELS.jsx';
 import { getCaisseColor } from './getCaisseColor.jsx';
 
+import * as CaisseUtils from '../shared/lib/caisseUtils.js';
 // ---- Dashboard Sub ----
         function CaisseDashboardSub({ dashData, caisses, isControle, onNavigate }) {
             const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0,10));
@@ -83,8 +84,8 @@ import { getCaisseColor } from './getCaisseColor.jsx';
             // (préfixe compte_client_) mais ne sont PAS des caisses : ils n'ont
             // pas de nom et s'affichaient en bulles anonymes à 0,00 DH. Ils ont
             // leur propre onglet « Comptes Clients ».
-            const estCompteClient = (c) => (window.CaisseUtils && window.CaisseUtils.isCompteClientCaisse
-                ? window.CaisseUtils.isCompteClientCaisse(c)
+            const estCompteClient = (c) => (CaisseUtils && CaisseUtils.isCompteClientCaisse
+                ? CaisseUtils.isCompteClientCaisse(c)
                 : String(c.id || '').indexOf('compte_client_') === 0);
             // Les caisses « Marché Local F1 / F5 » ne sont plus présentées comme
             // des caisses : le suivi se fait PAR CLIENT (bloc dédié plus bas).

@@ -1,17 +1,12 @@
 /**
  * caisseUtils.js — Pure helpers for the Gestion de Caisse "Transactions" screen.
  *
- * Loaded twice:
- *   - In the browser via <script src="lib/caisseUtils.js"> → exposes window.CaisseUtils
- *   - In node:test via require('./caisseUtils.js') → exposes module.exports
- *
  * All functions are pure (no DOM, no network, no Firestore). The "now" parameter
  * is always optional and defaults to new Date() — tests should pass a fixed date.
  *
  * Sprint 1 (2026-05) — initial creation.
  */
 // @ts-check
-'use strict';
 
 // ============================================================================
 // CONSTANTS
@@ -93,7 +88,6 @@ const DESCRIPTION_GENERIC_REGEX = /^\s*(avance|achat|paiement|divers|frais)\s*$/
 /** Sprint 2 — substring marker on caisse_id indicating Bahia perimeter (case-insensitive). */
 const BAHIA_MARKER = 'bahia';
 
-
 // ============================================================================
 // PUBLIC API
 // ============================================================================
@@ -162,7 +156,6 @@ function detectCaisseAnomalies(tx, now) {
   return anomalies;
 }
 
-
 /**
  * Sum a list of transactions into operational totals + transfers + solde net.
  *
@@ -194,7 +187,6 @@ function computeTotals(transactions) {
   out.soldeNet = out.totalRecettes + transfersIn - out.totalDepensesOp - transfersOut;
   return out;
 }
-
 
 /**
  * Resolve a quick-period chip into an inclusive ISO date range.
@@ -244,7 +236,6 @@ function quickPeriodToDateRange(period, now) {
   return null; // unknown period treated as 'all'
 }
 
-
 /**
  * Normalize a string for accent-insensitive substring search.
  * Lowercases + strips diacritics + normalizes French decimal separator (',' → '.').
@@ -256,7 +247,6 @@ function _normalize(v) {
   if (v === null || v === undefined) return '';
   return String(v).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/,/g, '.');
 }
-
 
 /**
  * Filter transactions by free-text query.
@@ -311,7 +301,6 @@ function searchTransactions(transactions, query) {
   });
 }
 
-
 /**
  * Filter transactions by quick-type chip.
  *
@@ -332,7 +321,6 @@ function filterByQuickType(transactions, quickType) {
   if (quickType === 'transferts') return transactions.filter((tx) => tx && TRANSFER_TYPES.indexOf(tx.type) !== -1);
   return transactions.slice();
 }
-
 
 /**
  * Filtre par axes analytiques : ferme, culture, parcelle, code analytique.
@@ -369,7 +357,6 @@ function filterByAxes(transactions, filtres) {
   });
 }
 
-
 /**
  * Valeurs distinctes d'un axe présentes dans une liste de bons, triées.
  * Sert à peupler les listes déroulantes de filtre : on ne propose que ce qui
@@ -389,7 +376,6 @@ function distinctAxeValues(transactions, champ) {
   }
   return Array.from(set).sort((a, b) => a.localeCompare(b, 'fr'));
 }
-
 
 // ============================================================================
 // Sprint 2 — Private helpers (NOT exported)
@@ -461,7 +447,6 @@ function _dayIndex(iso) {
   if (isNaN(d.getTime())) return NaN;
   return Math.floor(d.getTime() / 86400000);
 }
-
 
 // ============================================================================
 // Sprint 2 — detectAnomaliesBatch
@@ -658,7 +643,6 @@ function detectAnomaliesBatch(transactions, now) {
   return out;
 }
 
-
 // ============================================================================
 // Sprint 3 — Suivi des avances
 // ============================================================================
@@ -727,7 +711,6 @@ function extractBeneficiaire(description) {
 
   return s.toUpperCase();
 }
-
 
 /**
  * Aggregate "avance" transactions by beneficiary.
@@ -878,37 +861,4 @@ function computeCompteClientTotals(transactions) {
   };
 }
 
-
-// ============================================================================
-// UMD-style export (browser global + CommonJS for node:test)
-// ============================================================================
-
-const __api = {
-  // constants — Sprint 1
-  EXPENSE_TYPES, INCOME_TYPES, OP_EXPENSE_TYPES, OP_INCOME_TYPES, TRANSFER_TYPES,
-  QUICK_PERIODS, QUICK_TYPES, ANOMALY_CODES,
-  MONTANT_ANOMALY_THRESHOLD, DESCRIPTION_MIN_LENGTH, ANALYTIQUE_PLACEHOLDER,
-  // constants — Sprint 2
-  MONTANT_ATYPIQUE_FACTOR, MONTANT_ATYPIQUE_WINDOW_DAYS, MONTANT_ATYPIQUE_MIN_SAMPLE,
-  DOUBLON_MAX_DATE_DELTA_DAYS, DOUBLON_LEVENSHTEIN_THRESHOLD, DOUBLON_DESC_PREFIX_LEN,
-  DESCRIPTION_GENERIC_REGEX, BAHIA_MARKER,
-  // constants — Sprint 3
-  AVANCE_KEYWORD_REGEX,
-  // functions — Sprint 1
-  detectCaisseAnomalies, computeTotals, quickPeriodToDateRange,
-  searchTransactions, filterByQuickType,
-  // constants + functions — filtres par axes analytiques
-  AXE_NON_RENSEIGNE,
-  filterByAxes, distinctAxeValues,
-  // functions — Sprint 2
-  detectAnomaliesBatch,
-  // functions — Sprint 3
-  extractBeneficiaire, aggregateAvances,
-  // constants — Comptes Clients Marché Local (sous-lot 4.4)
-  COMPTE_CLIENT_PREFIX,
-  // functions — Comptes Clients Marché Local (sous-lot 4.4)
-  isCompteClientCaisse, computeCompteClientTotals,
-};
-
-if (typeof module !== 'undefined' && module.exports) module.exports = __api;
-if (typeof window !== 'undefined') window.CaisseUtils = __api;
+export { EXPENSE_TYPES, INCOME_TYPES, OP_EXPENSE_TYPES, OP_INCOME_TYPES, TRANSFER_TYPES, QUICK_PERIODS, QUICK_TYPES, ANOMALY_CODES, MONTANT_ANOMALY_THRESHOLD, DESCRIPTION_MIN_LENGTH, ANALYTIQUE_PLACEHOLDER, MONTANT_ATYPIQUE_FACTOR, MONTANT_ATYPIQUE_WINDOW_DAYS, MONTANT_ATYPIQUE_MIN_SAMPLE, DOUBLON_MAX_DATE_DELTA_DAYS, DOUBLON_LEVENSHTEIN_THRESHOLD, DOUBLON_DESC_PREFIX_LEN, DESCRIPTION_GENERIC_REGEX, BAHIA_MARKER, AVANCE_KEYWORD_REGEX, detectCaisseAnomalies, computeTotals, quickPeriodToDateRange, searchTransactions, filterByQuickType, AXE_NON_RENSEIGNE, filterByAxes, distinctAxeValues, detectAnomaliesBatch, extractBeneficiaire, aggregateAvances, COMPTE_CLIENT_PREFIX, isCompteClientCaisse, computeCompteClientTotals };

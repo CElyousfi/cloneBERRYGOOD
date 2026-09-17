@@ -6,7 +6,7 @@ const {
   scanFournisseurLabel,
   scanTtc,
   scanBdcMatche,
-} = require('../../public/lib/scanHistoryDisplay.js');
+} = require('./_esm').loadEsm('src/modules/shared/lib/scanHistoryDisplay.js');
 
 // --- scanFournisseurLabel -------------------------------------------------
 

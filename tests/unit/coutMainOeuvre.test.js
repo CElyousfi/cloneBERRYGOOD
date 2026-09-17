@@ -21,7 +21,7 @@ const assert = require('node:assert');
 const path = require('node:path');
 
 const ROOT = path.join(__dirname, '../..');
-const CMO = require(path.join(ROOT, 'public/lib/coutMainOeuvre.js'));
+const CMO = require('./_esm').loadEsm('src/modules/shared/lib/coutMainOeuvre.js');
 // PaieUtils RÉEL, injecté : c'est le modèle de paie de la production, pas un
 // stub — un stub validerait le câblage et laisserait passer une erreur de taux.
 const paie = require(path.join(ROOT, 'public/lib/paieUtils.js'));

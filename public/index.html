@@ -1416,13 +1416,7 @@
     <!-- Pure auth/version decision helpers — loaded NON-defer so window.AuthResilience
          exists before app.modular.js runs its checkVersion IIFE. See public/lib/authResilience.js -->
     <script src="lib/authResilience.js?v=mtrj445m"></script>
-    <script defer src="lib/caisseUtils.js?v=mtrj445m"></script>
     <script defer src="lib/encaissementsCanevas.js?v=mtrj445m"></script>
-    <script defer src="lib/growthUtils.js?v=mtrj445m"></script>
-    <script defer src="lib/meteoCalc.js?v=mtrj445m"></script>
-    <script defer src="lib/inflightDedup.js?v=mtrj445m"></script>
-    <script defer src="lib/bdcWorkflow.js?v=mtrj445m"></script>
-    <script defer src="lib/stockMovementGuard.js?v=mtrj445m"></script>
     <!-- Liste canonique des catégories d'article (select fermé de la fiche article). -->
     <script defer src="lib/articleCategories.js?v=mtrj445m"></script>
     <script defer src="lib/paieUtils.js?v=mtrj445m"></script>
@@ -1431,7 +1425,6 @@
         <!-- Plafond de journées déclarables. PUR, INJECTÉ dans coutMainOeuvre :
          l'ordre des <script> est indifférent, rien n'est lu au chargement. -->
     <script defer src="lib/plafondDeclaration.js?v=mtrj445m"></script>
-<script defer src="lib/coutMainOeuvre.js?v=mtrj445m"></script>
         <!-- Lecture du fichier de paie + rapprochement. PURS, sans dépendance :
          l'ordre des <script> est indifférent, rien n'est lu au chargement. -->
     <script defer src="lib/lecturePaieExcel.js?v=mtrj445m"></script>
@@ -1444,15 +1437,12 @@
     <script defer src="lib/paieDataCache.js?v=mtrj445m"></script>
     <script defer src="lib/primesImportParse.js?v=mtrj445m"></script>
     <script defer src="lib/primesV2.js?v=mtrj445m"></script>
-    <script defer src="lib/recolteKpiUtils.js?v=mtrj445m"></script>
-    <script defer src="lib/inventaireUtils.js?v=mtrj445m"></script>
     <script defer src="lib/campagneUtils.js?v=mtrj445m"></script>
     <script defer src="lib/factureExportUtils.js?v=mtrj445m"></script>
     <script defer src="lib/useStockLocations.js?v=mtrj445m"></script>
     <script defer src="lib/stockDestinations.js?v=mtrj445m"></script>
     <script defer src="lib/scanAttachmentUtils.js?v=mtrj445m"></script>
     <script defer src="lib/scanClientUpload.js?v=mtrj445m"></script>
-    <script defer src="lib/scanHistoryDisplay.js?v=mtrj445m"></script>
     <script defer src="lib/bdcReceptionUtils.js?v=mtrj445m"></script>
     <script defer src="lib/fusionMasse.js?v=mtrj445m"></script>
     <script defer src="lib/parcelleGroupUtils.js?v=mtrj445m"></script>

@@ -15,6 +15,7 @@ import { QuinzainePopupGenerique } from './QuinzainePopupGenerique.jsx';
 import { QuinzaineDetailParOuvrier } from './QuinzaineDetailParOuvrier.jsx';
 import { QuinzaineChargesSocialesPopup } from './QuinzaineChargesSocialesPopup.jsx';
 
+import * as CoutMainOeuvre from '../shared/lib/coutMainOeuvre.js';
 // ===================== QUINZAINE TAB =====================
         function QuinzaineTab({ data, farmFilter, farmLabel, avoSubFilter, cultureFilter, currentProfile, onNavigateToPrimes }) {
             const [apiData, setApiData] = useState(null);
@@ -721,8 +722,8 @@ import { QuinzaineChargesSocialesPopup } from './QuinzaineChargesSocialesPopup.j
             // Deux classifications, c'est une pop-up qui contredit sa tuile —
             // et c'est comme ça que « Caporal hors Récolte » s'est retrouvé
             // compté en récolte.
-            const classifyMO = (opFam) => (window.CoutMainOeuvre
-                ? window.CoutMainOeuvre.categorieMO(opFam)
+            const classifyMO = (opFam) => (CoutMainOeuvre
+                ? CoutMainOeuvre.categorieMO(opFam)
                 : 'horsRecolte');
             // Lignes de RÉCOLTE. Ce tableau était vide EN DUR, au motif que ces
             // ouvriers seraient « comptés dans la carte Récolte » — or aucune
@@ -796,7 +797,7 @@ import { QuinzaineChargesSocialesPopup } from './QuinzaineChargesSocialesPopup.j
             // On N'UTILISE PAS les coûts SQL BDP (parFerme.cout ou r.cout) qui ne sont qu'une
             // estimation comptable. Le net à payer réel est calculé via window.PaieUtils.computePayslip
             // identiquement à Validation du Pointage. Les totaux cartes = somme des nets par ouvrier.
-            const _CMO = window.CoutMainOeuvre;
+            const _CMO = CoutMainOeuvre;
             const registryReady = Object.keys(quinzRegistry).length > 0 && !!(window.PaieUtils && window.PaieUtils.computePayslip) && !!_CMO;
             // Skeleton tant que les 2 fetch paie ne sont pas résolus (succès OU échec).
             // Résolus mais registry vide/KO → registryReady false → fallback BDP (inchangé).

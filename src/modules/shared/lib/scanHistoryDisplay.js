@@ -2,10 +2,6 @@
  * scanHistoryDisplay.js — Pure display helpers for the "Scan Factures → Historique"
  * table (AchatsScanFacturesTab in public/app.jsx).
  *
- * Loaded twice (UMD, same pattern as caisseUtils.js / scanAttachmentUtils.js):
- *   - In the browser via <script src="lib/scanHistoryDisplay.js"> → window.ScanHistoryDisplay
- *   - In node:test via require('./scanHistoryDisplay.js') → module.exports
- *
  * Context: invoice_scans documents come in TWO `analysis` shapes:
  *   - SCAN-IA format (live AI scans): analysis.fournisseur is an OBJECT {nom, ice},
  *     analysis.total_ttc is the TTC amount, matched BDC in s.matched_bdc_numero.
@@ -19,7 +15,6 @@
  * 2026-06 — initial creation (fix/scan-history-timac-display).
  */
 // @ts-check
-'use strict';
 
 /**
  * Resolve the supplier label for a scan history row.
@@ -74,11 +69,4 @@ function scanBdcMatche(s) {
   return '—';
 }
 
-const __scanHistoryDisplayApi = {
-  scanFournisseurLabel,
-  scanTtc,
-  scanBdcMatche,
-};
-
-if (typeof module !== 'undefined' && module.exports) module.exports = __scanHistoryDisplayApi;
-if (typeof window !== 'undefined') window.ScanHistoryDisplay = __scanHistoryDisplayApi;
+export { scanFournisseurLabel, scanTtc, scanBdcMatche };

@@ -1,14 +1,9 @@
 /**
  * meteoCalc.js — Pure helpers for the Agronomie > Météo "Prévision extérieure" block.
  *
- * Loaded twice:
- *   - In the browser via <script src="lib/meteoCalc.js"> → exposes window.MeteoCalc
- *   - In node:test via require('./meteoCalc.js') → exposes module.exports
- *
  * All functions are pure (no DOM, no network, no Firestore).
  */
 // @ts-check
-'use strict';
 
 /**
  * Saturation vapor pressure (kPa) at temperature T (°C) — Tetens equation.
@@ -83,9 +78,4 @@ function peakIndex(arr) {
   return { idx: bestIdx, val: bestVal === -Infinity ? null : bestVal };
 }
 
-const __meteoApi = {
-  saturationVaporPressure, vpdAt, computeHourlyVPD, computeCumRadiation, peakIndex,
-};
-
-if (typeof module !== 'undefined' && module.exports) module.exports = __meteoApi;
-if (typeof window !== 'undefined') window.MeteoCalc = __meteoApi;
+export { saturationVaporPressure, vpdAt, computeHourlyVPD, computeCumRadiation, peakIndex };

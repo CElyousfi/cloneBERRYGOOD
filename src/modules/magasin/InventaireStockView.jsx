@@ -3,6 +3,7 @@
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 import { canonArt } from './canonArt.jsx';
 
+import * as InventaireUtils from '../shared/lib/inventaireUtils.js';
 function InventaireStockView() {
             const [balances, setBalances] = useState([]);
             const [loading, setLoading] = useState(true);
@@ -106,7 +107,7 @@ function InventaireStockView() {
 
             // Totaux de la sélection AFFICHÉE (pied de tableau + ligne TOTAL de l'export).
             // Sous-totaux quantité PAR UNITÉ (jamais de somme mélangée L/KG) + total DH commun.
-            const IU = window.InventaireUtils || {};
+            const IU = InventaireUtils || {};
             const totals = IU.computeInventaireTotals
                 ? IU.computeInventaireTotals(filtered.map(b => ({ unite: b.unite, balance: b.balance, prix_total: b.prix_total })))
                 : { count: filtered.length, prix_total_sum: 0, qte_par_unite: {} };

@@ -328,7 +328,13 @@ function collectFingerprintSources(root) {
     if (content !== null) sources.push({ path: rel, content });
   }
 
-  // public/lib/*.js (triés)
+  // src/modules/shared/lib/*.js (triés) — helpers partagés
+  for (const rel of walkFiles(root, 'src/modules/shared/lib', f => f.endsWith('.js'))) {
+    const content = readFileSafe(path.join(root, rel));
+    if (content !== null) sources.push({ path: rel, content });
+  }
+
+  // public/lib/*.js et public/components/*.jsx : couche legacy, tant qu'elle existe
   const libDir = path.join(root, 'public/lib');
   if (fs.existsSync(libDir)) {
     const libFiles = fs.readdirSync(libDir).filter(f => f.endsWith('.js')).sort();
@@ -337,8 +343,6 @@ function collectFingerprintSources(root) {
       if (content !== null) sources.push({ path: `public/lib/${f}`, content });
     }
   }
-
-  // public/components/*.jsx seulement (pas les .js compilés)
   const compDir = path.join(root, 'public/components');
   if (fs.existsSync(compDir)) {
     const compFiles = fs.readdirSync(compDir).filter(f => f.endsWith('.jsx')).sort();
@@ -404,16 +408,18 @@ async function generateGraph(root, outPath) {
   // 2. Collecter les sources pour le fingerprint
   const fingerprintSources = collectFingerprintSources(root);
 
-  // 3. Scanner public/lib/*.js
+  // 3. Scanner les helpers : src/modules/shared/lib/*.js (+ public/lib/*.js legacy tant qu'il existe)
   const libDir = path.join(root, 'public/lib');
-  const libFiles = fs.existsSync(libDir)
-    ? fs.readdirSync(libDir).filter(f => f.endsWith('.js')).sort()
-    : [];
+  const libFiles = walkFiles(root, 'src/modules/shared/lib', f => f.endsWith('.js')).concat(
+    fs.existsSync(libDir)
+      ? fs.readdirSync(libDir).filter(f => f.endsWith('.js')).sort().map(f => `public/lib/${f}`)
+      : []
+  );
 
   /** @type {Array<{ file: string, windowExport: string|null, domain: string|null, confidence: string, hasTests: boolean, testFile: string|null }>} */
   const libs = [];
-  for (const f of libFiles) {
-    const relPath = `public/lib/${f}`;
+  for (const relPath of libFiles) {
+    const f = path.basename(relPath);
     const content = readFileSafe(path.join(root, relPath)) || '';
     const windowExports = parseWindowExports(content);
     const classified = classifyByKeywords(f.replace('.js', ''), domains);

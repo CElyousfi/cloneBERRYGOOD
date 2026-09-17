@@ -7,7 +7,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const G = require('../../public/lib/growthUtils.js');
+const G = require('./_esm').loadEsm('src/modules/shared/lib/growthUtils.js');
 
 // Minimal fixture mirroring the real PARCELLES_CULTURALES shape.
 const PARCELLES = [

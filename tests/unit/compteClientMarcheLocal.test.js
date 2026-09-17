@@ -8,7 +8,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const U = require('../../public/lib/caisseUtils.js');
+const U = require('./_esm').loadEsm('src/modules/shared/lib/caisseUtils.js');
 
 test('isCompteClientCaisse — detects by compte_client_ id prefix', () => {
   assert.equal(U.isCompteClientCaisse({ id: 'compte_client_mustapha_chafik_a' }), true);

@@ -9,6 +9,7 @@ import { getBdcSociete } from '../finance/getBdcSociete.jsx';
 import { cachedFetch } from '../shared/cachedFetch.jsx';
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 
+import * as BdcWorkflow from '../shared/lib/bdcWorkflow.js';
 // ===================== ACHATS: BONS DE COMMANDE TAB =====================
         function AchatsBDCTab({ currentProfile, profileData }) {
             const [bdcList, setBdcList] = useState([]);
@@ -667,7 +668,7 @@ import { useEffect, useState } from '../shared/reactHooks.jsx';
                                         <select disabled={!!justCreated} value={form.ferme} onChange={e => setForm(f => ({...f, ferme: e.target.value, purchase_request_id: ''}))} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13,background: justCreated ? '#f3f4f6' : '#fff'}}>
                                             {FARMS.map(f => <option key={f} value={f}>{f}</option>)}
                                         </select>
-                                        {form.ferme && window.BdcWorkflow && !window.BdcWorkflow.requiresChefValidation(form.ferme) && (
+                                        {form.ferme && BdcWorkflow && !BdcWorkflow.requiresChefValidation(form.ferme) && (
                                             <div style={{marginTop:6,padding:'6px 10px',background:'var(--gold-pale)',border:'1px solid var(--gold)',borderRadius:6,fontSize:11,color:'var(--gray-800)',display:'flex',alignItems:'center',gap:6}}>
                                                 <i className="fa-solid fa-circle-info" style={{color:'var(--gold)'}}></i>
                                                 <span>{form.ferme === 'Toutes' ? 'BDC mutualisé multi-fermes — envoyé directement au DG (pas de chef de ferme désigné)' : 'BDC envoyé directement au DG (pas de chef de ferme pour ' + form.ferme + ')'}</span>

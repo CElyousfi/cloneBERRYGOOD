@@ -7,7 +7,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const M = require('../../public/lib/meteoCalc.js');
+const M = require('./_esm').loadEsm('src/modules/shared/lib/meteoCalc.js');
 
 function approx(actual, expected, eps) {
   if (Math.abs(actual - expected) > (eps || 1e-3)) {

@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { dedupInflight } = require('../../public/lib/inflightDedup');
+const { dedupInflight } = require('./_esm').loadEsm('src/modules/shared/lib/inflightDedup.js');
 
 test('concurrent calls on same key trigger fn only once', async () => {
     const registry = {};

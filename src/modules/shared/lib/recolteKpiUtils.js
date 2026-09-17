@@ -1,10 +1,6 @@
 /**
  * recolteKpiUtils.js — Pure helpers for the "Coût Récolte" screen KPI cards.
  *
- * Loaded twice (UMD-bricolé) :
- *   - Browser : <script src="lib/recolteKpiUtils.js"> → window.RecolteKpiUtils
- *   - node:test : require('./recolteKpiUtils.js') → module.exports
- *
  * All functions are pure (no DOM, no network, no Firestore).
  *
  * Item « fix coût récolte : KPI suivent la période + fallback variété/culture » — 2026-06.
@@ -14,7 +10,6 @@
  * « Historique DH/Kg » (7/30/60/90 jours), pas seulement sur le jour courant.
  */
 // @ts-check
-'use strict';
 
 /**
  * Agrège une série de jours (déjà agrégés par jour) en KPI de période.
@@ -217,16 +212,4 @@ function distinctOuvriersFromRows(rows) {
   return n;
 }
 
-// ============================================================================
-// UMD-style export (browser global + CommonJS for node:test)
-// ============================================================================
-
-const __recolteKpiApi = {
-  aggregatePeriodKpis: aggregatePeriodKpis,
-  computeNetDhParKg: computeNetDhParKg,
-  computeNetDhParKgProd: computeNetDhParKgProd,
-  distinctOuvriersFromRows: distinctOuvriersFromRows,
-};
-
-if (typeof module !== 'undefined' && module.exports) module.exports = __recolteKpiApi;
-if (typeof window !== 'undefined') window.RecolteKpiUtils = __recolteKpiApi;
+export { aggregatePeriodKpis, computeNetDhParKg, computeNetDhParKgProd, distinctOuvriersFromRows };

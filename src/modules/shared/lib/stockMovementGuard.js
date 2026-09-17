@@ -2,10 +2,6 @@
  * stockMovementGuard.js — Pure helpers : un bon (stock_movement) est-il
  * éditable / supprimable par un demandeur donné ?
  *
- * Chargé deux fois :
- *   - Navigateur via <script src="lib/stockMovementGuard.js"> → window.StockMovementGuard
- *   - node:test via require('./stockMovementGuard.js') → module.exports
- *
  * Le backend en garde une copie BYTE-IDENTIQUE à functions/lib/stock/movementGuard.js.
  * Si tu édites l'un, édite l'autre.
  *
@@ -26,7 +22,6 @@
  * vide (compat future / mouvements taggés uid).
  */
 // @ts-check
-'use strict';
 
 /** Valeur du tag d'import CANEVA stockée dans created_by.userId. */
 var IMPORT_CREATED_BY = 'import_caneva';
@@ -181,26 +176,4 @@ function refusalMessage(reason) {
   }
 }
 
-// ============================================================================
-// UMD-style export (browser global + CommonJS pour node:test / backend)
-// ============================================================================
-
-var __stockMovementGuardApi = {
-  IMPORT_CREATED_BY: IMPORT_CREATED_BY,
-  VALIDATED_STATUS: VALIDATED_STATUS,
-  isImportedMovement: isImportedMovement,
-  isValidatedMovement: isValidatedMovement,
-  isDeletedMovement: isDeletedMovement,
-  isCreator: isCreator,
-  evaluateMutable: evaluateMutable,
-  canEditMovement: canEditMovement,
-  canDeleteMovement: canDeleteMovement,
-  ADMIN_DELETE_ROLES: ADMIN_DELETE_ROLES,
-  isAdminDeleter: isAdminDeleter,
-  evaluateAdminDelete: evaluateAdminDelete,
-  canAdminDeleteMovement: canAdminDeleteMovement,
-  refusalMessage: refusalMessage,
-};
-
-if (typeof module !== 'undefined' && module.exports) module.exports = __stockMovementGuardApi;
-if (typeof window !== 'undefined') window.StockMovementGuard = __stockMovementGuardApi;
+export { IMPORT_CREATED_BY, VALIDATED_STATUS, isImportedMovement, isValidatedMovement, isDeletedMovement, isCreator, evaluateMutable, canEditMovement, canDeleteMovement, ADMIN_DELETE_ROLES, isAdminDeleter, evaluateAdminDelete, canAdminDeleteMovement, refusalMessage };

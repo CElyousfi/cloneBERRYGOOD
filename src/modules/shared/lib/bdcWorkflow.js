@@ -1,10 +1,6 @@
 /**
  * bdcWorkflow.js — Pure helpers for Bon de Commande (BdC) routing.
  *
- * Loaded twice:
- *   - In the browser via <script src="lib/bdcWorkflow.js"> → exposes window.BdcWorkflow
- *   - In node:test via require('./bdcWorkflow.js') → exposes module.exports
- *
  * Backend mirrors this file at functions/lib/bdc/workflow.js (byte-identical).
  * If you edit one, edit the other. Build sentinel in scripts/build-frontend.js
  * checks the public copy contains DIRECT_DG_FARMS.
@@ -19,7 +15,6 @@
  *     pour un sprint ultérieur (cf. ROADMAP).
  */
 // @ts-check
-'use strict';
 
 // ============================================================================
 // CONSTANTS
@@ -99,17 +94,4 @@ function chefProfileForFerme(ferme) {
   return CHEF_PROFILE_BY_FERME[ferme.trim().toUpperCase()] || null;
 }
 
-// ============================================================================
-// UMD-style export (browser global + CommonJS for node:test / backend)
-// ============================================================================
-
-const __bdcWorkflowApi = {
-  DIRECT_DG_FARMS,
-  requiresChefValidation,
-  nextStatusOnSubmit,
-  bypassReason,
-  chefProfileForFerme,
-};
-
-if (typeof module !== 'undefined' && module.exports) module.exports = __bdcWorkflowApi;
-if (typeof window !== 'undefined') window.BdcWorkflow = __bdcWorkflowApi;
+export { DIRECT_DG_FARMS, requiresChefValidation, nextStatusOnSubmit, bypassReason, chefProfileForFerme };

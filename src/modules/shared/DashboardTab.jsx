@@ -22,6 +22,7 @@ import { deriveSubFerme } from './deriveSubFerme.jsx';
 import { invalidateCache } from './invalidateCache.jsx';
 import { useState } from './reactHooks.jsx';
 
+import * as RecolteKpiUtils from './lib/recolteKpiUtils.js';
 function DashboardTab({ data, farmFilter, avoSubFilter, onNavigateMeteo, currentProfile, cultureFilter }) {
             const [apiData, setApiData] = useState(null);
             const [nouveauxData, setNouveauxData] = useState(null);
@@ -860,8 +861,8 @@ function DashboardTab({ data, farmFilter, avoSubFilter, onNavigateMeteo, current
 
                         // Effectif récolte = matricules DISTINCTS (un ouvrier multi-parcelles compte 1×).
                         // Kg/prime restent des SOMMES (inchangé).
-                        const distinctOuvFiltered = window.RecolteKpiUtils
-                            ? window.RecolteKpiUtils.distinctOuvriersFromRows(filtered)
+                        const distinctOuvFiltered = RecolteKpiUtils
+                            ? RecolteKpiUtils.distinctOuvriersFromRows(filtered)
                             : new Set(filtered.map(r => r.matricule)).size;
 
                         // By Ferme + Variété

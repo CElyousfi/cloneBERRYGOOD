@@ -7,7 +7,7 @@ const {
   computeNetDhParKg,
   computeNetDhParKgProd,
   distinctOuvriersFromRows,
-} = require('../../public/lib/recolteKpiUtils.js');
+} = require('./_esm').loadEsm('src/modules/shared/lib/recolteKpiUtils.js');
 
 test('aggregatePeriodKpis somme les coûts/kg sur la plage', () => {
   const series = [

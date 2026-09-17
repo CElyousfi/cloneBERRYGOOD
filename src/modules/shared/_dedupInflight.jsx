@@ -2,8 +2,10 @@
    Module: shared | Déclaration(s): _dedupInflight */
 
 
-const _dedupInflight = (typeof window !== 'undefined' && window.InflightDedup)
-            ? window.InflightDedup.dedupInflight
+import * as InflightDedup from './lib/inflightDedup.js';
+
+const _dedupInflight = (typeof window !== 'undefined' && InflightDedup)
+            ? InflightDedup.dedupInflight
             : function(reg, key, fn) { return fn(); };
 
 export { _dedupInflight };

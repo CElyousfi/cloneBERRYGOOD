@@ -1,10 +1,6 @@
 /**
  * inventaireUtils.js — Pure helpers for the Inventaire (Magasinier) screen.
  *
- * Loaded twice:
- *   - In the browser via <script src="lib/inventaireUtils.js"> → window.InventaireUtils
- *   - In node:test via require('./inventaireUtils.js') → module.exports
- *
  * All functions are pure (no DOM, no network, no Firestore). They power the
  * footer TOTAL row (per-unit quantity subtotals + monetary total) and the export
  * Excel, and the chronological ledger cumul of the "Détail des mouvements" popup.
@@ -12,7 +8,6 @@
  * 2026-06 — initial creation (feat/inventaire-export-total).
  */
 // @ts-check
-'use strict';
 
 /**
  * Round to 2 decimals (banker-agnostic, suffices for stock quantities/money).
@@ -90,16 +85,4 @@ function boundedLedger(entries, maxDate) {
   return { rows, solde_final: rows.length ? rows[rows.length - 1].solde_courant : 0 };
 }
 
-// ============================================================================
-// UMD-style export (browser global + CommonJS for node:test)
-// Unique internal name (cf. crash #75: top-level const collision in global scope).
-// ============================================================================
-
-const inventaireUtilsApi = {
-  computeInventaireTotals,
-  formatQteParUnite,
-  boundedLedger,
-};
-
-if (typeof module !== 'undefined' && module.exports) module.exports = inventaireUtilsApi;
-if (typeof window !== 'undefined') window.InventaireUtils = inventaireUtilsApi;
+export { computeInventaireTotals, formatQteParUnite, boundedLedger };

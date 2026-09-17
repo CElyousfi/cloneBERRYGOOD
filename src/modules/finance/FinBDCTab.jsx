@@ -4,6 +4,7 @@ import { formatModePaiement } from '../caisse/formatModePaiement.jsx';
 import { isModeVirement } from '../caisse/isModeVirement.jsx';
 import { PROFILES } from '../shared/PROFILES.jsx';
 
+import * as BdcWorkflow from '../shared/lib/bdcWorkflow.js';
 // ===================== FINANCE: SUIVI BDC TAB =====================
         function FinBDCTab({ currentProfile }) {
             const [bdcList, setBdcList] = React.useState([]);
@@ -93,7 +94,7 @@ import { PROFILES } from '../shared/PROFILES.jsx';
                 if (bdc.status === 'virement_signe') return 'virement_signe';
                 if (bdc.status === 'virement_lance') return 'virement_lance';
                 if (bdc.status === 'valide_dg') return 'validation_dg';
-                if (bdc.status === 'en_attente_dg') return (window.BdcWorkflow && !window.BdcWorkflow.requiresChefValidation(bdc.ferme)) ? 'soumission' : 'validation_chef';
+                if (bdc.status === 'en_attente_dg') return (BdcWorkflow && !BdcWorkflow.requiresChefValidation(bdc.ferme)) ? 'soumission' : 'validation_chef';
                 if (bdc.status === 'en_attente_chef') return 'soumission';
                 return 'creation';
             };

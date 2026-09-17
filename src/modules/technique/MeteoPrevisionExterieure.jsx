@@ -4,12 +4,13 @@ import { Panel } from '../shared/Panel.jsx';
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 import { fetchOpenMeteoHourly } from './fetchOpenMeteoHourly.jsx';
 
+import * as MeteoCalc from '../shared/lib/meteoCalc.js';
 // ===================== PREVISION EXTERIEURE (24h chart, J-1/J/J+1) =====================
         function MeteoPrevisionExterieure({ ferme, fermeInfo, meteoResult }) {
             const [day, setDay] = useState('today'); // 'yesterday' | 'today' | 'tomorrow'
             const [yesterdayHours, setYesterdayHours] = useState(null);
             const [yesterdayLoading, setYesterdayLoading] = useState(false);
-            const MC = (typeof window !== 'undefined' && window.MeteoCalc) ? window.MeteoCalc : null;
+            const MC = (typeof window !== 'undefined' && MeteoCalc) ? MeteoCalc : null;
 
             // Build dateISO list from meteoResult.previsions, find index of today.
             const previsions = meteoResult.previsions || [];

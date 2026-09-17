@@ -6,6 +6,7 @@ import { STATUS_LABELS } from '../shared/STATUS_LABELS.jsx';
 import { useMemo, useState } from '../shared/reactHooks.jsx';
 import { TXN_TYPE_LABELS } from './TXN_TYPE_LABELS.jsx';
 
+import * as CaisseUtils from '../shared/lib/caisseUtils.js';
 // ---- Transactions List Sub ----
         function CaisseTransactionsSub({ caisses: caissesProp, isSaisie, isControle, onRefresh }) {
             const [transactions, setTransactions] = useState([]);
@@ -57,12 +58,12 @@ import { TXN_TYPE_LABELS } from './TXN_TYPE_LABELS.jsx';
             // controlFiltered applique la formule (hasAnomaly && !accepted) || status !== 'valide'.
 
             const searchedTransactions = useMemo(
-                () => (window.CaisseUtils ? window.CaisseUtils.searchTransactions(transactions, searchQuery) : transactions),
+                () => (CaisseUtils ? CaisseUtils.searchTransactions(transactions, searchQuery) : transactions),
                 [transactions, searchQuery]
             );
 
             const filteredByQuickType = useMemo(
-                () => (window.CaisseUtils ? window.CaisseUtils.filterByQuickType(searchedTransactions, quickType) : searchedTransactions),
+                () => (CaisseUtils ? CaisseUtils.filterByQuickType(searchedTransactions, quickType) : searchedTransactions),
                 [searchedTransactions, quickType]
             );
 
@@ -70,8 +71,8 @@ import { TXN_TYPE_LABELS } from './TXN_TYPE_LABELS.jsx';
             // détection d'anomalies pour que le compteur « À contrôler » suive
             // la vue affichée, comme le fait déjà le filtre de type.
             const filteredByType = useMemo(
-                () => (window.CaisseUtils && window.CaisseUtils.filterByAxes
-                    ? window.CaisseUtils.filterByAxes(filteredByQuickType, filterAxes)
+                () => (CaisseUtils && CaisseUtils.filterByAxes
+                    ? CaisseUtils.filterByAxes(filteredByQuickType, filterAxes)
                     : filteredByQuickType),
                 [filteredByQuickType, filterAxes]
             );
@@ -80,7 +81,7 @@ import { TXN_TYPE_LABELS } from './TXN_TYPE_LABELS.jsx';
             // pas de la vue filtrée — sinon choisir une ferme viderait les autres
             // listes et on ne pourrait plus revenir en arrière.
             const axeOptions = useMemo(() => {
-                const CU = window.CaisseUtils;
+                const CU = CaisseUtils;
                 const d = (champ) => (CU && CU.distinctAxeValues ? CU.distinctAxeValues(transactions, champ) : []);
                 return { ferme: d('ferme'), culture: d('culture'), parcelle: d('parcelle'), code_analytique: d('code_analytique') };
             }, [transactions]);
@@ -91,19 +92,19 @@ import { TXN_TYPE_LABELS } from './TXN_TYPE_LABELS.jsx';
 
             // detectAnomaliesBatch (Sprint 2) — combine Sprint 1 per-tx rules + 5 cross-dataset rules
             const anomaliesByTx = useMemo(() => {
-                if (!window.CaisseUtils || !window.CaisseUtils.detectAnomaliesBatch) {
+                if (!CaisseUtils || !CaisseUtils.detectAnomaliesBatch) {
                     // Fallback Sprint 1 si le batch n'est pas chargé
                     const map = new Map();
-                    if (window.CaisseUtils) {
+                    if (CaisseUtils) {
                         const now = new Date();
                         for (const tx of filteredByType) {
-                            const found = window.CaisseUtils.detectCaisseAnomalies(tx, now);
+                            const found = CaisseUtils.detectCaisseAnomalies(tx, now);
                             if (found && found.length > 0) map.set(tx.id || tx.reference, found);
                         }
                     }
                     return map;
                 }
-                return window.CaisseUtils.detectAnomaliesBatch(filteredByType, new Date());
+                return CaisseUtils.detectAnomaliesBatch(filteredByType, new Date());
             }, [filteredByType]);
 
             // Helper : tx a-t-elle des anomalies non acceptées ?
@@ -202,14 +203,14 @@ import { TXN_TYPE_LABELS } from './TXN_TYPE_LABELS.jsx';
 
             // Totaux footer (recalculés sur la liste affichée)
             const totals = useMemo(
-                () => (window.CaisseUtils ? window.CaisseUtils.computeTotals(displayedTransactions) : { count: displayedTransactions.length, totalDepensesOp: 0, totalRecettes: 0, totalTransfers: 0, soldeNet: 0 }),
+                () => (CaisseUtils ? CaisseUtils.computeTotals(displayedTransactions) : { count: displayedTransactions.length, totalDepensesOp: 0, totalRecettes: 0, totalTransfers: 0, soldeNet: 0 }),
                 [displayedTransactions]
             );
 
             // Apply quick period chip → updates filterDateFrom/filterDateTo (which re-triggers API load)
             const applyQuickPeriod = (period) => {
                 setQuickPeriod(period);
-                const range = window.CaisseUtils ? window.CaisseUtils.quickPeriodToDateRange(period) : null;
+                const range = CaisseUtils ? CaisseUtils.quickPeriodToDateRange(period) : null;
                 if (range === null) {
                     setFilterDateFrom('');
                     setFilterDateTo('');
@@ -560,7 +561,7 @@ import { TXN_TYPE_LABELS } from './TXN_TYPE_LABELS.jsx';
                                     background: filterAxes[champ] ? 'var(--berry-pale)' : 'white',
                                     fontWeight: filterAxes[champ] ? 600 : 400}}>
                                 <option value="">{label}</option>
-                                <option value={(window.CaisseUtils && window.CaisseUtils.AXE_NON_RENSEIGNE) || '__VIDE__'}>— Non renseigné —</option>
+                                <option value={(CaisseUtils && CaisseUtils.AXE_NON_RENSEIGNE) || '__VIDE__'}>— Non renseigné —</option>
                                 {axeOptions[champ].map(v => <option key={v} value={v}>{v}</option>)}
                             </select>
                         ))}

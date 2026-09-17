@@ -3,6 +3,7 @@
 import { formatMAD } from '../finance/formatMAD.jsx';
 import { useState } from '../shared/reactHooks.jsx';
 
+import * as CaisseUtils from '../shared/lib/caisseUtils.js';
 // ---- Comptes Clients Marché Local (sous-lot 4.4) — LECTURE SEULE ----
         // Vue read-only des comptes clients marché local basés sur les caisses
         // `compte_client_*` (caisse_definitions). Remplace l'écran legacy
@@ -10,7 +11,7 @@ import { useState } from '../shared/reactHooks.jsx';
         // retiré du menu. Aucun write Firestore : uniquement les actions de
         // lecture existantes (dashboard caisses + list-transactions).
         function CaisseComptesClientsSub({ caisses }) {
-            const CU = (typeof window !== 'undefined' && window.CaisseUtils) ? window.CaisseUtils : null;
+            const CU = (typeof window !== 'undefined' && CaisseUtils) ? CaisseUtils : null;
 
             // Filtre les caisses comptes clients (par préfixe id / kind).
             const clientCaisses = React.useMemo(() => {

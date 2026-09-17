@@ -9,6 +9,7 @@ import { cachedFetch } from '../shared/cachedFetch.jsx';
 import { deriveSubFerme } from '../shared/deriveSubFerme.jsx';
 import { useState } from '../shared/reactHooks.jsx';
 
+import * as RecolteKpiUtils from '../shared/lib/recolteKpiUtils.js';
 // ===================== RECOLTE TAB =====================
         function RecolteTab({ data, farmFilter, avoSubFilter, currentProfile, cultureFilter: propCultureFilter }) {
             const [fermeFilter, setFermeFilter] = useState(farmFilter || '');
@@ -197,8 +198,8 @@ import { useState } from '../shared/reactHooks.jsx';
             const totalKgPointage = recolte.reduce((s, r) => s + r.kilos, 0);
             // Effectifs = matricules DISTINCTS (un ouvrier multi-parcelles compte 1×).
             // Coûts/Kg/primes restent des SOMMES (inchangé).
-            const distinctCount = (rows) => window.RecolteKpiUtils
-                ? window.RecolteKpiUtils.distinctOuvriersFromRows(rows)
+            const distinctCount = (rows) => RecolteKpiUtils
+                ? RecolteKpiUtils.distinctOuvriersFromRows(rows)
                 : new Set(rows.map(r => r.matricule)).size;
             const nbOuvRecolte = distinctCount(recolte);
             const nbOuvLogistique = distinctCount(logistiqueWorkers);

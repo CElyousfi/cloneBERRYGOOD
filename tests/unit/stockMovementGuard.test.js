@@ -7,7 +7,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const G = require('../../public/lib/stockMovementGuard.js');
+const G = require('./_esm').loadEsm('src/modules/shared/lib/stockMovementGuard.js');
 
 const creator = { profileId: 'magasinier', name: 'Mag', userId: '' };
 const other = { profileId: 'chef_f1', name: 'Chef', userId: '' };

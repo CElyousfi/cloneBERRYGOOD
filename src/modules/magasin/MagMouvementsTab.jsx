@@ -3,6 +3,7 @@
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 import { useStockLocations } from './useStockLocations.jsx';
 
+import * as StockMovementGuard from '../shared/lib/stockMovementGuard.js';
 // ===================== MAGASINIER: MOUVEMENTS HISTORIQUE TAB =====================
         function MagMouvementsTab({ currentProfile, profileData }) {
             const [movements, setMovements] = useState([]);
@@ -32,7 +33,7 @@ import { useStockLocations } from './useStockLocations.jsx';
             const [editSaving, setEditSaving] = useState(false);
             // Identité du demandeur pour le contrôle créateur (profileId = identité effective).
             const requester = { profileId: currentProfile, userId: (profileData && profileData.userId) || '' };
-            const Guard = (typeof window !== 'undefined' && window.StockMovementGuard) || null;
+            const Guard = (typeof window !== 'undefined' && StockMovementGuard) || null;
             const loadMovements = () => {
                 setLoading(true);
                 let url = '/api/stock?action=list-movements&limit=500';

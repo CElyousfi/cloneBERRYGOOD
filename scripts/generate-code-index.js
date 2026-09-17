@@ -7,12 +7,11 @@
  * Quatre sorties versionnées :
  *   - docs/ai/code-map-actions.md    : actions backend `action === "…"` → fichier:ligne + handler
  *   - docs/ai/code-map-components.md : composants React → fichier:ligne + tab
- *   - docs/ai/code-map-modules.md    : modules public/lib + functions/lib → export global + fonctions
+ *   - docs/ai/code-map-modules.md    : modules src/modules/shared/lib + functions/lib → fonctions exportées
  *   - docs/ai/require-index.json     : fichier cible → tests directs ET transitifs
  *
- * Objectif : donner à un agent l'emplacement direct d'un symbole dans les
- * monolithes (functions/index.js ~17k lignes, public/app.jsx ~69k lignes) sans
- * avoir à les charger en contexte.
+ * Objectif : donner à un agent l'emplacement direct d'un symbole (action
+ * backend, composant, helper) sans avoir à charger les arbres en contexte.
  *
  * LIMITES (assumées) :
  *   - Le parsing est purement textuel (regex), pas d'AST. Les formes exotiques
@@ -44,6 +43,7 @@ const TARGET_TREES = [
   'functions/middleware',
   'public/lib',
   'public/components',
+  'src/modules',
 ];
 
 /** Extensions retenues dans les arbres cibles. */
@@ -597,6 +597,31 @@ function parsePublicLibExports(content) {
   return { globalName, functions };
 }
 
+/**
+ * Parse les exports nommés d'un module ES (src/modules/shared/lib/*.js) :
+ * `export { a, b as c };` et `export function/const/class x`.
+ * Best-effort — ne lève jamais.
+ * @param {string} content
+ * @returns {string[]}
+ */
+function parseEsmExports(content) {
+  /** @type {string[]} */
+  const out = [];
+  const listPattern = /^export\s*\{([^}]*)\}/gm;
+  let m;
+  while ((m = listPattern.exec(content)) !== null) {
+    for (const part of m[1].split(',')) {
+      const name = part.trim().split(/\s+as\s+/).pop();
+      if (name && !out.includes(name)) out.push(name);
+    }
+  }
+  const declPattern = /^export\s+(?:async\s+)?(?:function\*?|const|let|var|class)\s+([A-Za-z_$][\w$]*)/gm;
+  while ((m = declPattern.exec(content)) !== null) {
+    if (!out.includes(m[1])) out.push(m[1]);
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // require-index
 // ---------------------------------------------------------------------------
@@ -608,6 +633,24 @@ function parsePublicLibExports(content) {
  */
 function parseRelativeRequires(content) {
   const pattern = /require\(\s*['"](\.[^'"]+)['"]\s*\)/g;
+  /** @type {string[]} */
+  const out = [];
+  let match;
+  while ((match = pattern.exec(content)) !== null) out.push(match[1]);
+  // Modules ES : `import … from './x.js'` (dépendances entre fichiers de src/).
+  const importPattern = /^\s*import\s[^'"\n]*['"](\.[^'"]+)['"]/gm;
+  while ((match = importPattern.exec(content)) !== null) out.push(match[1]);
+  return out;
+}
+
+/**
+ * Parse les chargements ESM des tests (`loadEsm('src/…')`, chemins relatifs à
+ * la RACINE du dépôt, cf. tests/unit/_esm.js).
+ * @param {string} content
+ * @returns {string[]}
+ */
+function parseLoadEsmPaths(content) {
+  const pattern = /loadEsm\(\s*['"](src\/[^'"]+)['"]/g;
   /** @type {string[]} */
   const out = [];
   let match;
@@ -731,12 +774,14 @@ function collectActionsSources(root) {
 }
 
 /**
- * Liste les fichiers sources des composants (app.jsx en premier).
+ * Liste les fichiers sources des composants : src/modules (le frontend) et,
+ * tant qu'ils existent, les composants legacy de public/components.
  * @param {string} root
  * @returns {string[]}
  */
 function listComponentFiles(root) {
-  return ['public/app.jsx'].concat(walkFiles(root, 'public/components', p => p.endsWith('.jsx')));
+  return walkFiles(root, 'src/modules', p => p.endsWith('.jsx'))
+    .concat(walkFiles(root, 'public/components', p => p.endsWith('.jsx')));
 }
 
 /**
@@ -754,9 +799,9 @@ function collectComponentsSources(root) {
  * @returns {string[]}
  */
 function listModuleFiles(root) {
-  return walkFiles(root, 'public/lib', p => p.endsWith('.js')).concat(
-    walkFiles(root, 'functions/lib', p => p.endsWith('.js') && !isInTests(p))
-  );
+  return walkFiles(root, 'src/modules/shared/lib', p => p.endsWith('.js'))
+    .concat(walkFiles(root, 'public/lib', p => p.endsWith('.js')))
+    .concat(walkFiles(root, 'functions/lib', p => p.endsWith('.js') && !isInTests(p)));
 }
 
 /**
@@ -851,7 +896,7 @@ function renderComponentsMap(components, fingerprint) {
     title: 'Composants frontend',
     count: components.length,
     description:
-      'Chaque composant React de public/app.jsx et public/components/, avec son emplacement exact et le tab qui le monte — à consulter AVANT toute recherche dans app.jsx.',
+      'Chaque composant React de src/modules/, avec son emplacement exact et le tab qui le monte (renderTab dans AuthenticatedApp.jsx).',
     fingerprint,
     headers: ['Composant', 'Fichier:Ligne', 'Tab'],
     rows: components.map(c => [c.name, `${c.file}:${c.line}`, c.tab || '—']),
@@ -869,7 +914,7 @@ function renderModulesMap(modules, fingerprint) {
     title: 'Modules lib',
     count: modules.length,
     description:
-      'API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d\'en réécrire un.',
+      'API publique de chaque module src/modules/shared/lib/ (exports ES) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d\'en réécrire un.',
     fingerprint,
     headers: ['Fichier', 'Export global', 'Fonctions'],
     rows: modules.map(m => [
@@ -919,8 +964,9 @@ function buildComponents(root) {
       if (!byName[c.name]) byName[c.name] = c;
     }
   }
-  const appSource = readFileSafe(path.join(root, 'public/app.jsx')) || '';
-  const tabs = parseRenderTabs(appSource);
+  // Les onglets sont montés par renderTab(...) dans le shell AuthenticatedApp.
+  const shellSource = readFileSafe(path.join(root, 'src/modules/shared/AuthenticatedApp.jsx')) || '';
+  const tabs = parseRenderTabs(shellSource);
   return Object.values(byName)
     .map(c => ({ ...c, tab: tabs[c.name] || null }))
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -938,6 +984,11 @@ function buildModules(root) {
     const content = readFileSafe(path.join(root, rel));
     if (content === null) continue;
     modules.push({ file: rel, globalName: null, functions: parseModuleExportsKeys(content) });
+  }
+  for (const rel of walkFiles(root, 'src/modules/shared/lib', p => p.endsWith('.js'))) {
+    const content = readFileSafe(path.join(root, rel));
+    if (content === null) continue;
+    modules.push({ file: rel, globalName: null, functions: parseEsmExports(content) });
   }
   for (const rel of walkFiles(root, 'public/lib', p => p.endsWith('.js'))) {
     const content = readFileSafe(path.join(root, rel));
@@ -981,6 +1032,13 @@ function buildRequireIndex(root) {
     const out = [];
     for (const spec of parseRelativeRequires(content)) {
       const resolved = resolveRequirePath(path.dirname(abs), spec, exists);
+      if (!resolved) continue;
+      const relResolved = path.relative(root, resolved).split(path.sep).join('/');
+      if (!isTargetFile(relResolved)) continue;
+      if (!out.includes(relResolved)) out.push(relResolved);
+    }
+    for (const relPath of parseLoadEsmPaths(content)) {
+      const resolved = resolveRequirePath(root, './' + relPath, exists);
       if (!resolved) continue;
       const relResolved = path.relative(root, resolved).split(path.sep).join('/');
       if (!isTargetFile(relResolved)) continue;
@@ -1185,6 +1243,8 @@ module.exports = {
   parseModuleExportsKeys,
   parsePublicLibExports,
   parseRelativeRequires,
+  parseEsmExports,
+  parseLoadEsmPaths,
   resolveRequirePath,
   reachableFrom,
   isTargetFile,

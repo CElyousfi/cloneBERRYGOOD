@@ -10,6 +10,7 @@ import { deriveSubFerme } from '../shared/deriveSubFerme.jsx';
 import { invalidateCache } from '../shared/invalidateCache.jsx';
 import { useState } from '../shared/reactHooks.jsx';
 
+import * as RecolteKpiUtils from '../shared/lib/recolteKpiUtils.js';
 // ===================== COUT RECOLTE TAB =====================
         function CoutRecolteTab({ data, farmFilter, avoSubFilter, currentProfile }) {
             const CHARGES_SOCIALES = 40;
@@ -514,8 +515,8 @@ import { useState } from '../shared/reactHooks.jsx';
             // Effectif = matricules DISTINCTS (défensif : si le backend recolte ne déduplique
             // pas les workers — pas de scan prod — allFiltered peut avoir 1 ligne/parcelle).
             // Les coûts/jours ci-dessous restent des SOMMES sur toutes les lignes (inchangé).
-            const nbOuvriers = window.RecolteKpiUtils
-                ? window.RecolteKpiUtils.distinctOuvriersFromRows(allFiltered)
+            const nbOuvriers = RecolteKpiUtils
+                ? RecolteKpiUtils.distinctOuvriersFromRows(allFiltered)
                 : new Set(allFiltered.map(r => r.matricule)).size;
             const totalJoursOuvriers = allFiltered.reduce((s, r) => s + (r.jours || 1), 0);
             const coutMoyenOuvrierJour = totalJoursOuvriers > 0 ? Math.round(totalCout / totalJoursOuvriers) : 0;
@@ -546,7 +547,7 @@ import { useState } from '../shared/reactHooks.jsx';
             // `if (loading)` — un hook conditionnel violerait les Rules of Hooks. Le coût reste
             // négligeable (même ordre de grandeur que le graphe qui recalcule déjà par render).
             const periodKpi = (() => {
-                const RK = (typeof window !== 'undefined' && window.RecolteKpiUtils) ? window.RecolteKpiUtils : null;
+                const RK = (typeof window !== 'undefined' && RecolteKpiUtils) ? RecolteKpiUtils : null;
                 if (!RK) return null; // fallback : KPI jour (lib non chargée)
                 const logOps = logistiqueOps;
                 // Filtres identiques au graphe

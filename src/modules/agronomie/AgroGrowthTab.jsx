@@ -4,11 +4,12 @@ import { SimpleAreaChart } from '../shared/SimpleAreaChart.jsx';
 import { useEffect, useMemo, useState } from '../shared/reactHooks.jsx';
 import { PARCELLES_CULTURALES } from './PARCELLES_CULTURALES.jsx';
 
+import * as GrowthUtils from '../shared/lib/growthUtils.js';
 // =============================================
         // SUIVI CROISSANCE FRAMBOISE (points de contrôle)
         // =============================================
         function AgroGrowthTab({ currentProfile, userProfile }) {
-            const GU = window.GrowthUtils || {};
+            const GU = GrowthUtils || {};
             const PALETTE = ['#8B2252', '#2D8B4E', '#D4A847', '#2196F3', '#9C27B0', '#FF7043', '#00897B', '#5C6BC0'];
             // Le backend autorise l'écriture au seul profil RÉEL agronomie (token).
             const isAgro = !!(userProfile && userProfile.profileId === 'agronomie');

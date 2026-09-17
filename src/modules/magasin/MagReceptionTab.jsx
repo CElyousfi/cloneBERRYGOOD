@@ -5,6 +5,7 @@ import { cachedFetch } from '../shared/cachedFetch.jsx';
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 import { useStockLocations } from './useStockLocations.jsx';
 
+import * as StockMovementGuard from '../shared/lib/stockMovementGuard.js';
 // ===================== MAGASINIER: BONS DE RÉCEPTION (LISTE BR SAISIS) =====================
         function MagReceptionTab({ currentProfile, profileData, setCurrentTab }) {
             const [receptions, setReceptions] = useState([]);
@@ -25,7 +26,7 @@ import { useStockLocations } from './useStockLocations.jsx';
 
             // Identité du demandeur pour le contrôle créateur (profileId = identité effective).
             const requester = { profileId: currentProfile, userId: (profileData && profileData.userId) || '' };
-            const Guard = (typeof window !== 'undefined' && window.StockMovementGuard) || null;
+            const Guard = (typeof window !== 'undefined' && StockMovementGuard) || null;
             const canMutate = (mov) => Guard ? Guard.canEditMovement(mov, requester) : false;
             const isAdminDeleter = Guard ? Guard.isAdminDeleter(requester) : (currentProfile === 'achats' || currentProfile === 'dg');
             const canAdminDelete = (mov) => Guard ? Guard.canAdminDeleteMovement(mov, requester) : false;
