@@ -2,10 +2,6 @@
  * factureExportUtils.js — Pure helpers for the "Export Excel" feature of the
  * Factures module (Achats + Finance screens).
  *
- * Loaded twice (UMD, same pattern as caisseUtils.js):
- *   - In the browser via <script src="lib/factureExportUtils.js"> → window.FactureExportUtils
- *   - In node:test via require('./factureExportUtils.js') → module.exports
- *
  * All functions are pure (no DOM, no network, no Firestore). They take a plain
  * facture object as read from the `invoices` Firestore collection and produce
  * line-level data with a reconstructed (per-facture) VAT breakdown.
@@ -25,7 +21,6 @@
  * mais ne sont PLUS appelés dans le calcul du taux ligne.
  */
 // @ts-check
-'use strict';
 
 // ============================================================================
 // CONSTANTS
@@ -566,7 +561,7 @@ function buildFactureLines(facture) {
 // ============================================================================
 
 /**
- * Index des colonnes du récap (alignés sur recapHeader côté app.jsx /
+ * Index des colonnes du récap (alignés sur recapHeader côté FinFacturesTab /
  * gen-script). SOURCE DE VÉRITÉ partagée pour éviter tout décalage.
  *   0 N° Interne · 1 N° Facture · 2 BDC · 3 Fournisseur · 4 Date
  *   5 Total HT · 6 TVA · 7 Total TTC · 8 Écarts · 9 Anomalie TVA · 10 Statut
@@ -629,22 +624,4 @@ function buildRecapStatutRows(scoped, statusLabels) {
 // EXPORT API
 // ============================================================================
 
-const __factureExportApi = {
-  // constants
-  STANDARD_TVA_RATES, TVA_SNAP_EPS, CAMPAIGN_START_MONTH,
-  TAXABLE_TVA_RATE, TAXABLE_PRODUCT_PATTERNS,
-  ANOMALIE_TVA_B, INFO_TVA_NON_SAISIE,
-  // helpers
-  fxRound2, parseFactureDate, campaignBounds, isWithinPeriod, campaignYearOf, listAvailableCampaigns, reconciliationEpsilon,
-  // [code mort — référence historique, NON utilisé depuis v5] devinette mot-clé
-  normalizeDesignation, matchProduitTaxable, deriveTauxLigne,
-  // TVA par ligne — v5 : taux SAISI uniquement
-  parseSaisiTaux, resolveTauxLigne,
-  // core
-  deriveTauxTva, buildFactureLines,
-  // récap sheet (pur, testable) — alignement colonnes
-  RECAP_COL, RECAP_NB_COLS, buildRecapStatutRows,
-};
-
-if (typeof module !== 'undefined' && module.exports) module.exports = __factureExportApi;
-if (typeof window !== 'undefined') window.FactureExportUtils = __factureExportApi;
+export { STANDARD_TVA_RATES, TVA_SNAP_EPS, CAMPAIGN_START_MONTH, TAXABLE_TVA_RATE, TAXABLE_PRODUCT_PATTERNS, ANOMALIE_TVA_B, INFO_TVA_NON_SAISIE, fxRound2, parseFactureDate, campaignBounds, isWithinPeriod, campaignYearOf, listAvailableCampaigns, reconciliationEpsilon, normalizeDesignation, matchProduitTaxable, deriveTauxLigne, parseSaisiTaux, resolveTauxLigne, deriveTauxTva, buildFactureLines, RECAP_COL, RECAP_NB_COLS, buildRecapStatutRows };

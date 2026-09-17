@@ -18,7 +18,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 
-const FRONT = require('../../public/lib/uniteConsoUtils.js');
+const FRONT = require('./_esm').loadEsm('src/modules/shared/lib/uniteConsoUtils.js');
 const BACK = require('../../functions/lib/uniteConso/index.js');
 
 const FICHES = [
@@ -132,11 +132,8 @@ test('copie FRONT — le test de référence : 5 L d\'Acide Nitrique déduisent 
   assert.equal(FRONT.phraseConversion(fiche), '1 L = 1.32 KG');
 });
 
-test('copie FRONT — le module s\'expose aussi sur window (script classique)', () => {
-  // Chargé en <script> par le navigateur, il n'y a pas de `module` : la
-  // branche window est le SEUL point d'entrée du front. Un oubli ici rendrait
-  // le sélecteur d'unité inerte en production sans casser un seul test node.
-  const src = require('node:fs').readFileSync(require.resolve('../../public/lib/uniteConsoUtils.js'), 'utf8');
-  assert.match(src, /window\.UniteConsoUtils = UCU_api/);
-  assert.match(src, /^\(function \(\) \{/m, 'IIFE obligatoire : scope global partagé (crash React #200)');
+test('copie FRONT — le module ES exporte son API (sinon le sélecteur d\'unité est inerte)', () => {
+  const src = require('node:fs').readFileSync(require.resolve('../../src/modules/shared/lib/uniteConsoUtils.js'), 'utf8');
+  assert.match(src, /^export \{ [^}]*\bconvertirQuantite\b/m, 'export ES nommé attendu');
+  assert.doesNotMatch(src, /window\.UniteConsoUtils|module\.exports/, 'plus de shim UMD');
 });

@@ -44,8 +44,8 @@ const SRC_TAB = babelise('public/components/MagBCTab.jsx');
 const SRC_CONV = babelise('public/components/ArticleConversionFields.jsx');
 
 const CampagneUtils = require('./_esm').loadEsm('src/modules/shared/lib/campagneUtils.js');
-const UniteConsoUtils = require('../../public/lib/uniteConsoUtils.js');
-const ArticleSelect = require('../../public/lib/articleSelect.js');
+const UniteConsoUtils = require('./_esm').loadEsm('src/modules/shared/lib/uniteConsoUtils.js');
+const ArticleSelect = require('./_esm').loadEsm('src/modules/shared/lib/articleSelect.js');
 
 function flatten(children) {
   const out = [];

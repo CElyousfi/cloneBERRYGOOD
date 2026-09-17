@@ -16,7 +16,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const path = require('node:path');
 
-const R = require(path.join(__dirname, '../../public/lib/rapprochementPaie.js'));
+const R = require('./_esm').loadEsm('src/modules/shared/lib/rapprochementPaie.js');
 
 const BAREMES = { smagBrutJournalier: 97.44, tauxCnssSalariale: 0.0448, tauxAmo: 0.0226 };
 

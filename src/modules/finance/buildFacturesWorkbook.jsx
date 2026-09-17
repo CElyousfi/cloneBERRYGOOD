@@ -13,9 +13,11 @@
         // CDN xlsx.full.min) ne supporte PAS le style riche (gras, couleurs) :
         // c'est une limite de la lib, documentée. On met les vrais formats +
         // l'autofilter, prioritaires pour un fichier transmissible à un comptable.
+import * as FactureExportUtils from '../shared/lib/factureExportUtils.js';
+
         function buildFacturesWorkbook(factures, opts) {
             opts = opts || {};
-            const FE = window.FactureExportUtils;
+            const FE = FactureExportUtils;
             const list = Array.isArray(factures) ? factures : [];
             // Filtre campagne optionnel (bornes paramétrables, pas de hardcode).
             let scoped = list;

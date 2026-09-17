@@ -13,7 +13,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 
-const PGU = require('../../public/lib/parcelleGroupUtils.js');
+const PGU = require('./_esm').loadEsm('src/modules/shared/lib/parcelleGroupUtils.js');
 const backend = require('../../functions/lib/parcelleGroupes/split.js');
 
 // ---------------------------------------------------------------------------

@@ -3,13 +3,10 @@
  * (réception BDC) data: reçu / reliquat / statut, from a BDC's items and
  * its delivery_notes (BL).
  *
- * Loaded twice:
- *   - In the browser via <script src="lib/bdcReceptionUtils.js"> → exposes
- *     window.BdcReceptionUtils
- *   - In node:test via require('./bdcReceptionUtils.js') → exposes
+ *     BdcReceptionUtils
  *     module.exports
  *
- * Extracted from AchatsBDCTab.getDeliveryData (public/app.jsx, Sprint BDC
+ * Extracted from AchatsBDCTab.getDeliveryData (Sprint BDC
  * réception) so the same logic can be reused by MagBdcReceptionTab (plafond
  * de réception par article) and MagBonsCommandeTab (popup lecture seule
  * reçu/reliquat) without duplication.
@@ -69,18 +66,6 @@
  * @property {ReceptionRowArticle[]} articles
  */
 // @ts-check
-'use strict';
-
-// IIFE d'isolation : tout le corps du module vit dans cette fonction pour
-// qu'AUCUN identifiant top-level (computeDeliveryData, __api, …) ne fuie
-// dans le scope lexical global partagé par les <script> classiques de
-// public/lib/. Sans ça, `const __api` entre en collision avec
-// caisseUtils.js → erreur "Identifier '__api' has already been declared"
-// au boot → React #200 en cascade (cf. incident commit 1754a64, et son
-// premier fix dans encaissementsCanevas.js). Les exports passent par
-// window/module en fin d'IIFE. TOUT nouveau fichier public/lib/ doit
-// suivre ce même pattern.
-(function () {
 
 /**
  * Calcule, pour chaque article d'un BDC, la quantité commandée, reçue
@@ -307,21 +292,4 @@ function buildReceptionCreatedMessage(numero, valorisation) {
   return msg;
 }
 
-// ============================================================================
-// UMD-style export (browser global + CommonJS for node:test)
-// ============================================================================
-
-const __api = {
-  computeDeliveryData,
-  resolveDeliveryDataOrError,
-  filterReceptionsForBdc,
-  computeReceptionRowsWithReliquat,
-  computeReceptionEcart,
-  clampReceivedQty,
-  buildReceptionCreatedMessage,
-};
-
-if (typeof module !== 'undefined' && module.exports) module.exports = __api;
-if (typeof window !== 'undefined') window.BdcReceptionUtils = __api;
-
-})();
+export { computeDeliveryData, resolveDeliveryDataOrError, filterReceptionsForBdc, computeReceptionRowsWithReliquat, computeReceptionEcart, clampReceivedQty, buildReceptionCreatedMessage };

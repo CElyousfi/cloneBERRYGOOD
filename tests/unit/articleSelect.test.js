@@ -19,7 +19,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 
-const AS = require('../../public/lib/articleSelect.js');
+const AS = require('./_esm').loadEsm('src/modules/shared/lib/articleSelect.js');
 // Le backend, pour prouver que les deux clés d'identité ne peuvent pas diverger.
 const { canon } = require('../../functions/lib/stock/articleKey.js');
 

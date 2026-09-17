@@ -28,7 +28,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { resolveDestinationOptions, resolveBdcDestination } = require('../../public/lib/stockDestinations.js');
+const { resolveDestinationOptions, resolveBdcDestination } = require('./_esm').loadEsm('src/modules/shared/lib/stockDestinations.js');
 
 // Copie figée de FARMS (public/app.jsx ~l.452). 'Toutes' n'y figure pas.
 const FARMS = ['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'BAHIA', 'Avocatier'];

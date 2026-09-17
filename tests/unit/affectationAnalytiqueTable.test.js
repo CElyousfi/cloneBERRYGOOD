@@ -16,7 +16,7 @@
 //      fonction). Sans ça, une grille extraite dans un composant enfant ne
 //      serait qu'un nœud opaque et les assertions sur les lignes deviendraient
 //      aveugles au moment précis où elles doivent surveiller le refactor.
-// La lib de pivot (public/lib/analytiqueUtils.js) est chargée POUR DE VRAI dans
+// La lib de pivot (src/modules/shared/lib/analytiqueUtils.js) est chargée POUR DE VRAI dans
 // le sandbox : le pivot n'est pas stubé, les lignes testées sont celles de prod.
 
 const test = require('node:test');

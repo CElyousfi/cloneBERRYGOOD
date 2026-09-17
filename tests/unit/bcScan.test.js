@@ -1007,7 +1007,7 @@ test('buildVocabulaireSection — articles seuls : pas de section parcelles fant
 // ---------------------------------------------------------------------------
 
 test('resolveScanMedia — bon.png ré-encodé en JPEG par le client -> image/jpeg', () => {
-  // Cas RÉEL : public/lib/imageDownscale.js ré-encode toujours en JPEG. Se fier
+  // Cas RÉEL : src/modules/shared/lib/imageDownscale.js ré-encode toujours en JPEG. Se fier
   // à l'extension annoncerait image/png sur des octets JPEG -> 400 côté API.
   const r = resolveScanMedia('data:image/jpeg;base64,/9j/4AAQ', 'bon.png')
   assert.strictEqual(r.ok, true)

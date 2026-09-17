@@ -37,9 +37,10 @@ function routesDeclarees() {
   return out;
 }
 
-/** Fichiers SOURCE du front (jamais les `.js` buildés, qui les dupliqueraient). */
+/** Fichiers SOURCE du front : tout src/modules (jamais le bundle, qui les dupliquerait). */
 function fichiersFront() {
-  const out = [path.join(RACINE, 'public/app.jsx')];
+  const out = require('./_sources').listModuleFiles().slice();
+  // Couche legacy (public/components, public/lib), tant qu'elle existe.
   [['public/components', '.jsx'], ['public/lib', '.js']].forEach(([dir, ext]) => {
     const abs = path.join(RACINE, dir);
     if (!fs.existsSync(abs)) return;

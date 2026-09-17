@@ -12,7 +12,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { computeDeliveryData, resolveDeliveryDataOrError, filterReceptionsForBdc, computeReceptionRowsWithReliquat, computeReceptionEcart, clampReceivedQty } = require('../../public/lib/bdcReceptionUtils.js');
+const { computeDeliveryData, resolveDeliveryDataOrError, filterReceptionsForBdc, computeReceptionRowsWithReliquat, computeReceptionEcart, clampReceivedQty } = require('./_esm').loadEsm('src/modules/shared/lib/bdcReceptionUtils.js');
 
 test('computeDeliveryData: reproduit BDC-2026-0142 — 100 commandés, 30+25 reçus → reste 45, statut partiel', () => {
   const bdcItems = [{ article: 'TES', quantite: 100, unite: 'ml' }];

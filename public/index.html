@@ -1411,8 +1411,6 @@
             </div>
         </div>
     </div>
-    <!-- Local-only UI test bypass (no-op except on localhost?testui=1). See public/lib/local-test-bypass.js -->
-    <script src="lib/local-test-bypass.js?v=mtrj445m"></script>
     <!-- Liste canonique des catégories d'article (select fermé de la fiche article). -->
     <!-- Modèle de coût M.O — consomme PaieUtils par INJECTION, donc l'ordre des
          <script> n'a pas d'importance ici (rien n'est lu au chargement). -->
@@ -1420,27 +1418,14 @@
          l'ordre des <script> est indifférent, rien n'est lu au chargement. -->
         <!-- Lecture du fichier de paie + rapprochement. PURS, sans dépendance :
          l'ordre des <script> est indifférent, rien n'est lu au chargement. -->
-    <script defer src="lib/lecturePaieExcel.js?v=mtrj445m"></script>
-    <script defer src="lib/rapprochementPaie.js?v=mtrj445m"></script>
     <!-- Ventilation d'UNE parcelle quinzaine par quinzaine. PURE, sans
          dépendance : l'ordre des <script> est indifférent. -->
-    <script defer src="lib/primesImportParse.js?v=mtrj445m"></script>
-    <script defer src="lib/factureExportUtils.js?v=mtrj445m"></script>
-    <script defer src="lib/stockDestinations.js?v=mtrj445m"></script>
-    <script defer src="lib/scanAttachmentUtils.js?v=mtrj445m"></script>
-    <script defer src="lib/scanClientUpload.js?v=mtrj445m"></script>
-    <script defer src="lib/bdcReceptionUtils.js?v=mtrj445m"></script>
-    <script defer src="lib/parcelleGroupUtils.js?v=mtrj445m"></script>
     <script defer src="components/BugReportButton.js?v=mtrj445m"></script>
     <script defer src="components/BugReportsAdmin.js?v=mtrj445m"></script>
     <script defer src="components/PointageValidationPanel.js?v=mtrj445m"></script>
     <script defer src="components/PointageValidationView.js?v=mtrj445m"></script>
-    <script defer src="lib/imageDownscale.js?v=mtrj445m"></script>
-    <script defer src="lib/bcScanMatch.js?v=mtrj445m"></script>
-    <script defer src="lib/uniteConsoUtils.js?v=mtrj445m"></script>
     <!-- Sélection FERMÉE de l'article du bon de consommation. AVANT
          components/MagBCTab.js, qui lit window.ArticleSelect. -->
-    <script defer src="lib/articleSelect.js?v=mtrj445m"></script>
     <script defer src="components/ArticleConversionFields.js?v=mtrj445m"></script>
     <script defer src="components/PmpDetailPopup.js?v=mtrj445m"></script>
     <script defer src="components/CaisseSaisieSub.js?v=mtrj445m"></script>

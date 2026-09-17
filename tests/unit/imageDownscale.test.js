@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 
-const ImageDownscale = require('../../public/lib/imageDownscale.js');
+const ImageDownscale = require('./_esm').loadEsm('src/modules/shared/lib/imageDownscale.js');
 
 test('computeTargetSize — image déjà plus petite : inchangée', () => {
   const r = ImageDownscale.computeTargetSize(800, 600, 2000);

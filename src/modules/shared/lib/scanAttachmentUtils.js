@@ -2,11 +2,6 @@
  * scanAttachmentUtils.js — Pure helpers for the UNIFIED scan/attachment feature
  * (factures + BL + BDC), client-direct upload model.
  *
- * Loaded twice (UMD, same pattern as caisseUtils.js / factureExportUtils.js):
- *   - In the browser via <script src="lib/scanAttachmentUtils.js"> → window.ScanAttachmentUtils
- *   - In node:test via require('./scanAttachmentUtils.js') → module.exports
- *   - In the Cloud Function via require('../public/lib/scanAttachmentUtils.js')
- *
  * All functions are PURE (no DOM, no network, no Firestore, no Storage). They
  * implement the cross-cutting logic shared by the frontend uploader and the
  * `upload-attachment` Cloud Function action:
@@ -18,7 +13,6 @@
  * 2026-06 — initial creation (brique scan unifiée, client-direct upload).
  */
 // @ts-check
-'use strict';
 
 // ============================================================================
 // CONSTANTS / MAPPINGS
@@ -173,19 +167,4 @@ function validateUploadAttachmentParams(params) {
 // EXPORT API
 // ============================================================================
 
-const __scanAttachmentApi = {
-  ENTITY_MAP,
-  ALLOWED_EXTENSIONS,
-  isValidEntityType,
-  collectionForEntity,
-  folderForEntity,
-  extOf,
-  mimeFromFilename,
-  sanitizeFilename,
-  buildScanPath,
-  isScanPathForEntity,
-  validateUploadAttachmentParams,
-};
-
-if (typeof module !== 'undefined' && module.exports) module.exports = __scanAttachmentApi;
-if (typeof window !== 'undefined') window.ScanAttachmentUtils = __scanAttachmentApi;
+export { ENTITY_MAP, ALLOWED_EXTENSIONS, isValidEntityType, collectionForEntity, folderForEntity, extOf, mimeFromFilename, sanitizeFilename, buildScanPath, isScanPathForEntity, validateUploadAttachmentParams };

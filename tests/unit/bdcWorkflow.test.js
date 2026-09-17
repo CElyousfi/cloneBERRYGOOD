@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Unit tests for public/lib/bdcWorkflow.js
+ * Unit tests for src/modules/shared/lib/bdcWorkflow.js
  * Run with: npm run test:unit
  */
 

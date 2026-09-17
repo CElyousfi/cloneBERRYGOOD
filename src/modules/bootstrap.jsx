@@ -1,4 +1,7 @@
 /* Instructions à effet de bord du monolithe — ordre d'origine strictement préservé. */
+// EN PREMIER : le contournement local (?testui=1) patche window.fetch et
+// firebaseAuth avant que _origFetch ne capture fetch et que l'app ne lise l'auth.
+import './shared/lib/localTestBypass.js';
 import './shared/legacyGlobals.js';
 import { DESIGNATION_MAP } from './agronomie/DESIGNATION_MAP.jsx';
 import { PARCELLES_CULTURALES } from './agronomie/PARCELLES_CULTURALES.jsx';

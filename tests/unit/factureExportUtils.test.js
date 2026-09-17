@@ -16,7 +16,7 @@ const {
   resolveTauxLigne,
   ANOMALIE_TVA_B,
   INFO_TVA_NON_SAISIE,
-} = require('../../public/lib/factureExportUtils.js');
+} = require('./_esm').loadEsm('src/modules/shared/lib/factureExportUtils.js');
 
 const sumLineTva = (lines) =>
   Math.round(lines.reduce((s, l) => s + (l.montant_tva || 0), 0) * 100) / 100;
@@ -302,7 +302,7 @@ test('isWithinPeriod — bornes campagne 25-26 inclusives', () => {
 // ============================================================================
 // listAvailableCampaigns — dérivation des campagnes disponibles
 // ============================================================================
-const { listAvailableCampaigns, campaignYearOf } = require('../../public/lib/factureExportUtils.js');
+const { listAvailableCampaigns, campaignYearOf } = require('./_esm').loadEsm('src/modules/shared/lib/factureExportUtils.js');
 
 test('campaignYearOf — bascule juillet', () => {
   assert.strictEqual(campaignYearOf(new Date(2025, 6, 1)), 2025); // 01/07/2025 → 2025
@@ -356,7 +356,7 @@ const {
   RECAP_COL,
   RECAP_NB_COLS,
   buildRecapStatutRows,
-} = require('../../public/lib/factureExportUtils.js');
+} = require('./_esm').loadEsm('src/modules/shared/lib/factureExportUtils.js');
 
 const STATUS_LABELS = {
   non_payee: 'Non payée', en_validation: 'En validation',

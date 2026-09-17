@@ -543,7 +543,7 @@ async function analyseOneItem(rawItem, props, extraWindow, opts) {
   const spy = { fetches: [], sets: [], effects: [] };
   const pending = entry({ status: 'pending', items: [] });
   const win = Object.assign({
-    BcScanMatch: require('../../public/lib/bcScanMatch.js'),
+    BcScanMatch: require('./_esm').loadEsm('src/modules/shared/lib/bcScanMatch.js'),
     ImageDownscale: { downscaleToDataUrl: () => Promise.resolve('data:image/jpeg;base64,AA') },
   }, extraWindow || {});
   const Modal = load([undefined, [pending], 0], spy, Object.assign({

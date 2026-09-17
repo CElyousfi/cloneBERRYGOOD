@@ -11,19 +11,12 @@
  * la ferme est TOUJOURS proposée, marquée « hors config stock » si elle n'est
  * pas déclarée, avec un warning à afficher sous le champ.
  *
- * Loaded twice:
- *   - Navigateur via <script src="lib/stockDestinations.js"> → window.StockDestinations
- *   - node:test via require('./stockDestinations.js') → module.exports
- *
- * ⚠️ Les scripts de public/lib partagent le scope global du navigateur : les
- * noms internes sont préfixés SD_ pour éviter une collision (crash #75). Seule
- * l'API publique `resolveDestinationOptions` n'est pas préfixée — nom unique
- * dans tout le repo, et c'est celui exposé via window.StockDestinations.
+ * Les noms internes sont préfixés SD_ (héritage des scripts globaux) ; seule
+ * l'API publique `resolveDestinationOptions` n'est pas préfixée.
  *
  * 2026-08 — sb/magasin-bahia.
  */
 // @ts-check
-'use strict';
 
 /** Suffixe de libellé pour une destination absente de la config stock. */
 var SD_HORS_CONFIG_SUFFIX = ' (hors config stock)';
@@ -151,7 +144,7 @@ var SD_FERME_MUTUALISEE = 'TOUTES';
  * réception est verrouillée.
  *
  * MOTIF JURIDIQUE (règle métier, pas un détail technique) : BAHIA est une
- * ENTITÉ JURIDIQUE DISTINCTE — `BDC_SOCIETES.BAHIA` dans public/app.jsx
+ * ENTITÉ JURIDIQUE DISTINCTE — `BDC_SOCIETES.BAHIA` (finance/BDC_SOCIETES.jsx)
  * (~l.466) = « BAHIA AGRICOLE SARL », RC/IF/ICE propres, entête de BDC
  * spécifique. Son stock ne doit pas se mélanger à celui de Berry Good Farms.
  * F1..F6 et Avocatier relèvent au contraire de la MÊME société
@@ -188,7 +181,7 @@ function SD_fermeKey(v) {
  *
  * Pour TOUTES les autres fermes (F1..F6, Avocatier), pour un BDC mutualisé
  * (`ferme: 'Toutes'`, cf. la liste FARMS locale de l'écran BDC dans
- * public/app.jsx ~l.48362) et pour une ferme absente : choix LIBRE, avec le
+ * AchatsBDCTab) et pour une ferme absente : choix LIBRE, avec le
  * garde-fou habituel (la ferme du BDC reste proposée et présélectionnée).
  *
  * - `locked: true`  → `magasin` est la destination imposée, l'UI l'affiche en
@@ -244,18 +237,4 @@ function resolveBdcDestination(magasins, fermeBdc) {
   };
 }
 
-// ============================================================================
-// UMD-style export (browser global + CommonJS pour node:test)
-// ============================================================================
-
-var SD_api = {
-  resolveDestinationOptions: resolveDestinationOptions,
-  resolveReceptionDestination: resolveReceptionDestination,
-  resolveBdcDestination: resolveBdcDestination,
-  SD_HORS_CONFIG_SUFFIX: SD_HORS_CONFIG_SUFFIX,
-  SD_NOTE_HORS_CONFIG: SD_NOTE_HORS_CONFIG,
-  SD_FERMES_STOCK_NON_MUTUALISE: SD_FERMES_STOCK_NON_MUTUALISE,
-};
-
-if (typeof module !== 'undefined' && module.exports) module.exports = SD_api;
-if (typeof window !== 'undefined') window.StockDestinations = SD_api;
+export { resolveDestinationOptions, resolveReceptionDestination, resolveBdcDestination, SD_HORS_CONFIG_SUFFIX, SD_NOTE_HORS_CONFIG, SD_FERMES_STOCK_NON_MUTUALISE };

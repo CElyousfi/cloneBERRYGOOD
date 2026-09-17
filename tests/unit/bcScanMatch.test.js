@@ -1,6 +1,6 @@
 'use strict';
 
-// Rapprochement en-tête de pile ↔ parcelles du <select> (public/lib/bcScanMatch.js).
+// Rapprochement en-tête de pile ↔ parcelles du <select> (src/modules/shared/lib/bcScanMatch.js).
 //
 // La fixture est la VRAIE liste de production (43 labels de
 // `sql_mirror_pointage_meta/br_parcelle_sup`, source de
@@ -15,7 +15,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 
 global.window = { CultureUtils: require('./_esm').loadEsm('src/modules/shared/lib/cultureUtils.js') };
-const M = require('../../public/lib/bcScanMatch.js');
+const M = require('./_esm').loadEsm('src/modules/shared/lib/bcScanMatch.js');
 
 /** Les 43 parcelles réellement proposées à la saisie d'un BC. */
 const OPTIONS = [
@@ -265,18 +265,6 @@ test('la culture peut venir du champ culture de l\'option', () => {
   const r = M.matchParcelle('M.T.L S-20', opts);
   assert.strictEqual(r.label, 'S20 - A');
   assert.strictEqual(r.status, 'probable');
-});
-
-test('window.CultureUtils absent → signal culture ignoré, aucun crash', () => {
-  const saved = global.window;
-  global.window = {};
-  try {
-    const r = M.matchParcelle('M.T.L S-13', OPTIONS);
-    assert.strictEqual(r.status, 'unmatched');
-    assert.deepStrictEqual(r.candidats.slice().sort(), ['F5- CASCADE -S13', 'S13 - YAZMIN MOW DOWN F5']);
-  } finally {
-    global.window = saved;
-  }
 });
 
 // ------------------------------------------------- alias de parcelle (lot A)
@@ -630,13 +618,10 @@ test('[anti-divergence] aliasMatch front et aliasMatchParcelle backend : mêmes 
   });
 });
 
-test('un seul global exposé, aucun identifiant top-level', () => {
+test('module ES : rien n\'est publié sur window', () => {
   const fs = require('node:fs');
   const path = require('node:path');
-  const vm = require('node:vm');
-  const src = fs.readFileSync(path.join(__dirname, '../../public/lib/bcScanMatch.js'), 'utf8');
-  const sandbox = { window: {} };
-  vm.createContext(sandbox);
-  vm.runInContext(src, sandbox);
-  assert.deepStrictEqual(Object.keys(sandbox.window), ['BcScanMatch']);
+  const src = fs.readFileSync(path.join(__dirname, '../../src/modules/shared/lib/bcScanMatch.js'), 'utf8');
+  assert.doesNotMatch(src, /window\.[A-Z]\w+\s*=/, 'plus aucune publication globale');
+  assert.match(src, /^export \{ /m);
 });

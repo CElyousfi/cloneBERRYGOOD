@@ -8,7 +8,7 @@
  *  1. la règle pure (casse, synonymes, inconnu conservé, vide conservé) ;
  *  2. l'ABSENCE DE DIVERGENCE entre la liste backend
  *     (functions/lib/stockMerge/articleCategories.js) et la liste frontend
- *     (public/lib/articleCategories.js) — le backend ne peut pas requérir
+ *     (src/modules/shared/lib/articleCategories.js) — le backend ne peut pas requérir
  *     `public/`, la copie est donc verrouillée par un test, pas par un import ;
  *  3. le REJEU D'UN IMPORT : rejouer l'import sur une fiche existante ne crée
  *     AUCUNE fiche et pose le libellé canonique. C'est ce test qui répond à la
@@ -144,7 +144,7 @@ test('estCategorieCanonique : comparaison EXACTE, casse comprise', () => {
 // 2. ANTI-DIVERGENCE backend / frontend
 // ───────────────────────────────────────────────────────────────────────────
 //
-// Le backend NE PEUT PAS requérir public/lib : Firebase ne déploie que
+// Le backend NE PEUT PAS requérir src/ : Firebase ne déploie que
 // functions/, et un `require('../public/…')` ferait échouer le chargement du
 // module — TOUTES les Cloud Functions tomberaient, sans qu'aucun test local ne
 // le voie (le fichier existe en local). La copie est donc inévitable ; ce test

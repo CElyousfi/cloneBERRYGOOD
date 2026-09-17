@@ -44,11 +44,11 @@ const SRC_TAB = babelise('public/components/MagBCTab.jsx');
 const SRC_CONV = babelise('public/components/ArticleConversionFields.jsx');
 
 const CampagneUtils = require('./_esm').loadEsm('src/modules/shared/lib/campagneUtils.js');
-const UniteConsoUtils = require('../../public/lib/uniteConsoUtils.js');
+const UniteConsoUtils = require('./_esm').loadEsm('src/modules/shared/lib/uniteConsoUtils.js');
 // Sélection FERMÉE de l'article (ticket sb/figer-unites). Sans elle dans le
 // faux `window`, MagBCTab retomberait sur son champ de repli et ces tests
 // vérifieraient le chemin dégradé au lieu du vrai.
-const ArticleSelect = require('../../public/lib/articleSelect.js');
+const ArticleSelect = require('./_esm').loadEsm('src/modules/shared/lib/articleSelect.js');
 
 function flatten(children) {
   const out = [];
@@ -643,15 +643,13 @@ test('la fiche article édite les deux champs, via le MÊME composant partagé',
   assert.match(src, /stock_par_unite_consommation:\(a\.stock_par_unite_consommation===null\|\|a\.stock_par_unite_consommation===undefined\)\?''/);
 });
 
-test('les scripts sont chargés par index.html, et le lib AVANT ses consommateurs', () => {
-  // Un composant construit et déployé mais jamais chargé répond 200 et reste
+test('le lib est publié sur window pour ses consommateurs legacy (pont transitoire)', () => {
+  // Un composant construit et déployé mais jamais câblé répond 200 et reste
   // muet : `window.X` est undefined, sans la moindre erreur (cas réel du
-  // 2026-08-26 sur CaisseDetailPopup).
-  const html = fs.readFileSync(path.join(ROOT, 'public/index.html'), 'utf8');
-  const iLib = html.indexOf('lib/uniteConsoUtils.js');
-  const iComp = html.indexOf('components/ArticleConversionFields.js');
-  const iTab = html.indexOf('components/MagBCTab.js');
-  assert.ok(iLib > -1, 'lib/uniteConsoUtils.js absent d\'index.html');
-  assert.ok(iComp > -1, 'components/ArticleConversionFields.js absent d\'index.html');
-  assert.ok(iLib < iComp && iLib < iTab, 'le lib doit être chargé avant ses consommateurs');
+  // 2026-08-26 sur CaisseDetailPopup). Tant que MagBCTab et
+  // ArticleConversionFields sont des scripts classiques, le pont
+  // src/modules/shared/legacyGlobals.js doit republier UniteConsoUtils.
+  const bridge = fs.readFileSync(path.join(ROOT, 'src/modules/shared/legacyGlobals.js'), 'utf8');
+  assert.match(bridge, /import \* as UniteConsoUtils from '\.\/lib\/uniteConsoUtils\.js'/);
+  assert.match(bridge, /\bUniteConsoUtils,/);
 });

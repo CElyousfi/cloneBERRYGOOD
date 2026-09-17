@@ -1,6 +1,6 @@
 'use strict';
 
-// LES DEUX RESTES de la grille Campagne (LOT 3a) — public/lib/campagneRythme.js.
+// LES DEUX RESTES de la grille Campagne (LOT 3a) — src/modules/shared/lib/campagneRythme.js.
 //
 // Ce que ce fichier protège, dans l'ordre des choses qui se trompent en silence :
 //   1. les TROIS CLASSES d'opération. Projeter zéro sur un saisonnier non

@@ -17,7 +17,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { buildReceptionCreatedMessage } = require('../../public/lib/bdcReceptionUtils.js');
+const { buildReceptionCreatedMessage } = require('./_esm').loadEsm('src/modules/shared/lib/bdcReceptionUtils.js');
 
 test('toutes les lignes valorisées → message simple, entrée en stock annoncée', () => {
   const msg = buildReceptionCreatedMessage('BR-2026-0084', { total: 3, valorisees: 3, non_valorisees: 0 });

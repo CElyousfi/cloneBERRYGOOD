@@ -1,7 +1,7 @@
 'use strict';
 
 // Superposition du BUDGET sur le pivot analytique de l'écran Campagne (LOT 2c) —
-// public/lib/campagneBudgetPivot.js.
+// src/modules/shared/lib/campagneBudgetPivot.js.
 //
 // Ce que ce fichier protège, dans l'ordre des choses qui cassent en silence :
 //   1. la RÈGLE MÉTIER : « les opérations écrasent la famille, jamais

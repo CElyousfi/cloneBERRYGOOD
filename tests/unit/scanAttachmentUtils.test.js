@@ -12,7 +12,7 @@ const {
   buildScanPath,
   isScanPathForEntity,
   validateUploadAttachmentParams,
-} = require('../../public/lib/scanAttachmentUtils.js');
+} = require('./_esm').loadEsm('src/modules/shared/lib/scanAttachmentUtils.js');
 
 test('mimeFromFilename maps known extensions to canonical MIME types', () => {
   assert.strictEqual(mimeFromFilename('facture.pdf'), 'application/pdf');

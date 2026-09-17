@@ -463,7 +463,7 @@ test('pop-up — le clic sur une cellule ouvre le détail, colonne Présences al
 //
 // ⚠️ « Reste budg. » et « Reste rythme » (LOT 3a) ont QUITTÉ la grille : trois
 // sous-colonnes par parcelle, pas cinq (9 parcelles × 5 = 45 colonnes). Le
-// module public/lib/campagneRythme.js et le champ `classe_rythme` restent en
+// module src/modules/shared/lib/campagneRythme.js et le champ `classe_rythme` restent en
 // place — seul leur affichage ici est retiré ; leur propre couverture est dans
 // tests/unit/campagneRythme.test.js.
 //

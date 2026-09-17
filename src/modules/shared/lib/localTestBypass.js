@@ -1,5 +1,5 @@
 /**
- * local-test-bypass.js — Local-only auth & API bypass for UI testing.
+ * localTestBypass.js — Local-only auth & API bypass for UI testing.
  *
  * Activation:
  *   http://localhost:<port>/?testui=1
@@ -7,6 +7,9 @@
  * Refuses to do anything unless:
  *   - window.location.hostname === 'localhost' OR '127.0.0.1'
  *   - URL search params contain testui=1
+ *   (or the DEMO build: `DEMO_NO_AUTH=1 npm run build:vercel` defines
+ *   __SB_DEMO_NO_AUTH__ at compile time — cf. vite.config.js — and both guards
+ *   are neutralised: the demo runs without login on the preview domain.)
  *
  * What it does:
  *   1. Monkey-patches firebaseAuth.onAuthStateChanged to immediately fire
@@ -21,25 +24,24 @@
  * Why this file is safe to commit:
  *   - First instruction is a hostname + query-string guard. On prod, nothing happens.
  *   - All mocks are local in this file. Zero impact on real Firestore.
- *   - Loaded via a <script> in index.html BEFORE app.js so patches are
- *     applied before the React app reads firebaseAuth.
- *
- * Loaded twice strategy: not exported. Pure side-effect script.
- *
- * Sprint 2 addendum — see /Users/omarmaaouni/.claude/plans/fluttering-roaming-lobster.md
+ *   - Imported FIRST by src/modules/bootstrap.jsx (side-effect module), so the
+ *     patches are applied before the app captures window.fetch and reads
+ *     firebaseAuth.
  */
-(function () {
-  'use strict';
 
+/** Build de démo (DEMO_NO_AUTH=1) : gardes neutralisées à la compilation. */
+var DEMO = typeof __SB_DEMO_NO_AUTH__ !== 'undefined' && !!__SB_DEMO_NO_AUTH__;
+
+function installLocalTestBypass() {
   // ---- Guard: hostname + query string ----
   if (typeof window === 'undefined') return;
   var host = (window.location && window.location.hostname) || '';
   var isLocalHost = host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0';
-  if (!isLocalHost) return;
+  if (!isLocalHost && !DEMO) return;
   var params;
   try { params = new URLSearchParams(window.location.search); }
   catch (_) { return; }
-  if (params.get('testui') !== '1') return;
+  if (params.get('testui') !== '1' && !DEMO) return;
 
   console.warn('[testui] LOCAL-ONLY UI BYPASS ACTIVE — auth mocked, /api/* intercepted, write-side actions are no-ops.');
 
@@ -47,12 +49,17 @@
   function showBadge() {
     var b = document.createElement('div');
     b.id = 'testui-badge';
-    b.textContent = 'TESTUI — Auth bypass actif (no backend)';
+    b.textContent = DEMO
+      ? 'DÉMO — sans authentification · données fictives · non contractuel'
+      : 'TESTUI — Auth bypass actif (no backend)';
     b.style.cssText = 'position:fixed;bottom:8px;left:8px;z-index:99999;padding:4px 10px;border-radius:6px;background:#92400E;color:#fff;font:600 11px/1.2 Inter,sans-serif;box-shadow:0 2px 6px rgba(0,0,0,0.2);pointer-events:none;';
     if (document.body) document.body.appendChild(b);
     else document.addEventListener('DOMContentLoaded', function () { document.body.appendChild(b); });
   }
   showBadge();
+  // [DÉMO] onglet d'accueil lisible : 'dashboard' tombe en ErrorBoundary sans
+  // données Firestore. On pré-remplit localStorage avant le boot de l'app.
+  if (DEMO) { try { if (!localStorage.getItem('lastTab')) localStorage.setItem('lastTab', 'pointage'); } catch (e) {} }
 
   // ---- Fake Firebase user ----
   var FAKE_USER = {
@@ -260,6 +267,22 @@
     }
 
     // Any other /api/* — return synthetic empty success
+    if (DEMO) {
+      // [DÉMO] route non mockée : succès avec des tableaux/objets vides BIEN
+      // FORMÉS, sinon l'app enregistre un objet sans ses tableaux puis lit
+      // .length dessus → ErrorBoundary sur 5 écrans. `data` reste un OBJET :
+      // sur un tableau, `.entries` résout vers Array.prototype.entries.
+      return Promise.resolve(jsonResponse({ success: true, _testui: true, note: 'unmocked-api-route',
+        rows: [], workers: [], cueillette: [], periodes: [], equipes: [],
+        items: [], list: [], transactions: [], caisses: [], data: {},
+        anomalies: [], cartes: [], lignes: [], factures: [],
+        summary: { totalQuinzaine: 0, totalToday: 0, total: 0 },
+        byFerme: {}, parFerme: [], totaux: {}, stats: {}, mapping: {},
+        prixMoyenLitre: 0, totalLitres: 0, totalCout: 0, nbCartes: 0,
+        coutMoyenLigne: 0, nbLignes: 0, consommationMoyenne: 0,
+        varieties: [], history: [], alerts: [], correlationTable: [],
+        prediction: { today: { kg: 0, isActual: false }, tomorrow: { kg: 0 }, j2: { kg: 0 } } }));
+    }
     return Promise.resolve(jsonResponse({ success: true, _testui: true, note: 'unmocked-api-route' }));
   };
 
@@ -267,4 +290,8 @@
   // Strategy: replace its cache early so it doesn't memoize 503s. We override _apiCache
   // by setting an opener.
   Object.defineProperty(window, '_testuiActive', { value: true, configurable: false, writable: false });
-})();
+}
+
+installLocalTestBypass();
+
+export { installLocalTestBypass };

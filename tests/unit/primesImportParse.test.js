@@ -2,7 +2,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
-const P = require('../../public/lib/primesImportParse.js');
+const P = require('./_esm').loadEsm('src/modules/shared/lib/primesImportParse.js');
 
 // --- normHeader ---------------------------------------------------------
 test('normHeader: lower + accents + trim + collapse spaces', () => {

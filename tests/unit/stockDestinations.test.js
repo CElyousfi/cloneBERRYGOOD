@@ -15,7 +15,7 @@ const {
   SD_HORS_CONFIG_SUFFIX,
   SD_NOTE_HORS_CONFIG,
   SD_FERMES_STOCK_NON_MUTUALISE,
-} = require('../../public/lib/stockDestinations.js');
+} = require('./_esm').loadEsm('src/modules/shared/lib/stockDestinations.js');
 
 const CONFIG = ['F1', 'F2', 'F3', 'F4', 'F5', 'F6'];
 

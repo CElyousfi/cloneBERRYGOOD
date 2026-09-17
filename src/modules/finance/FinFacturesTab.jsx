@@ -3,6 +3,7 @@
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 import { buildFacturesWorkbook } from './buildFacturesWorkbook.jsx';
 
+import * as FactureExportUtils from '../shared/lib/factureExportUtils.js';
 // ===================== FINANCE: FACTURES TAB =====================
         function FinFacturesTab({ currentProfile, profileData }) {
             const [factures, setFactures] = useState([]);
@@ -34,7 +35,7 @@ import { buildFacturesWorkbook } from './buildFacturesWorkbook.jsx';
             };
 
             // Campagnes disponibles dérivées des dates des factures chargées (helper pur).
-            const FE = window.FactureExportUtils || {};
+            const FE = FactureExportUtils || {};
             const campaigns = (FE.listAvailableCampaigns ? FE.listAvailableCampaigns(factures.map(f => f.date_facture)) : []);
             const visibleFactures = filterCampaign
                 ? factures.filter(f => { const c = campaigns.find(c => String(c.year) === String(filterCampaign)); return c && FE.isWithinPeriod && FE.isWithinPeriod(f.date_facture, c.bounds.start, c.bounds.end); })

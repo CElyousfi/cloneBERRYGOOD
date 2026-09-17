@@ -29,6 +29,10 @@ function purgeChunks() {
 }
 
 export default defineConfig({
+  // Build de DÉMO (DEMO_NO_AUTH=1, cf. scripts/assemble-vercel.cjs) : neutralise
+  // les gardes de src/modules/shared/lib/localTestBypass.js à la compilation.
+  // Jamais actif sur un `npm run build` ordinaire : la prod garde ses gardes.
+  define: { __SB_DEMO_NO_AUTH__: JSON.stringify(process.env.DEMO_NO_AUTH === '1') },
   plugins: [react(), purgeChunks()],
   root: __dirname,
   publicDir: false,

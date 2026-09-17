@@ -3,6 +3,7 @@
 import { buildFacturesWorkbook } from '../finance/buildFacturesWorkbook.jsx';
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 
+import * as FactureExportUtils from '../shared/lib/factureExportUtils.js';
 function AchatsFacturesTab({ currentProfile, profileData }) {
             const [factures, setFactures] = useState([]);
             const [loading, setLoading] = useState(true);
@@ -70,7 +71,7 @@ function AchatsFacturesTab({ currentProfile, profileData }) {
             const totals = calcTotal();
 
             // Campagnes disponibles dérivées des dates des factures chargées (helper pur).
-            const FE = window.FactureExportUtils || {};
+            const FE = FactureExportUtils || {};
             const campaigns = (FE.listAvailableCampaigns ? FE.listAvailableCampaigns(factures.map(f => f.date_facture)) : []);
             // Filtre campagne côté client (ET avec le filtre statut déjà appliqué côté serveur).
             const visibleFactures = filterCampaign

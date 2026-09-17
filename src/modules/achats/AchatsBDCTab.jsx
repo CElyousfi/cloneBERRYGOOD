@@ -10,6 +10,7 @@ import { cachedFetch } from '../shared/cachedFetch.jsx';
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 
 import * as BdcWorkflow from '../shared/lib/bdcWorkflow.js';
+import * as BdcReceptionUtils from '../shared/lib/bdcReceptionUtils.js';
 // ===================== ACHATS: BONS DE COMMANDE TAB =====================
         function AchatsBDCTab({ currentProfile, profileData }) {
             const [bdcList, setBdcList] = useState([]);
@@ -405,7 +406,7 @@ import * as BdcWorkflow from '../shared/lib/bdcWorkflow.js';
 
             // Logique extraite dans public/lib/bdcReceptionUtils.js (réutilisée par
             // MagBdcReceptionTab et MagBonsCommandeTab) — comportement identique.
-            const getDeliveryData = (bdc, bls) => window.BdcReceptionUtils.computeDeliveryData(bdc.items, bls);
+            const getDeliveryData = (bdc, bls) => BdcReceptionUtils.computeDeliveryData(bdc.items, bls);
 
             const startReception = (mode) => {
                 const data = getDeliveryData(bdcDetail.bdc, bdcDetail.bls);
