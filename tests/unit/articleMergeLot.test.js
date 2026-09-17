@@ -32,7 +32,7 @@ const vm = require('node:vm');
 const babel = require('@babel/core');
 
 const ROOT = path.join(__dirname, '../..');
-const SRC = fs.readFileSync(path.join(ROOT, 'public/app.jsx'), 'utf8');
+const SRC = require('./_sources').modulesSource();
 const BACKEND = require('../helpers/backendSource').backendSource();
 const FM = require('../../public/lib/fusionMasse.js');
 

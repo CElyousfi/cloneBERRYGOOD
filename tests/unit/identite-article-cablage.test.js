@@ -528,7 +528,7 @@ test('le compteur DG existe dans l\'agrégateur, et pointe un onglet RÉEL', () 
       + 'celui qui porte le bouton « Nouvel article »'
   );
   // L'onglet nommé doit réellement être rendu par le front.
-  const APP = fs.readFileSync(path.join(ROOT, 'public/app.jsx'), 'utf8');
+  const APP = require('./_sources').modulesSource();
   assert.ok(
     APP.includes("renderTab('achats_catalogue'"),
     'l\'onglet achats_catalogue doit être rendu par public/app.jsx'

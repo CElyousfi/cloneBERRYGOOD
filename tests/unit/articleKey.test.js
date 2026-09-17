@@ -52,7 +52,7 @@ test('source unique : pmpDetail et articleHistoryIndex partagent LA MÊME canon'
 test('parité avec la copie front canonArt (public/app.jsx)', () => {
   // Le backend ne peut pas require('../public/…') : la copie front est assumée,
   // mais sa PARITÉ est vérifiée ici, sinon elle dérive en silence.
-  const SRC = fs.readFileSync(path.join(ROOT, 'public/app.jsx'), 'utf8');
+  const SRC = require('./_sources').modulesSource();
   // UNICITÉ d'abord : ce verrou prend le PREMIER littéral du fichier. Si une copie
   // locale de canonArt réapparaissait plus haut dans app.jsx, il verrouillerait
   // silencieusement la mauvaise et la divergence front/back qu'il existe pour

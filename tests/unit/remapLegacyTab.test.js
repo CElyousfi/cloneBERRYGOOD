@@ -83,10 +83,7 @@ test('remapLegacyTab — simulation restauration lastTab=fin_marche_local', () =
 
 // ---- Filet : le mapping est bien embarqué dans le monolithe app.jsx ----------
 test('app.jsx embarque le remap fin_marche_local → caisse (+ hint)', () => {
-  const src = fs.readFileSync(
-    path.join(__dirname, '..', '..', 'public', 'app.jsx'),
-    'utf8'
-  );
+  const src = require('./_sources').modulesSource();
   assert.match(src, /function remapLegacyTab/, 'helper remapLegacyTab présent');
   assert.match(
     src,

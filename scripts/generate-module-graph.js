@@ -14,7 +14,6 @@ const GIT_COUPLING_EXCLUDE = [
   /^package-lock\.json$/,
   /^package\.json$/,
   /\.min\.js$/,
-  /^public\/app\.js$/,     // artefact de build
   /^public\/index\.html$/, // cache-bust version bumps
   /^docs\//,               // documentation
 ];
@@ -223,23 +222,45 @@ function computeHealthScore(data) {
 }
 
 /**
- * Construit l'index symbole → localisation dans public/app.jsx.
+ * Construit l'index symbole → localisation (fichier de src/modules + ligne).
  * Seule la première occurrence de chaque nom est retenue.
- * @param {Array<{ name: string, approxLine: number, domain: string|null }>} tabs
+ * @param {Array<{ name: string, file: string, approxLine: number, domain: string|null }>} tabs
  * @returns {Record<string, { domain: string|null, file: string, line: number }>}
  */
-function buildMonolithIndex(tabs) {
+function buildTabIndex(tabs) {
   const index = {};
   for (const tab of tabs) {
     if (!index[tab.name]) {
       index[tab.name] = {
         domain: tab.domain,
-        file: 'public/app.jsx',
+        file: tab.file,
         line: tab.approxLine,
       };
     }
   }
   return index;
+}
+
+/**
+ * Liste récursive des fichiers d'un dossier (chemins relatifs à root, triés).
+ * @param {string} root
+ * @param {string} rel dossier de départ, relatif à root
+ * @param {(p: string) => boolean} keep
+ * @returns {string[]}
+ */
+function walkFiles(root, rel, keep) {
+  const start = path.join(root, rel);
+  if (!fs.existsSync(start)) return [];
+  /** @type {string[]} */
+  const out = [];
+  (function walk(dir) {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) walk(full);
+      else if (keep(e.name)) out.push(path.relative(root, full).split(path.sep).join('/'));
+    }
+  })(start);
+  return out;
 }
 
 /**
@@ -293,13 +314,18 @@ function collectFingerprintSources(root) {
     'firebase.json',
     'firestore.rules',
     'functions/index.js',
-    'public/app.jsx',
   ];
   for (const rel of fixedFiles) {
     const content = readFileSafe(path.join(root, rel));
     if (content !== null) {
       sources.push({ path: rel, content });
     }
+  }
+
+  // src/modules/**/*.jsx (triés) — le frontend
+  for (const rel of walkFiles(root, 'src/modules', f => f.endsWith('.jsx'))) {
+    const content = readFileSafe(path.join(root, rel));
+    if (content !== null) sources.push({ path: rel, content });
   }
 
   // public/lib/*.js (triés)
@@ -430,24 +456,27 @@ async function generateGraph(root, outPath) {
     });
   }
 
-  // 5. Scanner les Tab functions dans public/app.jsx
-  const appSource = readFileSafe(path.join(root, 'public/app.jsx')) || '';
+  // 5. Scanner les Tab functions dans src/modules/**/*.jsx
   const tabPattern = /function ([A-Z][a-zA-Z]*Tab)\b/g;
-  /** @type {Array<{ name: string, approxLine: number, domain: string|null, confidence: string }>} */
+  /** @type {Array<{ name: string, file: string, approxLine: number, domain: string|null, confidence: string }>} */
   const tabs = [];
   const seenTabs = new Set();
-  let tabMatch;
-  while ((tabMatch = tabPattern.exec(appSource)) !== null) {
-    const name = tabMatch[1];
-    if (seenTabs.has(name)) continue;
-    seenTabs.add(name);
-    const approxLine = appSource.slice(0, tabMatch.index).split('\n').length;
-    const classified = classifyByKeywords(name, domains);
-    tabs.push({ name, approxLine, domain: classified.domain, confidence: classified.confidence });
+  for (const rel of walkFiles(root, 'src/modules', f => f.endsWith('.jsx'))) {
+    const source = readFileSafe(path.join(root, rel)) || '';
+    let tabMatch;
+    tabPattern.lastIndex = 0;
+    while ((tabMatch = tabPattern.exec(source)) !== null) {
+      const name = tabMatch[1];
+      if (seenTabs.has(name)) continue;
+      seenTabs.add(name);
+      const approxLine = source.slice(0, tabMatch.index).split('\n').length;
+      const classified = classifyByKeywords(name, domains);
+      tabs.push({ name, file: rel, approxLine, domain: classified.domain, confidence: classified.confidence });
+    }
   }
 
-  // 5b. Construire l'index symboles du monolithe
-  const monolithIndex = buildMonolithIndex(tabs);
+  // 5b. Construire l'index des onglets
+  const tabIndex = buildTabIndex(tabs);
 
   // 6. Scanner functions/index.js
   const cfSource = readFileSafe(path.join(root, 'functions/index.js')) || '';
@@ -698,7 +727,7 @@ async function generateGraph(root, outPath) {
     filesIndex[c.file] = { domain: c.domain, confidence: c.confidence };
   }
   for (const t of tabs) {
-    filesIndex[`app.jsx#${t.name}`] = { domain: t.domain, confidence: t.confidence };
+    filesIndex[`${t.file}#${t.name}`] = { domain: t.domain, confidence: t.confidence };
   }
   for (const cf of cfExports) {
     filesIndex[`functions/index.js#${cf.name}`] = { domain: cf.domain, confidence: cf.confidence };
@@ -772,7 +801,7 @@ async function generateGraph(root, outPath) {
       unitTestFiles: unitTestCount,
       coverageScore: coverageScoreGlobal,
       unclassifiedFiles: unclassified.length,
-      monolithSymbols: Object.keys(monolithIndex).length,
+      tabSymbols: Object.keys(tabIndex).length,
     },
     heatmap: heatmapEntries,
   };
@@ -783,7 +812,7 @@ async function generateGraph(root, outPath) {
     domains: domainObjects,
     files: filesIndex,
     firestoreCollections: firestoreCollectionsIndex,
-    monolithIndex,
+    tabIndex,
     routes: routesIndex,
     unclassified,
   };
@@ -838,7 +867,8 @@ module.exports = {
   collectFingerprintSources,
   isExcludedFromGitCoupling,
   computeHealthScore,
-  buildMonolithIndex,
+  buildTabIndex,
+  walkFiles,
   sortKeysDeep,
   generateGraph,
 };

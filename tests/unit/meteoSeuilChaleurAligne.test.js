@@ -26,7 +26,7 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..', '..');
 const { SEUILS } = require(path.join(ROOT, 'functions/lib/meteo/meteoAlertes.js'));
 
-const APP_JSX = fs.readFileSync(path.join(ROOT, 'public/app.jsx'), 'utf8');
+const APP_JSX = require('./_sources').modulesSource();
 
 /** Ligne du bloc `alertes` qui pousse l'alerte chaleur. */
 function ligneAlerteChaleur() {

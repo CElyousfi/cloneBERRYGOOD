@@ -23,10 +23,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const SRC = fs.readFileSync(
-  path.join(__dirname, '../../public/app.jsx'),
-  'utf8'
-);
+const { moduleSource } = require('./_sources');
+// L'écran Quinzaine : le helper de nommage y est déclaré, puis passé en prop
+// aux deux pop-ups, chacune dans son propre fichier.
+const SRC = moduleSource('rh/QuinzaineTab.jsx');
 
 /** Découpe [début, fin) du source, bornes vérifiées. */
 function slice(startMarker, endMarker, label) {
@@ -46,11 +46,16 @@ const HELPER = slice(
 
 // `nomOuvrier` lui-même, réutilisé tel quel : le test doit voir la vraie règle
 // « le nom porte déjà le prénom », pas une réécriture qui divergerait.
-const NOM_OUVRIER = slice(
-  'function nomOuvrier(prenom, nom, secours) {',
-  'return dejaDedans ? n : (p + \' \' + n);\n        }',
-  'fonction nomOuvrier'
-);
+const NOM_OUVRIER = (function () {
+  const src = moduleSource('rh/nomOuvrier.jsx');
+  const start = 'function nomOuvrier(prenom, nom, secours) {';
+  const end = 'return dejaDedans ? n : (p + \' \' + n);\n        }';
+  const i = src.indexOf(start);
+  assert.ok(i !== -1, 'fonction nomOuvrier : borne de début introuvable');
+  const j = src.indexOf(end, i);
+  assert.ok(j !== -1, 'fonction nomOuvrier : borne de fin introuvable');
+  return src.slice(i, j + end.length);
+})();
 
 /** Exécute le helper extrait et renvoie sa fonction de nommage. */
 function makeNomFn(moRows, registry) {
@@ -123,12 +128,8 @@ test('le nom retenu est le PREMIER non vide du matricule', () => {
 
 // ─────────────────────────────────── câblage dans les deux pop-ups
 
-const HS_POPUP = slice(
-  'quinzPopupKey === \'heures_sup\' && (() => {',
-  'quinzPopupKey === \'charges_sociales\'',
-  'pop-up heures_sup'
-);
-const CS_POPUP = SRC.slice(SRC.indexOf('quinzPopupKey === \'charges_sociales\' && (() => {'));
+const HS_POPUP = moduleSource('rh/QuinzaineHeuresSupPopup.jsx');
+const CS_POPUP = moduleSource('rh/QuinzaineChargesSocialesPopup.jsx');
 
 test('la pop-up Heures Sup passe par le helper partagé', () => {
   assert.match(HS_POPUP, /_nomOuvrierQz\(w\.matricule\)/);

@@ -16,7 +16,7 @@ const {
   computeFingerprint,
   collectFingerprintSources,
   computeHealthScore,
-  buildMonolithIndex,
+  buildTabIndex,
   sortKeysDeep,
   isExcludedFromGitCoupling,
   generateGraph,
@@ -338,10 +338,6 @@ test('isExcludedFromGitCoupling: package-lock.json exclu', () => {
   assert.strictEqual(isExcludedFromGitCoupling('package-lock.json'), true);
 });
 
-test('isExcludedFromGitCoupling: public/app.js exclu', () => {
-  assert.strictEqual(isExcludedFromGitCoupling('public/app.js'), true);
-});
-
 test('isExcludedFromGitCoupling: public/index.html exclu', () => {
   assert.strictEqual(isExcludedFromGitCoupling('public/index.html'), true);
 });
@@ -423,7 +419,7 @@ test('domains backend.services liste les services racine classifiés', async () 
 
 // --- 17. Stabilité du fingerprint (contrat Category A / Category B) ---
 // Category A (dans le fingerprint) : docs/ai/domains.json, firebase.json, firestore.rules,
-//   functions/index.js, public/app.jsx, public/lib/*.js, public/components/*.jsx,
+//   functions/index.js, src/modules/**/*.jsx, public/lib/*.js, public/components/*.jsx,
 //   functions/lib/__entries__ (liste), functions/__root_services__ (liste)
 // Category B (exclu) : heatmap git, commit counts, fenêtre 90j, HEAD, timestamps, Date.now()
 
@@ -475,7 +471,7 @@ test('[stabilité] modification source Category A → fingerprint différent', a
     if (fs.existsSync(src)) fs.copyFileSync(src, dst);
   };
   ['docs/ai/domains.json', 'firebase.json', 'firestore.rules',
-   'functions/index.js', 'public/app.jsx'].forEach(copyFile);
+   'functions/index.js'].forEach(copyFile);
   // Copier lib, components, functions/lib si existants
   for (const dir of ['public/lib', 'public/components', 'functions/lib']) {
     const srcDir = path.join(ROOT, dir);
@@ -528,54 +524,54 @@ test('[stabilité] generatorVersion dans le graphe = version courante du scanner
     `generatorVersion inattendu : ${graph._meta.generatorVersion}`);
 });
 
-// --- 18. buildMonolithIndex — unit ---
+// --- 18. buildTabIndex — unit ---
 
-test('buildMonolithIndex: tab → { domain, file, line }', () => {
-  const tabs = [{ name: 'QuinzaineTab', approxLine: 10965, domain: 'paie' }];
-  const index = buildMonolithIndex(tabs);
+test('buildTabIndex: tab → { domain, file, line }', () => {
+  const tabs = [{ name: 'QuinzaineTab', file: 'src/modules/rh/QuinzaineTab.jsx', approxLine: 12, domain: 'paie' }];
+  const index = buildTabIndex(tabs);
   assert.deepStrictEqual(index['QuinzaineTab'], {
     domain: 'paie',
-    file: 'public/app.jsx',
-    line: 10965,
+    file: 'src/modules/rh/QuinzaineTab.jsx',
+    line: 12,
   });
 });
 
-test('buildMonolithIndex: tableau vide → objet vide', () => {
-  assert.deepStrictEqual(buildMonolithIndex([]), {});
+test('buildTabIndex: tableau vide → objet vide', () => {
+  assert.deepStrictEqual(buildTabIndex([]), {});
 });
 
-// --- 19. monolithIndex dans le graphe généré ---
+// --- 19. tabIndex dans le graphe généré ---
 
-test('monolithIndex présent dans le graphe et non vide', async () => {
+test('tabIndex présent dans le graphe et non vide', async () => {
   await generateGraph(ROOT, TMP_GRAPH);
   const graph = JSON.parse(fs.readFileSync(TMP_GRAPH, 'utf8'));
-  assert(graph.monolithIndex, 'monolithIndex manquant dans le graphe');
-  assert(Object.keys(graph.monolithIndex).length > 0, 'monolithIndex vide');
+  assert(graph.tabIndex, 'tabIndex manquant dans le graphe');
+  assert(Object.keys(graph.tabIndex).length > 0, 'tabIndex vide');
   assert.strictEqual(
-    graph._meta.stats.monolithSymbols,
-    Object.keys(graph.monolithIndex).length,
-    'stats.monolithSymbols incohérent'
+    graph._meta.stats.tabSymbols,
+    Object.keys(graph.tabIndex).length,
+    'stats.tabSymbols incohérent'
   );
 });
 
-test('monolithIndex: tous les symboles pointent vers public/app.jsx avec line > 0', async () => {
+test('tabIndex: tous les symboles pointent vers un fichier de src/modules avec line > 0', async () => {
   await generateGraph(ROOT, TMP_GRAPH);
   const graph = JSON.parse(fs.readFileSync(TMP_GRAPH, 'utf8'));
-  const bad = Object.entries(graph.monolithIndex).filter(
-    ([, v]) => v.file !== 'public/app.jsx' || typeof v.line !== 'number' || v.line < 1
+  const bad = Object.entries(graph.tabIndex).filter(
+    ([, v]) => !/^src\/modules\/.+\.jsx$/.test(v.file) || typeof v.line !== 'number' || v.line < 1
   );
   assert.strictEqual(bad.length, 0,
     `symboles avec file ou line invalides : ${bad.map(([k]) => k).join(', ')}`);
 });
 
-test('monolithIndex: cohérence des lignes — symbole trouvable dans app.jsx à ±2 lignes', async () => {
+test('tabIndex: cohérence des lignes — symbole trouvable dans son fichier à ±2 lignes', async () => {
   await generateGraph(ROOT, TMP_GRAPH);
   const graph = JSON.parse(fs.readFileSync(TMP_GRAPH, 'utf8'));
-  const appLines = fs.readFileSync(path.join(ROOT, 'public/app.jsx'), 'utf8').split('\n');
   const failures = [];
-  for (const [name, entry] of Object.entries(graph.monolithIndex)) {
+  for (const [name, entry] of Object.entries(graph.tabIndex)) {
+    const lines = fs.readFileSync(path.join(ROOT, entry.file), 'utf8').split('\n');
     const lineIdx = entry.line - 1; // 0-based
-    const window = appLines.slice(Math.max(0, lineIdx - 2), lineIdx + 3);
+    const window = lines.slice(Math.max(0, lineIdx - 2), lineIdx + 3);
     const found = window.some(l => l.includes(`function ${name}`));
     if (!found) failures.push(`${name} @ line ${entry.line}`);
   }

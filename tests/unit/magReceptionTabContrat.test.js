@@ -20,8 +20,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const APP = path.join(__dirname, '..', '..', 'public', 'app.jsx');
-const SOURCE = fs.readFileSync(APP, 'utf8');
+const SOURCE = require('./_sources').modulesSource();
 
 /** Corps de MagReceptionTab, du début jusqu'au composant suivant. */
 function composant() {

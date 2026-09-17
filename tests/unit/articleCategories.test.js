@@ -34,7 +34,8 @@ const vm = require('node:vm');
 const babel = require('@babel/core');
 
 const ROOT = path.join(__dirname, '../..');
-const SRC = fs.readFileSync(path.join(ROOT, 'public/app.jsx'), 'utf8');
+// La fiche article vit dans l'onglet Catalogue (achats).
+const SRC = require('./_sources').moduleSource('achats/AchatsCatalogueTab.jsx');
 const LIB = path.join(ROOT, 'public/lib/articleCategories.js');
 
 const { CATEGORIES_ARTICLE, optionsCategorie, SUFFIXE_HORS_LISTE, LABEL_VIDE } = require(LIB);

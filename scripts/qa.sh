@@ -3,11 +3,10 @@
 #   npm run qa   (ou bash scripts/qa.sh)
 #
 # Enchaîne : tests unitaires frontend → tests backend (tous les modules
-# lib/*/__tests__) → build frontend (Babel + sentinelles) → 5 checks de
-# fraîcheur des artefacts générés (module-graph, les 3 code-map-*, require-index).
-# Échoue au premier problème (set -e). Note : l'étape build régénère
-# public/app.js et le cache-bust de public/index.html — un diff ?v=… après
-# `npm run qa` est normal.
+# lib/*/__tests__) → build frontend (Vite) → 5 checks de fraîcheur des
+# artefacts générés (module-graph, les 3 code-map-*, require-index).
+# Échoue au premier problème (set -e). Note : l'étape build écrit
+# public/app.modular.js et public/chunks/ (gitignorés).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -72,8 +71,8 @@ echo "== QA 1/8 — Tests unitaires frontend (tests/unit) =="
 echo "== QA 2/8 — Tests backend (functions/{lib,middleware}/*/__tests__) =="
 (cd "$ROOT/functions" && npm run test:all)
 
-echo "== QA 3/8 — Build frontend (Babel + sentinelles) =="
-(cd "$ROOT" && npm run build:frontend)
+echo "== QA 3/8 — Build frontend (Vite) =="
+(cd "$ROOT" && npm run build)
 
 echo "== QA 4/8 — DIL fingerprint check (module-graph) =="
 check_graph_freshness "DIL" "docs/ai/module-graph.json" \

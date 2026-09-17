@@ -37,7 +37,7 @@ const {
 const { canon } = require('../../functions/lib/stock/articleKey');
 
 const ROOT = path.join(__dirname, '../..');
-const SRC = fs.readFileSync(path.join(ROOT, 'public/app.jsx'), 'utf8');
+const SRC = require('./_sources').modulesSource();
 
 // ── extraction depuis le source de prod ────────────────────────────────────
 

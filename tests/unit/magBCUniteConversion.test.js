@@ -633,7 +633,7 @@ test('la fiche article édite les deux champs, via le MÊME composant partagé',
   // app.jsx n'est pas rendable ici (monolithe de 53 k lignes) : on confronte le
   // source à ses invariants. Sans ces trois points, achats/dg n'ont aucun moyen
   // de saisir la conversion, et le magasinier reste seul à pouvoir la donner.
-  const src = fs.readFileSync(path.join(ROOT, 'public/app.jsx'), 'utf8');
+  const src = require('./_sources').modulesSource();
   assert.match(src, /<window\.ArticleConversionFields/, 'formulaire de fiche article non câblé');
   assert.match(src, /uniteConsommation=\{form\.unite_consommation\}/);
   assert.match(src, /facteur=\{form\.stock_par_unite_consommation\}/);

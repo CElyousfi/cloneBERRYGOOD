@@ -45,42 +45,11 @@ jobs:
         run: npm run test:all
         working-directory: functions
 
-      - name: Build frontend (Babel + sentinelles)
-        run: npm run build:frontend
-
-      - name: Build modulaire (Vite) + publication dans public/
-        run: npm run migrate:build && npm run migrate:publish
+      - name: Build frontend (Vite → public/)
+        run: npm run build
 
       # Toute référence libre de src/modules doit se résoudre. C'est ce qui
       # rattrape un import oublié après un découpage ou un déplacement de
       # fichier — le risque principal maintenant que le tree modulaire évolue.
       - name: Références du tree modulaire
         run: npm run migrate:verify
-
-  # Le sélecteur d'entrée (monolithe ou bundle ES) ne se teste que dans un vrai
-  # navigateur : l'ordre d'exécution des balises est précisément ce qui casse.
-  # Job séparé — il installe un navigateur, ce que le job principal n'a pas à payer.
-  boot-selector:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: npm
-          cache-dependency-path: package-lock.json
-
-      - name: Install dependencies (racine)
-        run: npm ci
-
-      - name: Install Chromium
-        run: npx playwright install chromium --with-deps
-
-      - name: Build (monolithe + bundle modulaire)
-        run: npm run build
-
-      # Le script choisit le binaire Playwright quand /usr/bin/chromium est
-      # absent, ce qui est le cas du runner.
-      - name: Smoke — sélecteur d'entrée
-        run: npm run smoke:boot
