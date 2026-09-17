@@ -23,6 +23,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const babel = require('@babel/core');
+const { loadEsm } = require('./_esm');
 
 const ROOT = path.join(__dirname, '../..');
 
@@ -85,12 +86,12 @@ function loadTab(stubs) {
   if (s.fetch) sandbox.fetch = s.fetch;
   if (s.firebase) sandbox.firebase = s.firebase;
   vm.createContext(sandbox);
-  vm.runInContext(read('public/lib/cultureUtils.js'), sandbox);
-  vm.runInContext(read('public/lib/analytiqueUtils.js'), sandbox);
-  vm.runInContext(read('public/lib/campagneUtils.js'), sandbox);
-  vm.runInContext(read('public/lib/campagneProduction.js'), sandbox);
-  vm.runInContext(read('public/lib/campagneRapprochement.js'), sandbox);
-  vm.runInContext(read('public/lib/campagneParcelleQuinzaine.js'), sandbox);
+  sandbox.window.CultureUtils = loadEsm('src/modules/shared/lib/cultureUtils.js', { sandbox: sandbox });
+  sandbox.window.AnalytiqueUtils = loadEsm('src/modules/shared/lib/analytiqueUtils.js', { sandbox: sandbox });
+  sandbox.window.CampagneUtils = loadEsm('src/modules/shared/lib/campagneUtils.js', { sandbox: sandbox });
+  sandbox.window.CampagneProduction = loadEsm('src/modules/shared/lib/campagneProduction.js', { sandbox: sandbox });
+  sandbox.window.CampagneRapprochement = loadEsm('src/modules/shared/lib/campagneRapprochement.js', { sandbox: sandbox });
+  sandbox.window.CampagneParcelleQuinzaine = loadEsm('src/modules/shared/lib/campagneParcelleQuinzaine.js', { sandbox: sandbox });
   vm.runInContext(transform('public/components/PivotAnalytiqueGrid.jsx'), sandbox);
   vm.runInContext(read('public/components/CampagneAnalytiqueTab.jsx'), sandbox);
   return sandbox.window.CampagneAnalytiqueTab;

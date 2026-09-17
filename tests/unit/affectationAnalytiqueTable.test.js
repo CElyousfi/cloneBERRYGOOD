@@ -25,6 +25,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const babel = require('@babel/core');
+const { loadEsm } = require('./_esm');
 
 const ROOT = path.join(__dirname, '../..');
 
@@ -72,7 +73,7 @@ function load() {
   vm.createContext(sandbox);
 
   // Lib de pivot RÉELLE — pose window.AnalytiqueUtils (UMD, `module` absent ici).
-  vm.runInContext(fs.readFileSync(path.join(ROOT, 'public/lib/analytiqueUtils.js'), 'utf8'), sandbox);
+  sandbox.window.AnalytiqueUtils = loadEsm('src/modules/shared/lib/analytiqueUtils.js', { sandbox: sandbox });
 
   // Dépendances que le panneau lit sur window (elles vivent dans app.jsx).
   sandbox.window.PARCELLES_CULTURALES = [];

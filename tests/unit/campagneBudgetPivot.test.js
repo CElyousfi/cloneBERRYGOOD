@@ -25,8 +25,8 @@ const vm = require('node:vm');
 
 const ROOT = path.join(__dirname, '../..');
 
-const CBP = require(path.join(ROOT, 'public/lib/campagneBudgetPivot.js'));
-const AU = require(path.join(ROOT, 'public/lib/analytiqueUtils.js'));
+const CBP = require('./_esm').loadEsm('src/modules/shared/lib/campagneBudgetPivot.js');
+const AU = require('./_esm').loadEsm('src/modules/shared/lib/analytiqueUtils.js');
 const backend = require(path.join(ROOT, 'functions/lib/campagneBudget/validate.js'));
 
 /** Miroir FRONT de la règle métier — celui qui tourne réellement en prod. */

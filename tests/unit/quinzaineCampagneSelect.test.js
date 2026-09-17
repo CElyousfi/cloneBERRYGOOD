@@ -10,6 +10,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { loadEsm } = require('./_esm');
 
 // Stub minimal de React.createElement → { type, props, children }.
 function createElement(type, props, ...children) {
@@ -22,18 +23,14 @@ function createElement(type, props, ...children) {
   return { type, key: p.key, props: p, children: flat };
 }
 
-// Charge campagneUtils (expose window.CampagneUtils) puis le composant, dans un
+// Charge campagneUtils (publié sur window.CampagneUtils) puis le composant, dans un
 // même contexte VM partageant `window` (comme les <script> du navigateur).
 function loadComponent() {
   const sandbox = { window: {}, module: { exports: {} } };
   sandbox.window.React = { createElement };
   vm.createContext(sandbox);
 
-  const cuSrc = fs.readFileSync(
-    path.join(__dirname, '../../public/lib/campagneUtils.js'),
-    'utf8'
-  );
-  vm.runInContext(cuSrc, sandbox);
+  sandbox.window.CampagneUtils = loadEsm('src/modules/shared/lib/campagneUtils.js', { sandbox });
 
   // Le .jsx contient de la JSX ? Non — le composant utilise React.createElement,
   // donc il est exécutable tel quel sans Babel.

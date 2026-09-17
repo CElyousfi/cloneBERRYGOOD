@@ -687,7 +687,7 @@ test('totalJH — JH/Ha × Ha, arrondi 2 décimales, 0 si donnée absente', () =
 // purge). Le composant est ici chargé AVEC `window.CultureUtils`, comme en prod
 // (module <script> séparé).
 
-const CULTURE_UTILS = require('../../public/lib/cultureUtils.js');
+const CULTURE_UTILS = require('./_esm').loadEsm('src/modules/shared/lib/cultureUtils.js');
 const CBT_CU = load(undefined, undefined, { CultureUtils: CULTURE_UTILS });
 
 test('cultureRow — résolue par culture_sb en priorité, repli sur le libellé', () => {

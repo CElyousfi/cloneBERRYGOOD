@@ -40,11 +40,11 @@ const test = require('node:test');
 const assert = require('node:assert');
 
 const back = require('../../functions/lib/campagneExport/campagneExportUtils.js');
-const front = require('../../public/lib/campagneExportUtils.js');
+const front = require('./_esm').loadEsm('src/modules/shared/lib/campagneExportUtils.js');
 const backCulture = require('../../functions/lib/campagneExport/cultureUtils.js');
-const frontCulture = require('../../public/lib/cultureUtils.js');
+const frontCulture = require('./_esm').loadEsm('src/modules/shared/lib/cultureUtils.js');
 const backAnalytique = require('../../functions/lib/campagneExport/analytiqueUtils.js');
-const frontAnalytique = require('../../public/lib/analytiqueUtils.js');
+const frontAnalytique = require('./_esm').loadEsm('src/modules/shared/lib/analytiqueUtils.js');
 // Règle métier du budget : SOURCE DE VÉRITÉ backend, celle que le serveur
 // injecte réellement dans buildParcelleBudgetIndex.
 const budgetRules = require('../../functions/lib/campagneBudget/validate.js');

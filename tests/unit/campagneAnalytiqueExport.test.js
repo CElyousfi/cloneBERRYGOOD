@@ -16,6 +16,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { loadEsm } = require('./_esm');
 
 /**
  * Ramène une valeur produite DANS le sandbox vm vers le realm des tests :
@@ -48,10 +49,10 @@ function loadTab(withBudgetRules) {
   vm.createContext(sandbox);
   // Dépendances UMD réelles (pas de stub) : la normalisation de clé testée ici
   // est précisément celle qu'elles imposent.
-  vm.runInContext(read('public/lib/cultureUtils.js'), sandbox);
-  vm.runInContext(read('public/lib/campagneExportUtils.js'), sandbox);
+  sandbox.window.CultureUtils = loadEsm('src/modules/shared/lib/cultureUtils.js', { sandbox: sandbox });
+  sandbox.window.CampagneExportUtils = loadEsm('src/modules/shared/lib/campagneExportUtils.js', { sandbox: sandbox });
   if (withBudgetRules) {
-    vm.runInContext(read('public/lib/analytiqueUtils.js'), sandbox);
+    sandbox.window.AnalytiqueUtils = loadEsm('src/modules/shared/lib/analytiqueUtils.js', { sandbox: sandbox });
     const file = path.join(__dirname, '../..', 'public/components/CampagneBudgetTab.jsx');
     vm.runInContext(require('@babel/core').transformSync(fs.readFileSync(file, 'utf8'), {
       presets: [require.resolve('@babel/preset-react')],

@@ -1,4 +1,5 @@
 /* Instructions à effet de bord du monolithe — ordre d'origine strictement préservé. */
+import './shared/legacyGlobals.js';
 import { DESIGNATION_MAP } from './agronomie/DESIGNATION_MAP.jsx';
 import { PARCELLES_CULTURALES } from './agronomie/PARCELLES_CULTURALES.jsx';
 import { sbParcelleHa } from './agronomie/sbParcelleHa.jsx';

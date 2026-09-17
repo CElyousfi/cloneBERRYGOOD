@@ -23,6 +23,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const babel = require('@babel/core');
+const { loadEsm } = require('./_esm');
 
 const ROOT = path.join(__dirname, '../..');
 
@@ -73,9 +74,9 @@ function loadTab(withRules) {
     useMemo: function (fn) { return fn(); },
   };
   vm.createContext(sandbox);
-  vm.runInContext(read('public/lib/cultureUtils.js'), sandbox);
-  vm.runInContext(read('public/lib/analytiqueUtils.js'), sandbox);
-  vm.runInContext(read('public/lib/campagneExportUtils.js'), sandbox);
+  sandbox.window.CultureUtils = loadEsm('src/modules/shared/lib/cultureUtils.js', { sandbox: sandbox });
+  sandbox.window.AnalytiqueUtils = loadEsm('src/modules/shared/lib/analytiqueUtils.js', { sandbox: sandbox });
+  sandbox.window.CampagneExportUtils = loadEsm('src/modules/shared/lib/campagneExportUtils.js', { sandbox: sandbox });
   if (withRules !== false) {
     vm.runInContext(transform('public/components/CampagneBudgetTab.jsx'), sandbox);
   }

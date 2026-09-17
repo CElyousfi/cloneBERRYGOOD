@@ -2,10 +2,6 @@
  * campagneExportUtils.js — Pure helpers de construction de l'export Excel de
  * l'écran Campagne analytique (une feuille de synthèse + une feuille par parcelle).
  *
- * Loaded twice (UMD-bricolé) :
- *   - Browser : <script src="lib/campagneExportUtils.js"> → window.CampagneExportUtils
- *   - node:test : require('.../campagneExportUtils.js') → module.exports
- *
  * Ces helpers ne font QUE décrire les DONNÉES (lignes typées, AoA, largeurs de
  * colonnes, noms de feuille) : aucune dépendance à SheetJS/ExcelJS, au DOM ou au
  * réseau. L'écriture du classeur reste dans le composant.
@@ -23,15 +19,13 @@
  *     styles de cellule sont IGNORÉS — d'où la bascule du rendu sur ExcelJS.
  *
  * IMPORTANT (mémoire #75 — collision global a déjà cassé l'app) : ce module
- * n'expose QU'UN SEUL global (`window.CampagneExportUtils`). Les const internes
+ * n'expose QU'UN SEUL global (`CampagneExportUtils`). Les const internes
  * sont préfixées `__cexp_` pour éviter toute collision dans le scope global
- * partagé par les <script> non-modulaires.
  */
 // @ts-check
-'use strict';
 
 // ============================================================================
-// CONSTANTS (préfixe interne unique __cexp_ — jamais exposées au global)
+// CONSTANTS (préfixe interne __cexp_ — jamais exportées)
 // ============================================================================
 
 /** Excel plafonne les noms de feuille à 31 caractères. */
@@ -509,7 +503,6 @@ function safeSheetName(nom, index, used) {
  * repli.
  *
  * ── DÉGRADATION SÛRE ─────────────────────────────────────────────────────────
- * Rules ou AnalytiqueUtils absents (<script> non chargé, appelant qui ne les
  * passe pas) → l'index retombe EXACTEMENT sur le comportement historique :
  * budget de famille lu en direct, aucune ligne d'opération budgétée. Jamais un
  * budget deviné.
@@ -990,37 +983,10 @@ function buildParcelleSheetAoA(params) {
   });
 }
 
-// ============================================================================
-// UMD-bricolé : un seul global exposé (window.CampagneExportUtils)
-// ============================================================================
+// Exposé pour la GRILLE ÉCRAN (vue « Par Variété / Quinzaine ») : elle rend
+// les mêmes 4 colonnes que la feuille Excel et doit les calculer avec les
+// MÊMES helpers — un libellé ou un ratio dupliqué dans le composant finirait
+// par diverger de l'export. Copie : l'original reste privé.
+const BUDGET_HEADER = __cexp_BUDGET_HEADER.slice();
 
-const __cexp_api = {
-  SHEET_MAX: __cexp_SHEET_MAX,
-  ROW_KIND,
-  PERCENT_HEADER: __cexp_PERCENT_HEADER,
-  // Exposés pour la GRILLE ÉCRAN (vue « Par Variété / Quinzaine ») : elle rend
-  // les mêmes 4 colonnes que la feuille Excel et doit les calculer avec les
-  // MÊMES helpers — un libellé ou un ratio dupliqué dans le composant finirait
-  // par diverger de l'export.
-  BUDGET_HEADER: __cexp_BUDGET_HEADER.slice(),
-  scopeNote: __cexp_scopeNote,
-  perHa: __cexp_perHa,
-  buildParcelleBudgetIndex,
-  haLabel,
-  numFmtFor,
-  percentFmtFor: __cexp_percentFmtFor,
-  percentColumns: __cexp_percentColumns,
-  sumBudget: __cexp_sumBudget,
-  budgetScope: __cexp_budgetScope,
-  budgetCells: __cexp_budgetCells,
-  safeSheetName,
-  buildSyntheseRows,
-  buildSyntheseAoA,
-  syntheseSheetCols,
-  buildParcelleSheetRows,
-  buildParcelleSheetAoA,
-  parcelleSheetCols,
-};
-
-if (typeof module !== 'undefined' && module.exports) module.exports = __cexp_api;
-if (typeof window !== 'undefined') window.CampagneExportUtils = __cexp_api;
+export { __cexp_SHEET_MAX as SHEET_MAX, ROW_KIND, __cexp_PERCENT_HEADER as PERCENT_HEADER, BUDGET_HEADER, __cexp_scopeNote as scopeNote, __cexp_perHa as perHa, buildParcelleBudgetIndex, haLabel, numFmtFor, __cexp_percentFmtFor as percentFmtFor, __cexp_percentColumns as percentColumns, __cexp_sumBudget as sumBudget, __cexp_budgetScope as budgetScope, __cexp_budgetCells as budgetCells, safeSheetName, buildSyntheseRows, buildSyntheseAoA, syntheseSheetCols, buildParcelleSheetRows, buildParcelleSheetAoA, parcelleSheetCols };

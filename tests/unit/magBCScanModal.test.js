@@ -621,7 +621,7 @@ test('parcelle — le signal culture traverse les props (« M.T.L S-13 » → CA
   // nom affiché + culture). On rend CultureUtils disponible comme dans le
   // navigateur, où lib/cultureUtils.js est chargée avant lib/bcScanMatch.js.
   const saved = global.window;
-  global.window = { CultureUtils: require('../../public/lib/cultureUtils.js') };
+  global.window = { CultureUtils: require('./_esm').loadEsm('src/modules/shared/lib/cultureUtils.js') };
   try {
     const props = Object.assign({}, BASE_PROPS, {
       useConsoSelector: true,

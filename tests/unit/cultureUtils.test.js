@@ -7,7 +7,7 @@ const {
   normCulture,
   resolveCulture,
   matchesCulture,
-} = require('../../public/lib/cultureUtils.js');
+} = require('./_esm').loadEsm('src/modules/shared/lib/cultureUtils.js');
 
 // ============================================================================
 // CULTURES — mêmes valeurs que CULTURES_SB_VALIDES (functions/pointageService.js)

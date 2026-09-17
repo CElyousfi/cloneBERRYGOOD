@@ -1,10 +1,6 @@
 /**
  * cultureUtils.js — Pure helpers de résolution de la CULTURE d'une parcelle.
  *
- * Loaded twice (UMD-bricolé) :
- *   - Browser : <script src="lib/cultureUtils.js"> → window.CultureUtils
- *   - node:test / backend : require('.../cultureUtils.js') → module.exports
- *
  * Source unique de vérité pour « quelle culture porte cette parcelle ? ».
  * Règle de résolution (resolveCulture) :
  *   1. référentiel Smart Berry (`sbMap[LABEL].culture_sb`) s'il est renseigné —
@@ -22,17 +18,11 @@
  * est TOUJOURS injecté en paramètre, jamais lu depuis `window` (même discipline
  * que PRT_filterRows). Tolérance : entrées null/undefined, champs manquants,
  * valeurs non-string → aucun throw.
- *
- * IMPORTANT (mémoire #75 — collision global a déjà cassé l'app) : ce module
- * n'expose QU'UN SEUL global (`window.CultureUtils`). Les const internes sont
- * préfixées `__cult_` pour éviter toute collision dans le scope global partagé
- * par les <script> non-modulaires.
  */
 // @ts-check
-'use strict';
 
 // ============================================================================
-// CONSTANTS (préfixe interne unique __cult_ — jamais exposées au global)
+// CONSTANTS (préfixe interne __cult_ — jamais exportées)
 // ============================================================================
 
 /** Cultures reconnues — mêmes valeurs que CULTURES_SB_VALIDES (functions/pointageService.js). */
@@ -119,16 +109,4 @@ function matchesCulture(parcelle, filtre, sbMap) {
   return resolveCulture(parcelle, sbMap) === filtre;
 }
 
-// ============================================================================
-// UMD-bricolé : un seul global exposé (window.CultureUtils)
-// ============================================================================
-
-const __cult_api = {
-  CULTURES: __cult_CULTURES,
-  normCulture,
-  resolveCulture,
-  matchesCulture,
-};
-
-if (typeof module !== 'undefined' && module.exports) module.exports = __cult_api;
-if (typeof window !== 'undefined') window.CultureUtils = __cult_api;
+export { __cult_CULTURES as CULTURES, normCulture, resolveCulture, matchesCulture };

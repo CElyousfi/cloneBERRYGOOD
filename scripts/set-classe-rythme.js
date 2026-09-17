@@ -46,7 +46,7 @@ const path = require('path')
 const PROJECT_DIR = path.resolve(__dirname, '..')
 // Même normalisation de libellé que le pivot et que la grille : une clé
 // calculée autrement ne joindrait rien et le champ serait posé à côté.
-const { opKey } = require(path.join(PROJECT_DIR, 'public/lib/analytiqueUtils.js'))
+const { opKey } = require(path.join(PROJECT_DIR, 'src/modules/shared/lib/analytiqueUtils.js'))
 
 const CLASSES = { CONTINU: 'continu', SAISONNIER: 'saisonnier', RECOLTE: 'recolte' }
 

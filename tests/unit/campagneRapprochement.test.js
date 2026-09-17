@@ -17,7 +17,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const path = require('node:path');
 
-const R = require(path.join(__dirname, '../../public/lib/campagneRapprochement.js'));
+const R = require('./_esm').loadEsm('src/modules/shared/lib/campagneRapprochement.js');
 
 test('chargeParQuinzaine — somme le coût chargé et les JH sans taux par période', () => {
   const rows = [

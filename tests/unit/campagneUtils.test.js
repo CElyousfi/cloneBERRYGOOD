@@ -9,7 +9,7 @@ const {
   campagneDeCharge,
   phaseDeCharge,
   mostRecentCampagne,
-} = require('../../public/lib/campagneUtils.js');
+} = require('./_esm').loadEsm('src/modules/shared/lib/campagneUtils.js');
 
 // ============================================================================
 // campagneOf — frontière 1er juillet (spec §10)

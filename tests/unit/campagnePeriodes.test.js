@@ -8,7 +8,7 @@ const {
   sortPeriodesByCampagne,
   defaultPeriodeForCampagne,
 } = require('../../functions/lib/pointage/campagnePeriodes.js');
-const { campagneOf, campagneCourante } = require('../../public/lib/campagneUtils.js');
+const { campagneOf, campagneCourante } = require('./_esm').loadEsm('src/modules/shared/lib/campagneUtils.js');
 
 // ---------------------------------------------------------------------------
 // quinzaineNum

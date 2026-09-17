@@ -1,31 +1,21 @@
 /**
  * campagneUtils.js — Pure helpers for "campagne / phase" (fiscal-year scoping).
  *
- * Loaded twice (UMD-bricolé) :
- *   - Browser : <script src="lib/campagneUtils.js"> → window.CampagneUtils
- *   - node:test / backend : require('.../campagneUtils.js') → module.exports
- *
  * Source unique de vérité pour la notion de campagne (année fiscale Juillet N →
  * Juin N+1, label `${N}-${N+1}`) et de phase (primocane / floricane / unique).
  * Factorise le `campagneOf` qui était dupliqué inline dans :
  *   - functions/lib/mappingConso/resolver.js
- *   - public/app.jsx (helper local `bcCampagneOf` de MagBCTab)
+ *   - MagBCTab (helper local `bcCampagneOf`)
  *
  * Toutes les fonctions sont pures (no DOM, no network, no Firestore).
  * Robustesse : toute date non ISO 'YYYY-MM-DD' → null / garde défensive.
  *
  * Spec : docs/spec-gestion-campagnes.md §§10-12. Item M0 (2026-06).
- *
- * IMPORTANT (mémoire #75 — collision global a déjà cassé l'app) : ce module
- * n'expose QU'UN SEUL global (`window.CampagneUtils`). Les const internes sont
- * préfixées `__cu_` pour éviter toute collision dans le scope global partagé
- * par les <script> non-modulaires.
  */
 // @ts-check
-'use strict';
 
 // ============================================================================
-// CONSTANTS (préfixe interne unique __cu_ — jamais exposées au global)
+// CONSTANTS (préfixe interne __cu_ — jamais exportées)
 // ============================================================================
 
 /** Regex stricte d'une date ISO 'YYYY-MM-DD'. */
@@ -171,7 +161,7 @@ function phaseDeCharge(args) {
  * au lieu de la campagne courante tout juste démarrée (ex. 3 quinzaines) —
  * une campagne ancienne a mécaniquement plus d'entrées dans periodeCampagne.
  * Cette fonction réplique la logique de tri de
- * `window.QuinzaineCampagneSelect` (QCS_group : campagne DESC, `.slice(0,1)`)
+ * `QuinzaineCampagneSelect` (QCS_group : campagne DESC, `.slice(0,1)`)
  * pour que tout fallback de campagne dans l'app reste cohérent avec le
  * sélecteur partagé.
  *
@@ -184,19 +174,4 @@ function mostRecentCampagne(periodeCampagne) {
   return campagnes.slice().sort((a, b) => (b < a ? -1 : b > a ? 1 : 0))[0];
 }
 
-// ============================================================================
-// UMD-bricolé : un seul global exposé (window.CampagneUtils)
-// ============================================================================
-
-const __cu_api = {
-  campagneOf,
-  campagneCourante,
-  debutCampagne,
-  finCampagne,
-  campagneDeCharge,
-  phaseDeCharge,
-  mostRecentCampagne,
-};
-
-if (typeof module !== 'undefined' && module.exports) module.exports = __cu_api;
-if (typeof window !== 'undefined') window.CampagneUtils = __cu_api;
+export { campagneOf, campagneCourante, debutCampagne, finCampagne, campagneDeCharge, phaseDeCharge, mostRecentCampagne };

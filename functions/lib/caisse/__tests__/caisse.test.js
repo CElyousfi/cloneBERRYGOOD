@@ -203,7 +203,7 @@ test('campagneOf — bascule au 1er juillet', () => {
   assert.strictEqual(axes.campagneOf('2027-01-01'), '2026-2027');
 });
 
-test('campagneOf — aligné sur public/lib/campagneUtils.js (même règle juillet)', () => {
+test('campagneOf — aligné sur src/modules/shared/lib/campagneUtils.js (même règle juillet)', () => {
   const ref = (d) => { const m = d.match(/^(\d{4})-(\d{2})/); const y = +m[1], mo = +m[2]; const s = mo >= 7 ? y : y - 1; return s + '-' + (s + 1); };
   for (const d of ['2025-07-01', '2026-01-15', '2026-06-30', '2026-07-01', '2027-03-09']) {
     assert.strictEqual(axes.campagneOf(d), ref(d), `date ${d}`);

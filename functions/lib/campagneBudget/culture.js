@@ -30,7 +30,7 @@ const __cbc_DEFAUT = 'Framboise'
 /** Termes myrtille (substring — CORINA/CASCADE/BREEZE sont des variétés). */
 const __cbc_RE_MYRTILLE = /MYRTILL|BLUEBERRY|CORINA|CASCADE|BREEZE/
 
-/** Termes avocatier — cf. public/lib/cultureUtils.js pour le détail du calibrage. */
+/** Termes avocatier — cf. src/modules/shared/lib/cultureUtils.js pour le détail du calibrage. */
 const __cbc_RE_AVOCAT =
   /AVOCAT|AVOCADO|HAAS|BACON|\b(HASS|ZUTANO|FUERTE|ETTINGER|PINKERTON|REED|MEXICOLA|NABAL)\b/
 

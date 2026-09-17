@@ -43,7 +43,7 @@ function babelise(rel) {
 const SRC_TAB = babelise('public/components/MagBCTab.jsx');
 const SRC_CONV = babelise('public/components/ArticleConversionFields.jsx');
 
-const CampagneUtils = require('../../public/lib/campagneUtils.js');
+const CampagneUtils = require('./_esm').loadEsm('src/modules/shared/lib/campagneUtils.js');
 const UniteConsoUtils = require('../../public/lib/uniteConsoUtils.js');
 // Sélection FERMÉE de l'article (ticket sb/figer-unites). Sans elle dans le
 // faux `window`, MagBCTab retomberait sur son champ de repli et ces tests

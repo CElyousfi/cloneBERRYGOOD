@@ -16,7 +16,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const path = require('node:path');
 
-const CP = require(path.join(__dirname, '../../public/lib/campagneProduction.js'));
+const CP = require('./_esm').loadEsm('src/modules/shared/lib/campagneProduction.js');
 
 
 

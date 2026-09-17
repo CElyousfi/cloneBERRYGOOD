@@ -16,7 +16,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const path = require('node:path');
 
-const M = require(path.join(__dirname, '../../public/lib/campagneParcelleQuinzaine.js'));
+const M = require('./_esm').loadEsm('src/modules/shared/lib/campagneParcelleQuinzaine.js');
 
 const ROWS = [
   { parcelle: 'F1- S5 MARAVILLA MD', periode: 'Quinzaine 01', famille: 'Ferti-irrigation', code: 'GB02', operation: 'Arrosage', jh: 12, cout: 1200, nbOuv: 4 },

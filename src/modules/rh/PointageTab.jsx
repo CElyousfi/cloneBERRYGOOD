@@ -14,6 +14,7 @@ import { WorkerLink } from './WorkerLink.jsx';
 import { loadPointageDistinctDays } from './loadPointageDistinctDays.jsx';
 
 import * as PaieUtils from '../shared/lib/paieUtils.js';
+import * as AnalytiqueUtils from '../shared/lib/analytiqueUtils.js';
 // ===================== POINTAGE TAB =====================
         function PointageTab({ data, farmFilter, avoSubFilter, currentProfile, isValidation }) {
             // Pretty parcelle label via PARCELLES_CULTURALES.designations
@@ -1388,8 +1389,8 @@ import * as PaieUtils from '../shared/lib/paieUtils.js';
                             'GB11': { famille: 'Services généraux', groupe: 'M.O Service générale' },
                         };
                         var _gbRef = _GB_REF[String(r.groupe || '').trim().toUpperCase()] || null;
-                        if (!_gbRef && r.operationFamille && window.AnalytiqueUtils) {
-                            var _gbCodeFallback = window.AnalytiqueUtils.resolveGbCode('', r.operationFamille);
+                        if (!_gbRef && r.operationFamille && AnalytiqueUtils) {
+                            var _gbCodeFallback = AnalytiqueUtils.resolveGbCode('', r.operationFamille);
                             if (_gbCodeFallback) _gbRef = _GB_REF[_gbCodeFallback] || null;
                         }
                         return (

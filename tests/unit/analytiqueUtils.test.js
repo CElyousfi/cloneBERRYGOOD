@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const AnalytiqueUtils = require('../../public/lib/analytiqueUtils.js');
+const AnalytiqueUtils = require('./_esm').loadEsm('src/modules/shared/lib/analytiqueUtils.js');
 
 const { opLabel, opKey, buildAnalytiquePivot, resolveGroupeFamille, buildAnalytiquePivotByFamille } = AnalytiqueUtils;
 

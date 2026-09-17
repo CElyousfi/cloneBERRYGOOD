@@ -28,7 +28,7 @@ const SRC = babel.transformSync(
   { presets: [require.resolve('@babel/preset-react')], filename: 'MagBCTab.jsx', babelrc: false, configFile: false }
 ).code;
 
-const CampagneUtils = require('../../public/lib/campagneUtils.js');
+const CampagneUtils = require('./_esm').loadEsm('src/modules/shared/lib/campagneUtils.js');
 
 function flatten(children) {
   const out = [];

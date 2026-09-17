@@ -22,10 +22,11 @@ const babel = require('@babel/core');
 
 const ROOT = path.join(__dirname, '../..');
 
-const CBQ = require('../../public/lib/campagneBudgetQuinzaine.js');
+const { loadEsm } = require('./_esm');
+const CBQ = loadEsm('src/modules/shared/lib/campagneBudgetQuinzaine.js');
 const backendBudget = require('../../functions/lib/campagneBudget/validate');
 const backendCulture = require('../../functions/lib/campagneBudget/culture');
-const frontCulture = require('../../public/lib/cultureUtils.js');
+const frontCulture = loadEsm('src/modules/shared/lib/cultureUtils.js');
 
 function read(rel) { return fs.readFileSync(path.join(ROOT, rel), 'utf8'); }
 
@@ -382,7 +383,7 @@ const CBT = (function () {
     useMemo: function (fn) { return fn(); },
   };
   vm.createContext(sandbox);
-  vm.runInContext(read('public/lib/cultureUtils.js'), sandbox);
+  sandbox.window.CultureUtils = loadEsm('src/modules/shared/lib/cultureUtils.js', { sandbox: sandbox });
   vm.runInContext(transform('public/components/CampagneBudgetTab.jsx'), sandbox);
   return sandbox.window.CampagneBudgetTab;
 })();
@@ -502,11 +503,11 @@ function loadPivotTab() {
     useMemo: function (fn) { return fn(); },
   };
   vm.createContext(sandbox);
-  vm.runInContext(read('public/lib/cultureUtils.js'), sandbox);
-  vm.runInContext(read('public/lib/analytiqueUtils.js'), sandbox);
-  vm.runInContext(read('public/lib/campagneBudgetPivot.js'), sandbox);
-  vm.runInContext(read('public/lib/campagneRythme.js'), sandbox);
-  vm.runInContext(read('public/lib/campagneBudgetQuinzaine.js'), sandbox);
+  sandbox.window.CultureUtils = loadEsm('src/modules/shared/lib/cultureUtils.js', { sandbox: sandbox });
+  sandbox.window.AnalytiqueUtils = loadEsm('src/modules/shared/lib/analytiqueUtils.js', { sandbox: sandbox });
+  sandbox.window.CampagneBudgetPivot = loadEsm('src/modules/shared/lib/campagneBudgetPivot.js', { sandbox: sandbox });
+  sandbox.window.CampagneRythme = loadEsm('src/modules/shared/lib/campagneRythme.js', { sandbox: sandbox });
+  sandbox.window.CampagneBudgetQuinzaine = loadEsm('src/modules/shared/lib/campagneBudgetQuinzaine.js', { sandbox: sandbox });
   vm.runInContext(transform('public/components/CampagneBudgetTab.jsx'), sandbox);
   vm.runInContext(transform('public/components/PivotAnalytiqueGrid.jsx'), sandbox);
   vm.runInContext(read('public/components/CampagneAnalytiqueTab.jsx'), sandbox);

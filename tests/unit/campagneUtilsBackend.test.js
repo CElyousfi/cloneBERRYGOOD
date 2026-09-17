@@ -16,7 +16,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 
 const back = require('../../functions/lib/mappingConso/campagneUtils.js');
-const front = require('../../public/lib/campagneUtils.js');
+const front = require('./_esm').loadEsm('src/modules/shared/lib/campagneUtils.js');
 
 // ============================================================================
 // campagneCourante (ajouté par le hotfix) — backend

@@ -39,7 +39,7 @@ function babelise(rel) {
 const SRC_TAB = babelise('public/components/MagBCTab.jsx');
 const SRC_DIALOG = babelise('public/components/BCDoublonDialog.jsx');
 
-const CampagneUtils = require('../../public/lib/campagneUtils.js');
+const CampagneUtils = require('./_esm').loadEsm('src/modules/shared/lib/campagneUtils.js');
 
 function flatten(children) {
   const out = [];

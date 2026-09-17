@@ -20,7 +20,7 @@ const {
   buildParcelleSheetAoA,
   parcelleSheetCols,
   buildParcelleBudgetIndex,
-} = require('../../public/lib/campagneExportUtils.js');
+} = require('./_esm').loadEsm('src/modules/shared/lib/campagneExportUtils.js');
 
 // ============================================================================
 // haLabel — superficie AFFICHÉE, locale fr (écran + en-tête Excel)
@@ -705,7 +705,7 @@ test('feuille parcelle — AoA identique aux lignes typées (budget compris)', (
 // `familleTotal` (CampagneBudgetTab) et AnalytiqueUtils — pour qu'une
 // divergence de clé de jointure se voie ici et pas en production.
 
-const AU = require('../../public/lib/analytiqueUtils.js');
+const AU = require('./_esm').loadEsm('src/modules/shared/lib/analytiqueUtils.js');
 
 /** Miroir FRONT de la règle métier, chargé comme en prod (IIFE + faux window). */
 const RULES = (function () {

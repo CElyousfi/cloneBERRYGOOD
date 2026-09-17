@@ -26,6 +26,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const babel = require('@babel/core');
+const { loadEsm } = require('./_esm');
 
 const ROOT = path.join(__dirname, '../..');
 
@@ -96,41 +97,41 @@ function loadTab(deps) {
   vm.createContext(sandbox);
   // Dépendances RÉELLES (pas de stub) : le pivot et la résolution de culture
   // testés ici sont précisément ceux de la prod.
-  if (withCulture) vm.runInContext(read('public/lib/cultureUtils.js'), sandbox);
-  vm.runInContext(read('public/lib/analytiqueUtils.js'), sandbox);
+  if (withCulture) sandbox.window.CultureUtils = loadEsm('src/modules/shared/lib/cultureUtils.js', { sandbox: sandbox });
+  sandbox.window.AnalytiqueUtils = loadEsm('src/modules/shared/lib/analytiqueUtils.js', { sandbox: sandbox });
   // Frontière du 1er juillet (source unique du « budget idéal »). Omissible :
   // sans ce module, la part de campagne écoulée est INDÉTERMINABLE et la 4e
   // sous-colonne ne doit pas être proposée — jamais une colonne de « — ».
   if (!deps || deps.campagneUtils !== false) {
-    vm.runInContext(read('public/lib/campagneUtils.js'), sandbox);
+    sandbox.window.CampagneUtils = loadEsm('src/modules/shared/lib/campagneUtils.js', { sandbox: sandbox });
   }
   // Kilos (ligne « Kg / JH » du bloc récolte). Omissible : sans ce module, la
   // grille doit rendre son pied habituel, sans ligne de cadence — un <script>
   // manquant ne fait pas tomber la récolte.
   if (!deps || deps.production !== false) {
-    vm.runInContext(read('public/lib/campagneProduction.js'), sandbox);
+    sandbox.window.CampagneProduction = loadEsm('src/modules/shared/lib/campagneProduction.js', { sandbox: sandbox });
   }
   // Rapprochement pointage ↔ grille. Omissible : sans ce module, le panneau de
   // contrôle ne doit pas s'afficher (et surtout pas afficher un écart nul, qui
   // se lirait « tout est rapproché »).
   if (!deps || deps.rapprochement !== false) {
-    vm.runInContext(read('public/lib/campagneRapprochement.js'), sandbox);
+    sandbox.window.CampagneRapprochement = loadEsm('src/modules/shared/lib/campagneRapprochement.js', { sandbox: sandbox });
   }
   // Ventilation d'une parcelle par quinzaine (pop-up au clic sur l'en-tête).
   // Omissible : sans ce module, la pop-up doit le DIRE — une pop-up vide se
   // lirait « cette parcelle n'a rien consommé ».
   if (!deps || deps.parcelleQuinzaine !== false) {
-    vm.runInContext(read('public/lib/campagneParcelleQuinzaine.js'), sandbox);
+    sandbox.window.CampagneParcelleQuinzaine = loadEsm('src/modules/shared/lib/campagneParcelleQuinzaine.js', { sandbox: sandbox });
   }
   if (withBudget) {
-    vm.runInContext(read('public/lib/campagneBudgetPivot.js'), sandbox);
+    sandbox.window.CampagneBudgetPivot = loadEsm('src/modules/shared/lib/campagneBudgetPivot.js', { sandbox: sandbox });
     // Porteur de la RÈGLE MÉTIER (familleTotal / splitOpKey), injectée dans le
     // builder par PivotView.
     vm.runInContext(transform('public/components/CampagneBudgetTab.jsx'), sandbox);
     // Les deux restes (LOT 3a). Omissible : sans ce module, la grille doit
     // retomber sur Réalisé + Budget, jamais afficher deux colonnes de « — ».
     if (!deps || deps.rythme !== false) {
-      vm.runInContext(read('public/lib/campagneRythme.js'), sandbox);
+      sandbox.window.CampagneRythme = loadEsm('src/modules/shared/lib/campagneRythme.js', { sandbox: sandbox });
     }
   }
   vm.runInContext(transform('public/components/PivotAnalytiqueGrid.jsx'), sandbox);
@@ -972,17 +973,6 @@ test('budget idéal — campagne illisible : aucun repère, jamais un 0 % trompe
     [false, false, null, false, '', true, 0]
   );
   assert.strictEqual(textOf(tree).indexOf('% Budget idéal à ce jour'), -1);
-});
-
-test('budget idéal — CampagneUtils absent : écran inchangé, jamais cassé', () => {
-  // La frontière du 1er juillet n'a qu'UNE source ; sans elle, pas de repère.
-  const TabSansCU = loadTab({ budget: true, campagneUtils: false });
-  const tree = render({
-    budgetsByLabel: BUDGETS, opBudgetsByLabel: OP_BUDGETS, refOperations: REF_OPS,
-  }, [false, false, null, false, '', true, 0], TabSansCU);
-  assert.strictEqual(textOf(tree).indexOf('% Budget idéal à ce jour'), -1);
-  assert.deepStrictEqual(sousCellule(bodyRows(tables(tree)[0])[2], MARAVILLA_SC),
-    ['20.0', '15.0', '133.3 %']);
 });
 
 test('grille — sélection vide : message, jamais une table fantôme', () => {

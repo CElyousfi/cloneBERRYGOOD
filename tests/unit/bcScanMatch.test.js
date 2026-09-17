@@ -14,7 +14,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 
-global.window = { CultureUtils: require('../../public/lib/cultureUtils.js') };
+global.window = { CultureUtils: require('./_esm').loadEsm('src/modules/shared/lib/cultureUtils.js') };
 const M = require('../../public/lib/bcScanMatch.js');
 
 /** Les 43 parcelles réellement proposées à la saisie d'un BC. */

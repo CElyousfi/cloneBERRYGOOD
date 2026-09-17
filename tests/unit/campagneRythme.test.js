@@ -20,10 +20,10 @@ const assert = require('node:assert');
 const path = require('node:path');
 
 const ROOT = path.join(__dirname, '../..');
-const CR = require(path.join(ROOT, 'public/lib/campagneRythme.js'));
+const CR = require('./_esm').loadEsm('src/modules/shared/lib/campagneRythme.js');
 const plan = require(path.join(ROOT, 'scripts/set-classe-rythme.js'));
-const CBP = require(path.join(ROOT, 'public/lib/campagneBudgetPivot.js'));
-const AU = require(path.join(ROOT, 'public/lib/analytiqueUtils.js'));
+const CBP = require('./_esm').loadEsm('src/modules/shared/lib/campagneBudgetPivot.js');
+const AU = require('./_esm').loadEsm('src/modules/shared/lib/analytiqueUtils.js');
 const backend = require(path.join(ROOT, 'functions/lib/campagneBudget/validate.js'));
 
 const REGLES = { familleTotal: backend.familleTotal, splitOpKey: backend.splitOpKey };
@@ -542,7 +542,7 @@ test('plan — une opération continue MAL ORTHOGRAPHIÉE est détectée (sinon 
 //      réalisé et sa pop-up de détail — les décorer en place les contaminerait.
 // ---------------------------------------------------------------------------
 
-const CU = require(path.join(ROOT, 'public/lib/campagneUtils.js'));
+const CU = require('./_esm').loadEsm('src/modules/shared/lib/campagneUtils.js');
 
 test('partEcoulee — le 1er juillet, rien n\'est écoulé', () => {
   assert.strictEqual(CR.partEcoulee({ campagne: '2025-2026', today: '2025-07-01', utils: CU }), 0);
