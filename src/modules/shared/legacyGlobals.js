@@ -6,6 +6,7 @@
  * chaque composant legacy soit converti et importe directement. Une entrée
  * disparaît quand son dernier consommateur legacy est converti.
  */
+import { sbParcelle } from './sbParcelleState.js';
 import * as AnalytiqueUtils from './lib/analytiqueUtils.js';
 import * as ArticleSelect from './lib/articleSelect.js';
 import * as BcScanMatch from './lib/bcScanMatch.js';
@@ -37,3 +38,9 @@ Object.assign(window, {
   ImageDownscale, LecturePaieExcel, ParcelleGroupUtils, PrimesImportParse, RapprochementPaie,
   ScanAttachmentUtils, ScanClientUpload, StockDestinations, UniteConsoUtils,
 });
+
+// Référentiel parcelles : état partagé (sbParcelleState.js) encore lu ET écrit
+// sur window par CampagneAnalytiqueTab, CampagneBudgetTab, MagBCTab,
+// ParcellesReferentielTab et AffectationAnalytiqueTable (scripts classiques).
+Object.defineProperty(window, 'SB_PARCELLE_REF', { configurable: true, get: () => sbParcelle.REF, set: (v) => { sbParcelle.REF = v; } });
+Object.defineProperty(window, 'SB_PARCELLE_CAMPAGNE', { configurable: true, get: () => sbParcelle.CAMPAGNE, set: (v) => { sbParcelle.CAMPAGNE = v; } });

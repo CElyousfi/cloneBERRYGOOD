@@ -18,6 +18,10 @@ import { QuinzaineChargesSocialesPopup } from './QuinzaineChargesSocialesPopup.j
 import * as CoutMainOeuvre from '../shared/lib/coutMainOeuvre.js';
 import * as PaieUtils from '../shared/lib/paieUtils.js';
 import * as PlafondDeclaration from '../shared/lib/plafondDeclaration.js';
+import { QuinzaineCampagneSelect } from '../shared/QuinzaineCampagneSelect.jsx';
+import { QuinzaineRecapCards } from './QuinzaineRecapCards.jsx';
+import { nomOuvrier } from './nomOuvrier.jsx';
+import { sbParcelle } from '../shared/sbParcelleState.js';
 // ===================== QUINZAINE TAB =====================
         function QuinzaineTab({ data, farmFilter, farmLabel, avoSubFilter, cultureFilter, currentProfile, onNavigateToPrimes }) {
             const [apiData, setApiData] = useState(null);
@@ -410,7 +414,7 @@ import * as PlafondDeclaration from '../shared/lib/plafondDeclaration.js';
                             var key = (p.label || '').toUpperCase().trim();
                             if (key && p.sup > 0) supMap[key] = p.sup;
                         });
-                        window.SB_PARCELLE_CAMPAGNE = supMap;
+                        sbParcelle.CAMPAGNE = supMap;
                     }
                     if (d.success) setAnalytiqueData(d.rows || []);
                 }).catch(function(e) { console.warn('quinzaine-analytique:', e); });
@@ -792,7 +796,7 @@ import * as PlafondDeclaration from '../shared/lib/plafondDeclaration.js';
             const _nomOuvrierQz = (mat) => {
                 const k = numKey(mat);
                 const reg = quinzRegistry[k] || {};
-                return window.nomOuvrier(reg.prenom, reg.nom || _nomPointageParMat[k], mat) || mat;
+                return nomOuvrier(reg.prenom, reg.nom || _nomPointageParMat[k], mat) || mat;
             };
 
             // ===== MODÈLE COÛT SMART BERRY (computePayslip) — source unique pour MO =====
@@ -1073,7 +1077,7 @@ import * as PlafondDeclaration from '../shared/lib/plafondDeclaration.js';
                         <span style={{background:'#d4edda',color:'#155724',padding:'4px 12px',borderRadius:12,fontSize:11,fontWeight:600}}>
                             <i className="fa-solid fa-database" style={{marginRight:4}}></i>Firestore — Quinzaine
                         </span>
-                        <window.QuinzaineCampagneSelect periodes={apiData.periodes || []} periodeCampagne={apiData.periodeCampagne} value={selectedPeriode} onChange={v => handlePeriodeChange(v)} includeEmpty={true} label="Dernière quinzaine" />
+                        <QuinzaineCampagneSelect periodes={apiData.periodes || []} periodeCampagne={apiData.periodeCampagne} value={selectedPeriode} onChange={v => handlePeriodeChange(v)} includeEmpty={true} label="Dernière quinzaine" />
                         {typeof onNavigateToPrimes === 'function' && (
                             <button onClick={() => onNavigateToPrimes(selectedPeriode)}
                                 style={{padding:'4px 12px',borderRadius:8,border:'1px solid var(--berry)',background:'var(--berry)',color:'#fff',fontSize:11,fontWeight:600,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:6}}>
@@ -1139,7 +1143,7 @@ import * as PlafondDeclaration from '../shared/lib/plafondDeclaration.js';
                     )}
                     <div className="quinzaine-card">
                         <h3>{selectedPeriode || (apiData.periodes || [])[0] || ''}{(farmLabel || cultureFilter || farmFilter) ? ' — ' + (farmLabel || cultureFilter || farmFilter) : ''}</h3>
-                        <window.QuinzaineRecapCards
+                        <QuinzaineRecapCards
                             recapItems={recapItems}
                             totalGlobal={totalGlobal}
                             nbJours={parJour.length}

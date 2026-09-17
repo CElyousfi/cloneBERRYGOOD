@@ -7,6 +7,7 @@ import * as EmargementPdf from '../shared/lib/emargementPdf.js';
 
 import * as EmargementExcel from '../shared/lib/emargementExcel.js';
 import * as PaieUtils from '../shared/lib/paieUtils.js';
+import { nomOuvrier } from './nomOuvrier.jsx';
 function QuinzaineEmargementPopup({ coutMap, cultureFilter, currentPeriode, emargementLang, emargementLoading, farmFilter, getEqPrefix, matchCulture, moHorsRecolteRows, moPostesRows, numKey, parJour, prefixToName, quinzPaieBaremes, quinzRegistry, recolteEquipeRows, setEmargementLang, setEmargementLoading, setEmargementOpen, transportByEquipe, transportConfig }) {
     const _PU = PaieUtils;
     const _firstDayQz = parJour.length > 0 ? parJour[0].jour : null;
@@ -47,7 +48,7 @@ function QuinzaineEmargementPopup({ coutMap, cultureFilter, currentPeriode, emar
         const ancienneteTotal = Math.round(brutAvantAnc * ancTaux);
         return {
             matricule: mat,
-            nom: window.nomOuvrier(reg.prenom, reg.nom, _wMap[mat].nom) || _wMap[mat].nom,
+            nom: nomOuvrier(reg.prenom, reg.nom, _wMap[mat].nom) || _wMap[mat].nom,
             equipe: prefixToName[eqPrefix] || eqPrefix || '—',
             journees: jh,
             declare: isDecl,

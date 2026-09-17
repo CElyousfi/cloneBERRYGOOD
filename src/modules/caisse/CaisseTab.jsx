@@ -15,6 +15,8 @@ import { CaisseTransactionsSub } from './CaisseTransactionsSub.jsx';
 import { CaisseTransfertsSub } from './CaisseTransfertsSub.jsx';
 import { CaisseValidationSub } from './CaisseValidationSub.jsx';
 
+import { CaisseParametresSub } from './CaisseParametresSub.jsx';
+import { CaisseSaisieSub } from './CaisseSaisieSub.jsx';
 // ---- CaisseTab Main ----
         function CaisseTab({ currentProfile, profileData, userProfile }) {
             // Hint de sous-onglet initial (ex. remap legacy fin_marche_local →
@@ -103,7 +105,7 @@ import { CaisseValidationSub } from './CaisseValidationSub.jsx';
                     </div>
                     {subTab === 'caisse_dashboard' && <CaisseDashboardSub dashData={dashData} caisses={caisses} isControle={isControle} onNavigate={setSubTab} />}
                     {subTab === 'caisse_transactions' && <CaisseTransactionsSub caisses={caisses} isSaisie={isSaisie} isControle={isControle} onRefresh={refresh} />}
-                    {subTab === 'caisse_saisie' && window.CaisseSaisieSub && <window.CaisseSaisieSub caisses={caisses} onDone={() => { refresh(); setSubTab('caisse_transactions'); }} onCancel={() => setSubTab('caisse_transactions')} />}
+                    {subTab === 'caisse_saisie' && CaisseSaisieSub && <CaisseSaisieSub caisses={caisses} onDone={() => { refresh(); setSubTab('caisse_transactions'); }} onCancel={() => setSubTab('caisse_transactions')} />}
                     {subTab === 'caisse_alimentations' && <CaisseFilteredTypeSub caisses={caisses} typeFilter="alimentation" title="Alimentations" icon="fa-arrow-down" isSaisie={isSaisie} onDone={refresh} />}
                     {subTab === 'caisse_paie' && <CaisseFilteredTypeSub caisses={caisses} typeFilter="paie" title="Paie" icon="fa-money-check-dollar" isSaisie={isSaisie} onDone={refresh} hasEmployee />}
                     {subTab === 'caisse_transport' && <CaisseFilteredTypeSub caisses={caisses} typeFilter="transport" title="Transport" icon="fa-truck" isSaisie={isSaisie} onDone={refresh} hasEmployee />}
@@ -116,8 +118,8 @@ import { CaisseValidationSub } from './CaisseValidationSub.jsx';
                     {subTab === 'caisse_import_encaissements' && <CaisseImportEncaissementsSub isControle={isControle} onApplied={refresh} />}
                     {subTab === 'caisse_comptes_clients' && <CaisseComptesClientsSub caisses={caisses} />}
                     {subTab === 'caisse_config' && <CaisseConfigSub caisses={caisses} onDone={refresh} />}
-                    {subTab === 'caisse_parametres' && window.CaisseParametresSub && (
-                        <window.CaisseParametresSub canEdit={isControle || (userProfile && userProfile.role === 'admin')} onSaved={refresh} />
+                    {subTab === 'caisse_parametres' && CaisseParametresSub && (
+                        <CaisseParametresSub canEdit={isControle || (userProfile && userProfile.role === 'admin')} onSaved={refresh} />
                     )}
                 </div>
             );

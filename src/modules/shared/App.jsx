@@ -12,6 +12,7 @@ import { saveCachedProfile } from './saveCachedProfile.jsx';
 import { sbLoad } from './sbLoad.jsx';
 
 import * as AuthResilience from './lib/authResilience.js';
+import { sbParcelle } from './sbParcelleState.js';
 // Auth wrapper component
         function App() {
             const [authUser, setAuthUser] = useState(null);
@@ -123,7 +124,7 @@ import * as AuthResilience from './lib/authResilience.js';
                         // est chargé par bootstrap.jsx AU BOOT — avant toute session, donc
                         // sans jeton, donc 401 (sb-referentiel-list est exemptée du 403 de
                         // profil, pas de l'authentification). L'échec est avalé et rien ne
-                        // le retentait : window.SB_PARCELLE_REF restait vide toute la
+                        // le retentait : sbParcelle.REF restait vide toute la
                         // session. Conséquence documentée côté backend : libellés BEE ONE
                         // bruts partout, et une parcelle dont la culture SB diverge
                         // disparaît sous un filtre Culture. On recharge dès qu'un jeton

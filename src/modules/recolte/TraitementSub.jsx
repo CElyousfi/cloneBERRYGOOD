@@ -6,6 +6,7 @@ import { Panel } from '../shared/Panel.jsx';
 import { cachedFetch } from '../shared/cachedFetch.jsx';
 import { useState } from '../shared/reactHooks.jsx';
 
+import { QuinzaineCampagneSelect } from '../shared/QuinzaineCampagneSelect.jsx';
 function TraitementSub({ data, farmFilter, initialPeriode }) {
             const [detailRows, setDetailRows] = useState([]); const [loading, setLoading] = useState(true);
             const [periodes, setPeriodes] = useState([]); const [selectedPeriode, setSelectedPeriode] = useState('');
@@ -62,7 +63,7 @@ function TraitementSub({ data, farmFilter, initialPeriode }) {
                         <span style={{background:'rgba(52,152,219,0.1)',color:'var(--blue)',padding:'4px 12px',borderRadius:12,fontSize:11,fontWeight:600}}>
                             <i className="fa-solid fa-spray-can-sparkles" style={{marginRight:4}}></i>Prime Traitement — {currentPeriode}
                         </span>
-                        <window.QuinzaineCampagneSelect periodes={periodes} periodeCampagne={periodeCampagne} value={selectedPeriode} onChange={v => setSelectedPeriode(v)} />
+                        <QuinzaineCampagneSelect periodes={periodes} periodeCampagne={periodeCampagne} value={selectedPeriode} onChange={v => setSelectedPeriode(v)} />
                         <span style={{fontSize:11,color:'var(--gray-500)',marginLeft:8}}>
                             <i className="fa-solid fa-info-circle" style={{marginRight:4}}></i>{PRIME_TRAITEMENT} DH / ouvrier / jour
                         </span>

@@ -4,6 +4,7 @@ import { Panel } from '../shared/Panel.jsx';
 import { useState } from '../shared/reactHooks.jsx';
 import { FONCTIONS_ENUM } from './FONCTIONS_ENUM.jsx';
 
+import { QuinzaineCampagneSelect } from '../shared/QuinzaineCampagneSelect.jsx';
 function PointageDiversTab({ currentProfile }) {
             const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10));
             const [configItems, setConfigItems] = useState([]);
@@ -237,7 +238,7 @@ function PointageDiversTab({ currentProfile }) {
                             <Panel title="Récapitulatif quinzaine — Pointage Divers" icon="fa-table-cells">
                                 <div style={{marginBottom:12,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
                                     <span style={{fontSize:11,fontWeight:600,color:'var(--gray-500)'}}>Quinzaine :</span>
-                                    <window.QuinzaineCampagneSelect periodes={qzPeriodes} periodeCampagne={qzPeriodeCampagne} value={qzSelected} onChange={v => loadQuinzaine(v)} />
+                                    <QuinzaineCampagneSelect periodes={qzPeriodes} periodeCampagne={qzPeriodeCampagne} value={qzSelected} onChange={v => loadQuinzaine(v)} />
                                     {qzLoading && <span style={{fontSize:11,color:'var(--berry)'}}><i className="fa-solid fa-spinner fa-spin" style={{marginRight:4}}></i>Chargement…</span>}
                                 </div>
                                 <div className="table-responsive">

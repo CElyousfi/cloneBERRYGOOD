@@ -8,9 +8,7 @@ import { PARCELLES_CULTURALES } from './agronomie/PARCELLES_CULTURALES.jsx';
 import { sbParcelleHa } from './agronomie/sbParcelleHa.jsx';
 import { sbParcelleNom } from './agronomie/sbParcelleNom.jsx';
 import { BUDGET_BGF } from './finance/BUDGET_BGF.jsx';
-import { PointageTab } from './rh/PointageTab.jsx';
 import { WorkerDetailProvider } from './rh/WorkerDetailProvider.jsx';
-import { nomOuvrier } from './rh/nomOuvrier.jsx';
 import { APP_VERSION } from './shared/APP_VERSION.jsx';
 import { App } from './shared/App.jsx';
 import { ErrorBoundary } from './shared/ErrorBoundary.jsx';
@@ -85,9 +83,6 @@ sbLoad();
 // Consommé par public/components/CampagneAnalytiqueTab.jsx (hors scope d'app.jsx).
         window.sbParcelleNom = sbParcelleNom;
 
-// Consommé par les pop-ups Quinzaine et l'écran Paie (hors scope d'app.jsx).
-        window.nomOuvrier = nomOuvrier;
-
 // Load budget from static JSON (shared across all devices)
         fetch('/budget_bgf.json?t=' + Date.now())
             .then(r => r.ok ? r.json() : null)
@@ -132,10 +127,6 @@ PARCELLES_CULTURALES.forEach(pc => {
             'Breeze':     { variete: 'Breeze',    sousVariete: null, ferme: 'F5', culture: 'Myrtille' },
             'Cascade':    { variete: 'Cascade',   sousVariete: null, ferme: 'F5', culture: 'Myrtille' },
         });
-
-// Exposé pour PointageValidationView (composant séparé) qui rend
-        // PointageTab en mode validation, scopé à la ferme du profil.
-        window.PointageTab = PointageTab;
 
 // ===================== MAIN APP =====================
         var __savedProfile = 'rh';

@@ -7,6 +7,7 @@ import { TXN_TYPE_LABELS } from './TXN_TYPE_LABELS.jsx';
 import { getCaisseColor } from './getCaisseColor.jsx';
 
 import * as CaisseUtils from '../shared/lib/caisseUtils.js';
+import { CaisseDetailPopup } from './CaisseDetailPopup.jsx';
 // ---- Dashboard Sub ----
         function CaisseDashboardSub({ dashData, caisses, isControle, onNavigate }) {
             const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0,10));
@@ -283,8 +284,8 @@ import * as CaisseUtils from '../shared/lib/caisseUtils.js';
 
                     {/* Détail d'une caisse — alimentations / décaissements.
                         Aucun appel réseau : allTx est déjà chargé. */}
-                    {detailCaisse && window.CaisseDetailPopup && (
-                        <window.CaisseDetailPopup
+                    {detailCaisse && CaisseDetailPopup && (
+                        <CaisseDetailPopup
                             caisse={detailCaisse}
                             transactions={allTx}
                             onClose={() => setDetailCaisse(null)}

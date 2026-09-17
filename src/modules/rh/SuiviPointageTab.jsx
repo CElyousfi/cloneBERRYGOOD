@@ -2,6 +2,7 @@
    Module: rh | Déclaration(s): SuiviPointageTab */
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 
+import { QuinzaineCampagneSelect } from '../shared/QuinzaineCampagneSelect.jsx';
 // ===================== SUIVI POINTAGE =====================
         function SuiviPointageTab({ currentProfile, profileData }) {
             const [periodes, setPeriodes] = useState([]);
@@ -93,7 +94,7 @@ import { useEffect, useState } from '../shared/reactHooks.jsx';
                         </h2>
                         <div style={{display:'flex', alignItems:'center', gap:8}}>
                             <label style={{fontSize:12, fontWeight:600, color:'var(--gray-600)'}}>Quinzaine:</label>
-                            <window.QuinzaineCampagneSelect className="filter-select" periodes={periodes} periodeCampagne={periodeCampagne} value={selectedPeriode} onChange={v => handlePeriodeChange(v)} style={{padding:'6px 12px', borderRadius:8, border:'1px solid var(--gray-200)', fontSize:13, fontWeight:600}} />
+                            <QuinzaineCampagneSelect className="filter-select" periodes={periodes} periodeCampagne={periodeCampagne} value={selectedPeriode} onChange={v => handlePeriodeChange(v)} style={{padding:'6px 12px', borderRadius:8, border:'1px solid var(--gray-200)', fontSize:13, fontWeight:600}} />
                             <button onClick={() => loadData(selectedPeriode)} style={{padding:'6px 12px', borderRadius:8, border:'1px solid var(--gray-200)', background:'#fff', cursor:'pointer', fontSize:12}}>
                                 <i className="fa-solid fa-refresh"></i>
                             </button>

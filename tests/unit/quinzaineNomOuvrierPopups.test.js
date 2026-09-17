@@ -40,7 +40,7 @@ function slice(startMarker, endMarker, label) {
 // Le helper partagé de nommage (registre + repli pointage).
 const HELPER = slice(
   'const _nomPointageParMat = {};',
-  'return window.nomOuvrier(reg.prenom, reg.nom || _nomPointageParMat[k], mat) || mat;\n            };',
+  'return nomOuvrier(reg.prenom, reg.nom || _nomPointageParMat[k], mat) || mat;\n            };',
   'helper _nomOuvrierQz'
 );
 
@@ -68,7 +68,7 @@ function makeNomFn(moRows, registry) {
   };
   vm.createContext(sandbox);
   vm.runInContext(
-    NOM_OUVRIER + '\nwindow.nomOuvrier = nomOuvrier;\n' +
+    NOM_OUVRIER + '\n' +
       '(function () {\n' + HELPER + '\nout = _nomOuvrierQz;\n})();',
     sandbox
   );

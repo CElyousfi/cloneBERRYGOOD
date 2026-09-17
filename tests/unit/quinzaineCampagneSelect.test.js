@@ -1,6 +1,6 @@
 'use strict';
 
-// Charge le composant IIFE (public/components/QuinzaineCampagneSelect.jsx) dans un
+// Charge le composant (src/modules/shared/QuinzaineCampagneSelect.jsx) dans un
 // faux `window` (React.createElement stubé) pour tester ses helpers purs de
 // groupement/tri par campagne + le FALLBACK gracieux (periodeCampagne absent).
 // Le composant n'a besoin d'AUCUN DOM : createElement renvoie un arbre inspectable.
@@ -23,23 +23,14 @@ function createElement(type, props, ...children) {
   return { type, key: p.key, props: p, children: flat };
 }
 
-// Charge campagneUtils (publié sur window.CampagneUtils) puis le composant, dans un
-// même contexte VM partageant `window` (comme les <script> du navigateur).
+// Charge le composant (module ES) dans un contexte VM avec un React factice :
+// campagneUtils est importé par le composant lui-même.
 function loadComponent() {
-  const sandbox = { window: {}, module: { exports: {} } };
+  const sandbox = { window: {} };
   sandbox.window.React = { createElement };
+  sandbox.React = sandbox.window.React;
   vm.createContext(sandbox);
-
-  sandbox.window.CampagneUtils = loadEsm('src/modules/shared/lib/campagneUtils.js', { sandbox });
-
-  // Le .jsx contient de la JSX ? Non — le composant utilise React.createElement,
-  // donc il est exécutable tel quel sans Babel.
-  const compSrc = fs.readFileSync(
-    path.join(__dirname, '../../public/components/QuinzaineCampagneSelect.jsx'),
-    'utf8'
-  );
-  vm.runInContext(compSrc, sandbox);
-  return sandbox.window.QuinzaineCampagneSelect;
+  return loadEsm('src/modules/shared/QuinzaineCampagneSelect.jsx', { sandbox }).QuinzaineCampagneSelect;
 }
 
 const QCS = loadComponent();

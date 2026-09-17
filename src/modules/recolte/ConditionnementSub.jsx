@@ -7,6 +7,7 @@ import { cachedFetch } from '../shared/cachedFetch.jsx';
 import { invalidateCache } from '../shared/invalidateCache.jsx';
 import { useState } from '../shared/reactHooks.jsx';
 
+import { QuinzaineCampagneSelect } from '../shared/QuinzaineCampagneSelect.jsx';
 function ConditionnementSub({ data, farmFilter, initialPeriode }) {
             const [serverData, setServerData] = useState(null); const [loading, setLoading] = useState(true); const [periodes, setPeriodes] = useState([]); const [selectedPeriode, setSelectedPeriode] = useState(''); const PRIME_COND = 10;
             React.useEffect(() => { invalidateCache('transport'); cachedFetch('/api/pointage-rh?action=transport').then(json => { if (json.success) { setServerData(json); setPeriodes(json.periodes || []); if (json.periodes?.length > 0) setSelectedPeriode(initialPeriode || json.periodes[0]); } }).catch(err => console.warn(err)).finally(() => setLoading(false)); }, []);
@@ -19,7 +20,7 @@ function ConditionnementSub({ data, farmFilter, initialPeriode }) {
             return (<div className="fade-in">
                 <div style={{marginBottom:12,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
                     <span style={{background:'rgba(230,126,34,0.1)',color:'#e67e22',padding:'4px 12px',borderRadius:12,fontSize:11,fontWeight:600}}><i className="fa-solid fa-box-open" style={{marginRight:4}}></i>Prime Conditionnement — {currentPeriode}</span>
-                    <window.QuinzaineCampagneSelect periodes={periodes} periodeCampagne={serverData && serverData.periodeCampagne} value={selectedPeriode} onChange={v => setSelectedPeriode(v)} />
+                    <QuinzaineCampagneSelect periodes={periodes} periodeCampagne={serverData && serverData.periodeCampagne} value={selectedPeriode} onChange={v => setSelectedPeriode(v)} />
                     <span style={{fontSize:11,color:'var(--gray-500)',marginLeft:8}}><i className="fa-solid fa-info-circle" style={{marginRight:4}}></i>{PRIME_COND} DH / ouvrier / jour</span>
                 </div>
                 <div className="kpi-grid" style={{marginBottom:20}}>

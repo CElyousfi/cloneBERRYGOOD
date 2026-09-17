@@ -7,6 +7,7 @@ import { cachedFetch } from '../shared/cachedFetch.jsx';
 import { invalidateCache } from '../shared/invalidateCache.jsx';
 import { useState } from '../shared/reactHooks.jsx';
 
+import { QuinzaineCampagneSelect } from '../shared/QuinzaineCampagneSelect.jsx';
 function ChargementSub({ data, farmFilter, initialPeriode }) {
             const [serverData, setServerData] = useState(null); const [loading, setLoading] = useState(true); const [periodes, setPeriodes] = useState([]); const [selectedPeriode, setSelectedPeriode] = useState('');
             const PRIME_CHARG = data.primesConfig?.primeChargement?.coutParJour || 10;
@@ -20,7 +21,7 @@ function ChargementSub({ data, farmFilter, initialPeriode }) {
             return (<div className="fade-in">
                 <div style={{marginBottom:12,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
                     <span style={{background:'rgba(142,68,173,0.1)',color:'#8e44ad',padding:'4px 12px',borderRadius:12,fontSize:11,fontWeight:600}}><i className="fa-solid fa-truck-loading" style={{marginRight:4}}></i>Prime Chargement — {currentPeriode}</span>
-                    <window.QuinzaineCampagneSelect periodes={periodes} periodeCampagne={serverData && serverData.periodeCampagne} value={selectedPeriode} onChange={v => setSelectedPeriode(v)} />
+                    <QuinzaineCampagneSelect periodes={periodes} periodeCampagne={serverData && serverData.periodeCampagne} value={selectedPeriode} onChange={v => setSelectedPeriode(v)} />
                     <span style={{fontSize:11,color:'var(--gray-500)',marginLeft:8}}><i className="fa-solid fa-info-circle" style={{marginRight:4}}></i>{PRIME_CHARG} DH / ouvrier / jour</span>
                 </div>
                 <div className="kpi-grid" style={{marginBottom:20}}>

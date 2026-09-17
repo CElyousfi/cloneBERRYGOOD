@@ -24,6 +24,7 @@ import { useState } from './reactHooks.jsx';
 
 import * as RecolteKpiUtils from './lib/recolteKpiUtils.js';
 import * as QuinzaineUtils from './lib/quinzaineUtils.js';
+import { QuinzaineRecapCards } from '../rh/QuinzaineRecapCards.jsx';
 function DashboardTab({ data, farmFilter, avoSubFilter, onNavigateMeteo, currentProfile, cultureFilter }) {
             const [apiData, setApiData] = useState(null);
             const [nouveauxData, setNouveauxData] = useState(null);
@@ -586,7 +587,7 @@ function DashboardTab({ data, farmFilter, avoSubFilter, onNavigateMeteo, current
                         return (
                             <React.Fragment>
                             <Panel title={'Récap Quinzaine en Cours — ' + currentQuinz + (farmFilter ? ' — ' + farmFilter : '')} icon="fa-calendar-days">
-                                <window.QuinzaineRecapCards
+                                <QuinzaineRecapCards
                                     recapItems={recapItems}
                                     totalGlobal={totalGlobal}
                                     nbJours={nbJours}

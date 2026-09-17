@@ -7,6 +7,7 @@ import { useMemo, useState } from '../shared/reactHooks.jsx';
 import { TXN_TYPE_LABELS } from './TXN_TYPE_LABELS.jsx';
 
 import * as CaisseUtils from '../shared/lib/caisseUtils.js';
+import { CaisseSaisieSub } from './CaisseSaisieSub.jsx';
 // ---- Transactions List Sub ----
         function CaisseTransactionsSub({ caisses: caissesProp, isSaisie, isControle, onRefresh }) {
             const [transactions, setTransactions] = useState([]);
@@ -176,7 +177,7 @@ import * as CaisseUtils from '../shared/lib/caisseUtils.js';
             // (update-transaction). La garde qui fait foi est côté serveur : ce
             // helper ne sert qu'à ne pas proposer un bouton qui échouerait.
             const canEditTx = (tx) => {
-                if (!tx || !window.CaisseSaisieSub) return false;
+                if (!tx || !CaisseSaisieSub) return false;
                 if (CAISSE_STATUTS_EDITABLES.indexOf(tx.status) === -1) return false;
                 if (CAISSE_TYPES_EDITABLES.indexOf(tx.type) === -1) return false;
                 // Tout profil ayant accès à la caisse voit l'action. La propriété
@@ -911,10 +912,10 @@ import * as CaisseUtils from '../shared/lib/caisseUtils.js';
                     )}
 
                     {/* Modale d'édition — réutilise le formulaire de saisie en mode édition */}
-                    {editTx && window.CaisseSaisieSub && (
+                    {editTx && CaisseSaisieSub && (
                         <div className="modal-overlay" onClick={()=>setEditTx(null)}>
                             <div className="modal-content" onClick={e=>e.stopPropagation()} style={{maxWidth:680,padding:0,background:'transparent',border:'none',boxShadow:'none'}}>
-                                <window.CaisseSaisieSub
+                                <CaisseSaisieSub
                                     caisses={caisses}
                                     editTx={editTx}
                                     onCancel={()=>setEditTx(null)}

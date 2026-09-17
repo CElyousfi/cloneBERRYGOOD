@@ -15,6 +15,7 @@ import { loadPointageDistinctDays } from './loadPointageDistinctDays.jsx';
 
 import * as PaieUtils from '../shared/lib/paieUtils.js';
 import * as AnalytiqueUtils from '../shared/lib/analytiqueUtils.js';
+import { PointageValidationPanel } from './PointageValidationPanel.jsx';
 // ===================== POINTAGE TAB =====================
         function PointageTab({ data, farmFilter, avoSubFilter, currentProfile, isValidation }) {
             // Pretty parcelle label via PARCELLES_CULTURALES.designations
@@ -1049,7 +1050,7 @@ import * as AnalytiqueUtils from '../shared/lib/analytiqueUtils.js';
                     )}
 
                     {/* Validation du pointage du jour PAR ÉQUIPE / PAR FERME (composant séparé) */}
-                    {window.PointageValidationPanel && (selectedDate || (dates[0] && dates[0].date)) && (() => {
+                    {PointageValidationPanel && (selectedDate || (dates[0] && dates[0].date)) && (() => {
                         // Construit equipesParFerme depuis detailRows (MÊME logique getEq que ci-dessus).
                         const dateToUse = selectedDate || (dates[0] && dates[0].date);
                         const prefixToName = {};
@@ -1089,7 +1090,7 @@ import * as AnalytiqueUtils from '../shared/lib/analytiqueUtils.js';
                             result[ferme] = { equipes: eqs, diversCount: diversList.length, diversEntries: diversList };
                         });
                         if (!Object.keys(result).length) return null;
-                        return React.createElement(window.PointageValidationPanel, {
+                        return React.createElement(PointageValidationPanel, {
                             date: dateToUse,
                             currentProfile,
                             equipesParFerme: result,

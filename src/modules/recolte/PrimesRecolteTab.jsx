@@ -6,6 +6,7 @@ import { Panel } from '../shared/Panel.jsx';
 import { cachedFetch } from '../shared/cachedFetch.jsx';
 import { useState } from '../shared/reactHooks.jsx';
 
+import { QuinzaineCampagneSelect } from '../shared/QuinzaineCampagneSelect.jsx';
 // ===================== PRIMES RECOLTE TAB =====================
         function PrimesRecolteTab({ data, farmFilter, initialPeriode }) {
             const [fermeFilter, setFermeFilter] = useState(farmFilter || '');
@@ -367,7 +368,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                         <span style={{background:'#d4edda',color:'#155724',padding:'4px 12px',borderRadius:12,fontSize:11,fontWeight:600}}>
                             <i className="fa-solid fa-database" style={{marginRight:4}}></i>Données live
                         </span>
-                        <window.QuinzaineCampagneSelect periodes={periodes} periodeCampagne={periodeCampagne} value={selectedPeriode} onChange={v => { setSelectedPeriode(v); setSelectedJourIdx(null); setCultureFilter(''); setVarieteFilter(''); }} />
+                        <QuinzaineCampagneSelect periodes={periodes} periodeCampagne={periodeCampagne} value={selectedPeriode} onChange={v => { setSelectedPeriode(v); setSelectedJourIdx(null); setCultureFilter(''); setVarieteFilter(''); }} />
                     </div>
 
                     <div className="filters-bar" style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>

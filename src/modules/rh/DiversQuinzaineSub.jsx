@@ -3,6 +3,7 @@
 import { Panel } from '../shared/Panel.jsx';
 import { useState } from '../shared/reactHooks.jsx';
 
+import { QuinzaineCampagneSelect } from '../shared/QuinzaineCampagneSelect.jsx';
 // Sous-onglet Primes : vue quinzaine (récap lecture seule) du Pointage Divers, transposée (jours × sous-traitants).
         function DiversQuinzaineSub({ farmFilter, initialPeriode }) {
             const [periodes, setPeriodes] = useState([]);
@@ -49,7 +50,7 @@ import { useState } from '../shared/reactHooks.jsx';
                 <Panel title="Pointage Divers — Récapitulatif quinzaine" icon="fa-table-cells">
                     <div style={{marginBottom:12,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
                         <span style={{fontSize:11,fontWeight:600,color:'var(--gray-500)'}}>Quinzaine :</span>
-                        <window.QuinzaineCampagneSelect periodes={periodes} periodeCampagne={periodeCampagne} value={selectedPeriode} onChange={v => load(v)} />
+                        <QuinzaineCampagneSelect periodes={periodes} periodeCampagne={periodeCampagne} value={selectedPeriode} onChange={v => load(v)} />
                     </div>
                     <div className="table-responsive">
                     <table className="data-table" style={{fontSize:11}}>

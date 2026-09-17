@@ -5,6 +5,7 @@
  */
 import * as PaieUtils from '../shared/lib/paieUtils.js';
 
+import { nomOuvrier } from './nomOuvrier.jsx';
 function QuinzainePopupGenerique({ calcPrime, chargDetailQ, condDetailQ, coutMap, currentPeriode, data, f2, ferieDetailQ, fermeRateMap, getEqPrefix, moHorsRecolteRows, moPostesRows, moRecolteRows, numKey, parJour, prefixToName, qRecolteRows, quinzGroupBy, quinzPaieBaremes, quinzPopupKey, quinzRegistry, quinzSearch, sbNetForWorker, setQuinzChargesPopup, setQuinzGroupBy, setQuinzPopupKey, setQuinzSearch, setQuinzSubWorker, traitRows, transportRows }) {
     const _qpKey = quinzPopupKey;
     const _isMoCard = _qpKey === 'mo_recolte' || _qpKey === 'mo_horsrecolte' || _qpKey === 'mo_postes';
@@ -76,7 +77,7 @@ function QuinzainePopupGenerique({ calcPrime, chargDetailQ, condDetailQ, coutMap
         const mat = r.matricule;
         if (!_qpWMap[mat]) {
             const _qpReg = quinzRegistry[numKey(mat)] || {};
-            const _qpNom = window.nomOuvrier(_qpReg.prenom, _qpReg.nom || r.nom, mat) || mat;
+            const _qpNom = nomOuvrier(_qpReg.prenom, _qpReg.nom || r.nom, mat) || mat;
             _qpWMap[mat] = {
                 matricule: mat, nom: _qpNom, ferme: r.ferme || '—',
                 jours: new Set(), operations: new Set(), parcelles: new Set(),

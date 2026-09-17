@@ -5,6 +5,7 @@
  */
 import * as PaieUtils from '../shared/lib/paieUtils.js';
 
+import { nomOuvrier } from './nomOuvrier.jsx';
 function QuinzaineDetailParOuvrier({ cultureFilter, currentPeriode, detailEquipeFilter, detailOuvrierFullscreen, detailSearch, farmFilter, getEqPrefix, matchCulture, moHorsRecolteRows, moPostesRows, numKey, parJour, prefixToName, quinzPaieBaremes, quinzRegistry, recolteEquipeRows, setDetailEquipeFilter, setDetailOuvrierFullscreen, setDetailSearch }) {
     // Build map: matricule → { equipe, equipePrefix, nom, joursSet }
     // Sources: moHorsRecolteRows + moPostesRows + recolteEquipeRows (filtrés période/ferme)
@@ -20,7 +21,7 @@ function QuinzaineDetailParOuvrier({ cultureFilter, currentPeriode, detailEquipe
         if (!_wDetailMap[_key]) {
             const _prefix = getEqPrefix(r.matricule) || 'NV';
             const _reg = quinzRegistry[_key] || {};
-            const _nom = window.nomOuvrier(_reg.prenom, _reg.nom, r.nom || r.matricule);
+            const _nom = nomOuvrier(_reg.prenom, _reg.nom, r.nom || r.matricule);
             _wDetailMap[_key] = {
                 matricule: r.matricule,
                 nom: _nom,

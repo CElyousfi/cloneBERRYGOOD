@@ -6,6 +6,7 @@ import { cachedFetch } from '../shared/cachedFetch.jsx';
 import { useState } from '../shared/reactHooks.jsx';
 import { WorkerLink } from './WorkerLink.jsx';
 
+import { QuinzaineCampagneSelect } from '../shared/QuinzaineCampagneSelect.jsx';
 function TransportSub({ data, farmFilter, initialPeriode }) {
             const [transportEquipes, setTransportEquipes] = useState(() =>
                 (data.transportConfig || []).map(t => ({...t}))
@@ -109,7 +110,7 @@ function TransportSub({ data, farmFilter, initialPeriode }) {
                         <span style={{background:'#d4edda',color:'#155724',padding:'4px 12px',borderRadius:12,fontSize:11,fontWeight:600}}>
                             <i className="fa-solid fa-bus" style={{marginRight:4}}></i>Transport — {currentPeriode}
                         </span>
-                        <window.QuinzaineCampagneSelect periodes={periodes} periodeCampagne={periodeCampagne} value={selectedPeriode} onChange={v => setSelectedPeriode(v)} />
+                        <QuinzaineCampagneSelect periodes={periodes} periodeCampagne={periodeCampagne} value={selectedPeriode} onChange={v => setSelectedPeriode(v)} />
                     </div>
 
                     <div className="kpi-grid" style={{marginBottom:20}}>

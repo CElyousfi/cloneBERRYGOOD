@@ -6,6 +6,7 @@ import { invalidateCache } from '../shared/invalidateCache.jsx';
 import { useState } from '../shared/reactHooks.jsx';
 
 import * as QuinzaineUtils from '../shared/lib/quinzaineUtils.js';
+import { QuinzaineCampagneSelect } from '../shared/QuinzaineCampagneSelect.jsx';
 function PrimesRecapSub({ data, onNavigate, farmFilter, initialPeriode }) {
             const [detailRows, setDetailRows] = useState([]);
             const [transportData, setTransportData] = useState({});
@@ -160,7 +161,7 @@ function PrimesRecapSub({ data, onNavigate, farmFilter, initialPeriode }) {
                         <span style={{background:'var(--berry-pale)',color:'var(--berry)',padding:'4px 12px',borderRadius:12,fontSize:11,fontWeight:600}}>
                             <i className="fa-solid fa-award" style={{marginRight:4}}></i>Récapitulatif Primes — {currentPeriode}
                         </span>
-                        <window.QuinzaineCampagneSelect periodes={periodes} periodeCampagne={periodeCampagne} value={selectedPeriode} onChange={v => setSelectedPeriode(v)} />
+                        <QuinzaineCampagneSelect periodes={periodes} periodeCampagne={periodeCampagne} value={selectedPeriode} onChange={v => setSelectedPeriode(v)} />
                     </div>
 
                     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(220px, 1fr))',gap:16,marginBottom:24}}>

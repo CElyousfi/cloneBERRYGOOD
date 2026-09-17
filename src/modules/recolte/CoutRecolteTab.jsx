@@ -12,6 +12,7 @@ import { useState } from '../shared/reactHooks.jsx';
 
 import * as RecolteKpiUtils from '../shared/lib/recolteKpiUtils.js';
 import * as PaieUtils from '../shared/lib/paieUtils.js';
+import { QuinzaineCampagneSelect } from '../shared/QuinzaineCampagneSelect.jsx';
 // ===================== COUT RECOLTE TAB =====================
         function CoutRecolteTab({ data, farmFilter, avoSubFilter, currentProfile }) {
             const CHARGES_SOCIALES = 40;
@@ -919,7 +920,7 @@ import * as PaieUtils from '../shared/lib/paieUtils.js';
                         </span>
                         )}
                         {isQuinzaineMode && periodesAvecDonnees.length > 0 && (
-                        <window.QuinzaineCampagneSelect periodes={periodesAvecDonnees} periodeCampagne={equipePeriodeCampagne} value={effectiveQuinz} onChange={v => setSelectedQuinz(v)} />
+                        <QuinzaineCampagneSelect periodes={periodesAvecDonnees} periodeCampagne={equipePeriodeCampagne} value={effectiveQuinz} onChange={v => setSelectedQuinz(v)} />
                         )}
                         <div style={{display:'flex',gap:4}}>
                             <button onClick={() => setViewMode('jour')} style={{padding:'4px 12px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:11,fontWeight:600,background:viewMode==='jour'?'var(--berry)':'white',color:viewMode==='jour'?'white':'var(--gray-600)',cursor:'pointer'}}>Jour</button>

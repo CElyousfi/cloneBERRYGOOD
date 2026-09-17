@@ -4,6 +4,7 @@ import { formatMAD } from '../finance/formatMAD.jsx';
 import { useState } from '../shared/reactHooks.jsx';
 import { TXN_TYPE_LABELS } from './TXN_TYPE_LABELS.jsx';
 
+import { CaisseRevueValidation } from './CaisseRevueValidation.jsx';
 // ---- Validation Sub (DG/Finance) ----
         function CaisseValidationSub({ caisses, onDone }) {
             const [transactions, setTransactions] = useState([]);
@@ -75,8 +76,8 @@ import { TXN_TYPE_LABELS } from './TXN_TYPE_LABELS.jsx';
                 </div>
             );
 
-            if (modeRevue && window.CaisseRevueValidation) return (
-                <window.CaisseRevueValidation
+            if (modeRevue && CaisseRevueValidation) return (
+                <CaisseRevueValidation
                     transactions={transactions}
                     caisses={caisses}
                     onDecision={decisionRevue}
@@ -90,7 +91,7 @@ import { TXN_TYPE_LABELS } from './TXN_TYPE_LABELS.jsx';
                         <span style={{fontSize:13,color:'var(--gray-600)'}}>
                             <strong>{transactions.length}</strong> transaction(s) en attente de validation
                         </span>
-                        {window.CaisseRevueValidation && (
+                        {CaisseRevueValidation && (
                             <button onClick={() => setModeRevue(true)}
                                 style={{padding:'7px 14px',borderRadius:8,border:'none',background:'var(--berry)',color:'white',cursor:'pointer',fontSize:12,fontWeight:600}}>
                                 <i className="fa-solid fa-layer-group" style={{marginRight:6}}></i>Revue une par une

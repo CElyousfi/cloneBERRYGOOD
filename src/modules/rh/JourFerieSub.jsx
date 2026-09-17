@@ -7,6 +7,7 @@ import { invalidateCache } from '../shared/invalidateCache.jsx';
 import { useState } from '../shared/reactHooks.jsx';
 import { WorkerLink } from './WorkerLink.jsx';
 
+import { QuinzaineCampagneSelect } from '../shared/QuinzaineCampagneSelect.jsx';
 function JourFerieSub({ data, farmFilter, initialPeriode }) {
             const [serverData, setServerData] = useState(null); const [loading, setLoading] = useState(true); const [periodes, setPeriodes] = useState([]); const [selectedPeriode, setSelectedPeriode] = useState('');
             React.useEffect(() => { invalidateCache('transport'); cachedFetch('/api/pointage-rh?action=transport').then(json => { if (json.success) { setServerData(json); setPeriodes(json.periodes || []); if (json.periodes?.length > 0) setSelectedPeriode(initialPeriode || json.periodes[0]); } }).catch(err => console.warn(err)).finally(() => setLoading(false)); }, []);
@@ -71,7 +72,7 @@ function JourFerieSub({ data, farmFilter, initialPeriode }) {
             return (<div className="fade-in">
                 <div style={{marginBottom:12,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
                     <span style={{background:'rgba(192,57,43,0.1)',color:'#c0392b',padding:'4px 12px',borderRadius:12,fontSize:11,fontWeight:600}}><i className="fa-solid fa-star" style={{marginRight:4}}></i>Prime Jour Férié — {currentPeriode}</span>
-                    <window.QuinzaineCampagneSelect periodes={periodes} periodeCampagne={serverData && serverData.periodeCampagne} value={selectedPeriode} onChange={v => setSelectedPeriode(v)} />
+                    <QuinzaineCampagneSelect periodes={periodes} periodeCampagne={serverData && serverData.periodeCampagne} value={selectedPeriode} onChange={v => setSelectedPeriode(v)} />
                 </div>
                 <div className="kpi-grid" style={{marginBottom:20}}>
                     <KPICard icon="fa-users" iconClass="orange" value={wList.length} label="Ouvriers éligibles" />

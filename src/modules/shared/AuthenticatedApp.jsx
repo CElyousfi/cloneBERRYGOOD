@@ -170,6 +170,8 @@ import { useEffect, useMemo, useRef, useState } from './reactHooks.jsx';
 import { lazyGlobalComponent } from './lazyGlobalComponent.jsx';
 
 import * as PaieDataCache from './lib/paieDataCache.js';
+import { BugReportButton } from './BugReportButton.jsx';
+import { BugReportsAdmin } from '../admin/BugReportsAdmin.jsx';
 /* ─── ONGLETS LEGACY EN CHARGEMENT DIFFÉRÉ ───────────────────────────────
    Ces onglets vivent encore dans public/components/ comme scripts classiques
    publiés sur `window`. index.html les chargeait tous au démarrage — 767 Ko
@@ -1265,7 +1267,7 @@ const ParcellesParamsTabLazy = lazyGlobalComponent('ParcellesParamsTab', ['compo
                                 {renderTab('agro_harvest', AgroHarvestPredictionTab, {}, 'Prédiction Récolte')}
                                 {renderTab('caisse', CaisseTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile), userProfile }, 'Gestion de Caisse')}
                                 {renderTab('coming_soon', ComingSoonTab, {}, 'Bientôt Disponible')}
-                                {currentTab === 'bug_reports' && window.BugReportsAdmin && <TabErrorBoundary name="Bugs signalés" key="bug-reports-eb">{React.createElement(window.BugReportsAdmin, { currentProfile })}</TabErrorBoundary>}
+                                {currentTab === 'bug_reports' && BugReportsAdmin && <TabErrorBoundary name="Bugs signalés" key="bug-reports-eb">{React.createElement(BugReportsAdmin, { currentProfile })}</TabErrorBoundary>}
                                 {currentTab === 'evolution' && <TabErrorBoundary name="Évolutions" key="evolution-eb"><React.Suspense fallback={<div style={{padding:'32px',textAlign:'center',color:'var(--muted, #888)'}}>Chargement du module…</div>}><EvolutionTab key={refreshKey + '-' + currentProfile} currentProfile={currentProfile} profileData={PROFILES.find(p => p.id === currentProfile)} userProfile={userProfile} isDG={userProfile.profileId === 'dg' || currentProfile === 'dg'} /></React.Suspense></TabErrorBoundary>}
                                 {currentTab === 'admin_users' && userProfile.role === 'admin' && <TabErrorBoundary name="Admin" key="admin-eb"><React.Suspense fallback={<div style={{padding:'32px',textAlign:'center',color:'var(--muted, #888)'}}>Chargement du module…</div>}><AdminConsoleTab key={refreshKey} authUser={authUser} userProfile={userProfile} /></React.Suspense></TabErrorBoundary>}
                             </div>
@@ -1353,8 +1355,8 @@ const ParcellesParamsTabLazy = lazyGlobalComponent('ParcellesParamsTab', ['compo
                         <InstallGuide onClose={() => setShowInstallGuide(false)} />
                     )}
 
-                    {/* Signalement de bug in-app — composant séparé (window.BugReportButton) */}
-                    {window.BugReportButton && React.createElement(window.BugReportButton, {
+                    {/* Signalement de bug in-app — composant séparé (BugReportButton) */}
+                    {BugReportButton && React.createElement(BugReportButton, {
                         currentProfile: profile || currentProfile,
                         currentScreen: currentTab,
                     })}

@@ -2,8 +2,10 @@
    Module: agronomie | Déclaration(s): sbParcelleNom */
 
 
+import { sbParcelle } from '../shared/sbParcelleState.js';
+
 function sbParcelleNom(labelBeeOne) {
-            const ref = window.SB_PARCELLE_REF && window.SB_PARCELLE_REF[(labelBeeOne || '').toUpperCase().trim()];
+            const ref = sbParcelle.REF && sbParcelle.REF[(labelBeeOne || '').toUpperCase().trim()];
             return (ref && ref.nom_sb) ? ref.nom_sb : (labelBeeOne || '—');
         }
 

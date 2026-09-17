@@ -5,6 +5,7 @@ import { STATUS_LABELS } from '../shared/STATUS_LABELS.jsx';
 import { useState } from '../shared/reactHooks.jsx';
 import { TXN_TYPE_LABELS } from './TXN_TYPE_LABELS.jsx';
 
+import { CaisseSaisieSub } from './CaisseSaisieSub.jsx';
 // ---- Filtered Type Sub (Alimentations / Paie / Transport) ----
         function CaisseFilteredTypeSub({ caisses, typeFilter, title, icon, isSaisie, onDone, hasEmployee }) {
             const [transactions, setTransactions] = useState([]);
@@ -73,7 +74,7 @@ import { TXN_TYPE_LABELS } from './TXN_TYPE_LABELS.jsx';
                         <button onClick={() => setShowForm(false)} style={{padding:'6px 14px',borderRadius:8,border:'1px solid var(--gray-200)',background:'white',cursor:'pointer',fontSize:12,marginBottom:16}}>
                             <i className="fa-solid fa-arrow-left" style={{marginRight:6}}></i>Retour à la liste
                         </button>
-                        {window.CaisseSaisieSub && <window.CaisseSaisieSub caisses={caisses} defaultType={typeFilter} onDone={() => { setShowForm(false); load(); onDone && onDone(); }} />}
+                        {CaisseSaisieSub && <CaisseSaisieSub caisses={caisses} defaultType={typeFilter} onDone={() => { setShowForm(false); load(); onDone && onDone(); }} />}
                     </div>
                 );
             }

@@ -6,6 +6,7 @@ import { cachedFetch } from '../shared/cachedFetch.jsx';
 import { invalidateCache } from '../shared/invalidateCache.jsx';
 import { useState } from '../shared/reactHooks.jsx';
 
+import { QuinzaineCampagneSelect } from '../shared/QuinzaineCampagneSelect.jsx';
 // ===================== HEURES SUPPLÉMENTAIRES TAB =====================
         // Durée travaillée (entrée/sortie BEE ONE via prod_presence) + dépassement
         // au-delà de 8h30, par quinzaine. Récolte (rendement) et gardiens exclus.
@@ -143,7 +144,7 @@ import { useState } from '../shared/reactHooks.jsx';
                         <span style={{background:'#e8d5e8',color:'var(--berry)',padding:'4px 12px',borderRadius:12,fontSize:11,fontWeight:600}}>
                             <i className="fa-solid fa-clock" style={{marginRight:4}}></i>Heures Supp. — {currentPeriode}
                         </span>
-                        <window.QuinzaineCampagneSelect periodes={periodes} periodeCampagne={periodeCampagne} periodeDates={periodeDates} value={selectedPeriode} onChange={v => setSelectedPeriode(v)} />
+                        <QuinzaineCampagneSelect periodes={periodes} periodeCampagne={periodeCampagne} periodeDates={periodeDates} value={selectedPeriode} onChange={v => setSelectedPeriode(v)} />
                         <label style={{fontSize:11,display:'flex',alignItems:'center',gap:5,cursor:'pointer',color:'var(--gray-600)'}}>
                             <input type="checkbox" checked={onlyOvertime} onChange={e => setOnlyOvertime(e.target.checked)} />
                             Seulement les dépassements
