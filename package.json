@@ -24,7 +24,7 @@
     "migrate:extract": "node scripts/migrate/extract-modules.cjs",
     "migrate:verify": "node scripts/migrate/verify-references.cjs",
     "migrate:fidelity": "node scripts/migrate/verify-fidelity.cjs",
-    "migrate:build": "vite build --config vite.migrated.config.js",
+    "migrate:build": "vite build",
     "migrate:walk": "node scripts/migrate/walk-tabs.cjs",
     "migrate:parity": "node scripts/migrate/compare-frontends.cjs",
     "migrate:all": "npm run migrate:extract && npm run migrate:verify && npm run migrate:build",

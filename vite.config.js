@@ -4,8 +4,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// Build de la migration non-régression.
-// Entrée JS (pas HTML) : index.migrated.html charge le bundle émis.
+// Build du frontend modulaire — seul build du dépôt.
+// Entrée JS (pas HTML) : public/index.html charge le bundle émis.
 export default defineConfig({
   plugins: [react()],
   root: __dirname,
