@@ -191,7 +191,17 @@ function makeSandbox(t, opts) {
   // sleep : le smoke post-deploy hosting attend 15 s de propagation — inutile ici.
   writeExecutable(path.join(stubs, 'sleep'), '#!/bin/sh\nexit 0\n');
 
-  return { root, stubs, argsLog, ghLog, headSha };
+  // npm : le chemin hosting lance `npm run build` (le bundle Vite n'est pas
+  // commité). On journalise l'appel — la preuve que le build précède le deploy.
+  const npmLog = path.join(base, 'npm-args.txt');
+  writeExecutable(
+    path.join(stubs, 'npm'),
+    '#!/bin/sh\n' +
+      `printf '%s\\n' "$@" > ${JSON.stringify(npmLog)}\n` +
+      'exit 0\n'
+  );
+
+  return { root, stubs, argsLog, ghLog, npmLog, headSha };
 }
 
 /** Lance deploy.sh SANS PIPE (cf. previewExitCode.test.js : un pipe masque le code de sortie). */
@@ -439,6 +449,8 @@ test('hosting nominal → --only hosting, projet correct, smoke lancé (inchang�
   assert.strictEqual(args[args.indexOf('--only') + 1], 'hosting');
   assert.strictEqual(args[args.indexOf('--project') + 1], PROJECT);
   assert.ok(args.includes('--config'));
+  // Le bundle est produit AVANT le deploy : public/app.modular.js n'est pas commité.
+  assert.deepStrictEqual(readLog(sandbox.npmLog), ['run', 'build'], 'npm run build attendu avant firebase deploy');
   // Message de release « <sha> <sujet> » : seule trace consultable d'un deploy front.
   assert.ok(args.includes('-m'), `-m absent : ${JSON.stringify(args)}`);
   assert.match(args[args.indexOf('-m') + 1], new RegExp('^' + sandbox.headSha.slice(0, 7)));

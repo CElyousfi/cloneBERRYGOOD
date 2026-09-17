@@ -1,1 +1,0 @@
-import{P as s}from"../app.modular.js";function u(a,t,r,o){return s.filter(e=>e.variete===a&&e.cycle===o&&e.enProduction!==!1&&(!r||e.ferme===r)&&(t?e.sousVariete===t:!0)).reduce((e,n)=>e+n.ha,0)}export{u as g};

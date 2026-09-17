@@ -1,1 +1,0 @@
-async function i(c){const t=(await c.collection("clients_marche_local").get()).docs.map(e=>e.data()).filter(Boolean),a=t.filter(e=>e.archived!==!0),n=new Set(a.map(e=>e.nom).filter(Boolean)),o=new Set(t.filter(e=>e.archived===!0).map(e=>e.nom).filter(Boolean).filter(e=>!n.has(e)));return{active:a,archivedNames:o}}export{i as g};

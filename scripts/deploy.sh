@@ -289,6 +289,11 @@ fi
 # ============================================================================
 
 echo "[deploy] cible : --only $ONLY  projet : $PROJECT  (via CI token)  args : ${*:-aucun}"
+# Build du frontend : public/app.modular.js et public/chunks/ ne sont PAS commités
+# (gitignorés). Le bundle déployé est donc toujours produit ici, depuis le checkout
+# main propre vérifié par les garde-fous ci-dessus — jamais repris d'un build antérieur.
+echo "[deploy] build frontend (npm run build → public/)..."
+(cd "$ROOT" && npm run build)
 # Message de release Hosting = « <sha> <sujet du commit> ». C'est la SEULE trace
 # consultable d'un deploy frontend : firebase-tools n'expose pas les releases du canal
 # live, on les relit via l'API Hosting (cf. scripts/deploy-context.js). Sans ce message,

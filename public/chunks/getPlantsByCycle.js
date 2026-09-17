@@ -1,1 +1,0 @@
-import{P as l}from"../app.modular.js";function u(n,t,a,r){return l.filter(e=>e.variete===n&&e.cycle===r&&(!a||e.ferme===a)&&(t?e.sousVariete===t:!0)&&e.sousVariete!=="Nouvelle plantation"&&e.nbPlants>0).reduce((e,s)=>e+s.nbPlants,0)}export{u as g};

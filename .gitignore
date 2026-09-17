@@ -103,10 +103,10 @@ docs/BACKUP-*.json
 tests/e2e-screenshots/
 .claude/settings.json.bak*
 
-# Builds de la migration modulaire (artefacts, régénérables)
+# Sortie du build Vite (régénérée par npm run build avant tout deploy)
+public/app.modular.js
+public/chunks/
 dist/
-dist-migrated/
-dist-migrated-dev/
 dist-vercel/
 .vercel/
 

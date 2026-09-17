@@ -190,7 +190,9 @@ if [ "$POST_MERGE" -eq 1 ]; then
   fi
 fi
 
-# d) npm run qa vert (exécuté par le script, pas avant)
+# d) npm run qa vert (exécuté par le script, pas avant). La gate inclut
+#    `npm run build` : public/app.modular.js et public/chunks/ (gitignorés) sont
+#    régénérés ici, avant le deploy du canal — jamais repris d'un build antérieur.
 echo "[preview] branche : $BRANCH @ $(git -C "$ROOT" rev-parse --short HEAD)"
 echo "[preview] garde-fous OK — lancement de npm run qa..."
 if ! (cd "$ROOT" && npm run qa); then
