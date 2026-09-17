@@ -4,6 +4,8 @@ import { buildFacturesWorkbook } from '../finance/buildFacturesWorkbook.jsx';
 import { useEffect, useState } from '../shared/reactHooks.jsx';
 
 import * as FactureExportUtils from '../shared/lib/factureExportUtils.js';
+import { FactureDetailPopup } from './FactureDetailPopup.jsx';
+import { ScanAttachmentButton } from './ScanAttachmentButton.jsx';
 function AchatsFacturesTab({ currentProfile, profileData }) {
             const [factures, setFactures] = useState([]);
             const [loading, setLoading] = useState(true);
@@ -127,7 +129,7 @@ function AchatsFacturesTab({ currentProfile, profileData }) {
                                     <td style={{fontSize:12}}>{f.date_facture || '—'}</td>
                                     <td style={{fontWeight:700}}>{(f.total_ttc || 0).toLocaleString('fr-FR', {minimumFractionDigits:2})} MAD</td>
                                     <td>{f.has_discrepancies ? <span className="status-badge rejete" style={{fontSize:10}}><i className="fa-solid fa-triangle-exclamation" style={{marginRight:4}}></i>{(f.discrepancies||[]).length} ecart(s)</span> : <span style={{color:'var(--green)',fontSize:11}}><i className="fa-solid fa-check"></i></span>}</td>
-                                    <td onClick={(e) => e.stopPropagation()}>{window.ScanAttachmentButton ? <window.ScanAttachmentButton entityType="invoices" entityId={f.id} scanUrl={f.scan_url} scanPath={f.scan_path} uploadedBy={{ profileId: currentProfile, name: profileData?.name || currentProfile }} onUploaded={() => loadFactures()} compact /> : null}</td>
+                                    <td onClick={(e) => e.stopPropagation()}>{ScanAttachmentButton ? <ScanAttachmentButton entityType="invoices" entityId={f.id} scanUrl={f.scan_url} scanPath={f.scan_path} uploadedBy={{ profileId: currentProfile, name: profileData?.name || currentProfile }} onUploaded={() => loadFactures()} compact /> : null}</td>
                                     <td><span className={'status-badge ' + statusClass(f.payment_status)}>{statusLabels[f.payment_status] || f.payment_status}</span></td>
                                     <td style={{whiteSpace:'nowrap'}} onClick={(e) => e.stopPropagation()}>
                                         {f.payment_status === 'non_payee' && <button onClick={() => handleSubmitPayment(f.id)} title="Soumettre paiement" style={{background:'none',border:'none',cursor:'pointer',color:'var(--blue)',fontSize:13,marginRight:4}}><i className="fa-solid fa-paper-plane"></i></button>}
@@ -191,8 +193,8 @@ function AchatsFacturesTab({ currentProfile, profileData }) {
                         </div>
                     )}
 
-                    {detailFacture && window.FactureDetailPopup && (
-                        <window.FactureDetailPopup facture={detailFacture} statusLabels={statusLabels} onClose={() => setDetailFacture(null)} />
+                    {detailFacture && FactureDetailPopup && (
+                        <FactureDetailPopup facture={detailFacture} statusLabels={statusLabels} onClose={() => setDetailFacture(null)} />
                     )}
                 </div>
             );

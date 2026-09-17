@@ -5,6 +5,7 @@ import { isModeVirement } from '../caisse/isModeVirement.jsx';
 import { PROFILES } from '../shared/PROFILES.jsx';
 
 import * as BdcWorkflow from '../shared/lib/bdcWorkflow.js';
+import { ScanAttachmentButton } from '../achats/ScanAttachmentButton.jsx';
 // ===================== FINANCE: SUIVI BDC TAB =====================
         function FinBDCTab({ currentProfile }) {
             const [bdcList, setBdcList] = React.useState([]);
@@ -273,7 +274,7 @@ import * as BdcWorkflow from '../shared/lib/bdcWorkflow.js';
                                                 {/* Pièce jointe (scan BDC) */}
                                                 <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', gap: 8 }}>
                                                     <span style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>Scan BDC :</span>
-                                                    {window.ScanAttachmentButton && <window.ScanAttachmentButton entityType="purchase_orders" entityId={bdc.id} scanUrl={bdc.scan_url} scanPath={bdc.scan_path} uploadedBy={{ profileId: currentProfile }} onUploaded={() => load()} />}
+                                                    {ScanAttachmentButton && <ScanAttachmentButton entityType="purchase_orders" entityId={bdc.id} scanUrl={bdc.scan_url} scanPath={bdc.scan_path} uploadedBy={{ profileId: currentProfile }} onUploaded={() => load()} />}
                                                 </div>
                                                 {/* Durées détaillées */}
                                                 <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>

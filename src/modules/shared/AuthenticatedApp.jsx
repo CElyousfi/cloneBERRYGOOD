@@ -183,14 +183,14 @@ import { BugReportsAdmin } from '../admin/BugReportsAdmin.jsx';
    dialogues. Les charger en parallèle laisserait passer un undefined. */
 const CampagneAnalytiqueTabLazy = lazyGlobalComponent('CampagneAnalytiqueTab', ['components/CampagneBudgetTab.js', 'components/PivotAnalytiqueGrid.js', 'components/CampagneAnalytiqueTab.js']);
 const MagBCTabLazy = React.lazy(() => import('../magasin/MagBCTab.jsx').then(m => ({ default: m.MagBCTab })));
-const ParcellesReferentielTabLazy = lazyGlobalComponent('ParcellesReferentielTab', ['components/ParcellesGroupesPanel.js', 'components/ParcellesReferentielTab.js']);
-const PrimesFixesTabLazy = lazyGlobalComponent('PrimesFixesTab', ['components/PrimesFixesTab.js']);
+const ParcellesReferentielTabLazy = React.lazy(() => import('../agronomie/ParcellesReferentielTab.jsx').then(m => ({ default: m.ParcellesReferentielTab })));
+const PrimesFixesTabLazy = React.lazy(() => import('../rh/PrimesFixesTab.jsx').then(m => ({ default: m.PrimesFixesTab })));
 const ConsoValoriseeTabLazy = React.lazy(() => import('../magasin/ConsoValoriseeTab.jsx').then(m => ({ default: m.ConsoValoriseeTab })));
 const MagBdcReceptionTabLazy = React.lazy(() => import('../magasin/MagBdcReceptionTab.jsx').then(m => ({ default: m.MagBdcReceptionTab })));
 const MagBonsCommandeTabLazy = React.lazy(() => import('../magasin/MagBonsCommandeTab.jsx').then(m => ({ default: m.MagBonsCommandeTab })));
 const MagMappingConsoTabLazy = React.lazy(() => import('../magasin/MagMappingConsoTab.jsx').then(m => ({ default: m.MagMappingConsoTab })));
 const MagStockFilesTabLazy = React.lazy(() => import('../magasin/MagStockFilesTab.jsx').then(m => ({ default: m.MagStockFilesTab })));
-const ParcellesParamsTabLazy = lazyGlobalComponent('ParcellesParamsTab', ['components/ParcellesParamsTab.js']);
+const ParcellesParamsTabLazy = React.lazy(() => import('../agronomie/ParcellesParamsTab.jsx').then(m => ({ default: m.ParcellesParamsTab })));
 
 // Main authenticated app — all hooks are safe here since this only mounts when auth is confirmed
         function AuthenticatedApp({ authUser, userProfile }) {

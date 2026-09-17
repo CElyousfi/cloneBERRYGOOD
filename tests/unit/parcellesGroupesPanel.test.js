@@ -1,6 +1,6 @@
 'use strict';
 
-// Charge le composant IIFE (public/components/ParcellesGroupesPanel.jsx) dans un
+// Charge le composant (src/modules/agronomie/ParcellesGroupesPanel.jsx) dans un
 // faux `window` (React stubé) et inspecte l'arbre rendu. Même technique que
 // tests/unit/quinzaineCampagneSelect.test.js : pas de DOM, pas de RTL (limitation
 // documentée du repo), mais React.createElement renvoie un arbre inspectable.
@@ -15,6 +15,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { loadComponent } = require('./_esm');
 
 function createElement(type, props, ...children) {
   const flat = [];
@@ -42,13 +43,7 @@ function renderPanel(props, stateOverrides) {
     },
     useEffect: function () {},
   };
-  vm.createContext(sandbox);
-  const src = fs.readFileSync(
-    path.join(__dirname, '../../public/components/ParcellesGroupesPanel.jsx'),
-    'utf8'
-  );
-  vm.runInContext(src, sandbox);
-  return sandbox.window.ParcellesGroupesPanel(props);
+  return loadComponent('src/modules/agronomie/ParcellesGroupesPanel.jsx', sandbox).ParcellesGroupesPanel(props);
 }
 
 const GROUPE_A = { id: 'GRP-A', label: 'Groupe A', membres: [{ label: 'P1', ha: 1 }] };

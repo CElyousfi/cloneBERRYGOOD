@@ -4,6 +4,8 @@ import { useEffect, useState } from '../shared/reactHooks.jsx';
 import { buildFacturesWorkbook } from './buildFacturesWorkbook.jsx';
 
 import * as FactureExportUtils from '../shared/lib/factureExportUtils.js';
+import { FactureDetailPopup } from '../achats/FactureDetailPopup.jsx';
+import { ScanAttachmentButton } from '../achats/ScanAttachmentButton.jsx';
 // ===================== FINANCE: FACTURES TAB =====================
         function FinFacturesTab({ currentProfile, profileData }) {
             const [factures, setFactures] = useState([]);
@@ -75,7 +77,7 @@ import * as FactureExportUtils from '../shared/lib/factureExportUtils.js';
                                     <td style={{fontWeight:600}}>{f.fournisseur?.nom || '—'}</td>
                                     <td style={{fontWeight:700}}>{(f.total_ttc || 0).toLocaleString('fr-FR', {minimumFractionDigits:2})} MAD</td>
                                     <td>{f.has_discrepancies ? <span className="status-badge rejete" style={{fontSize:10}}><i className="fa-solid fa-triangle-exclamation" style={{marginRight:4}}></i>{(f.discrepancies||[]).length}</span> : <span style={{color:'var(--green)',fontSize:11}}><i className="fa-solid fa-check"></i> OK</span>}</td>
-                                    <td onClick={(e) => e.stopPropagation()}>{window.ScanAttachmentButton ? <window.ScanAttachmentButton entityType="invoices" entityId={f.id} scanUrl={f.scan_url} scanPath={f.scan_path} uploadedBy={{ profileId: currentProfile, name: profileData?.name || currentProfile }} onUploaded={() => loadFactures()} compact /> : null}</td>
+                                    <td onClick={(e) => e.stopPropagation()}>{ScanAttachmentButton ? <ScanAttachmentButton entityType="invoices" entityId={f.id} scanUrl={f.scan_url} scanPath={f.scan_path} uploadedBy={{ profileId: currentProfile, name: profileData?.name || currentProfile }} onUploaded={() => loadFactures()} compact /> : null}</td>
                                     <td style={{whiteSpace:'nowrap'}} onClick={(e) => e.stopPropagation()}>
                                         <button onClick={() => handleValidate(f.id)} title="Valider" style={{background:'none',border:'none',cursor:'pointer',color:'var(--green)',fontSize:14,marginRight:8}}><i className="fa-solid fa-circle-check"></i></button>
                                         <button onClick={() => handleReject(f.id)} title="Rejeter" style={{background:'none',border:'none',cursor:'pointer',color:'#e74c3c',fontSize:14}}><i className="fa-solid fa-circle-xmark"></i></button>
@@ -86,8 +88,8 @@ import * as FactureExportUtils from '../shared/lib/factureExportUtils.js';
                         </tbody>
                     </table></div>
 
-                    {detailFacture && window.FactureDetailPopup && (
-                        <window.FactureDetailPopup facture={detailFacture} statusLabels={statusLabels} onClose={() => setDetailFacture(null)} />
+                    {detailFacture && FactureDetailPopup && (
+                        <FactureDetailPopup facture={detailFacture} statusLabels={statusLabels} onClose={() => setDetailFacture(null)} />
                     )}
                 </div>
             );

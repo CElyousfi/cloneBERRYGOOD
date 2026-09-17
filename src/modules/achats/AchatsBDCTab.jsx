@@ -11,6 +11,7 @@ import { useEffect, useState } from '../shared/reactHooks.jsx';
 
 import * as BdcWorkflow from '../shared/lib/bdcWorkflow.js';
 import * as BdcReceptionUtils from '../shared/lib/bdcReceptionUtils.js';
+import { ScanAttachmentButton } from './ScanAttachmentButton.jsx';
 // ===================== ACHATS: BONS DE COMMANDE TAB =====================
         function AchatsBDCTab({ currentProfile, profileData }) {
             const [bdcList, setBdcList] = useState([]);
@@ -623,7 +624,7 @@ import * as BdcReceptionUtils from '../shared/lib/bdcReceptionUtils.js';
                                     <td style={{fontWeight:700}}>{(b.total_ttc || 0).toLocaleString('fr-FR', {minimumFractionDigits:2})} MAD</td>
                                     <td><span className={'status-badge ' + statusClass(b.status)}>{statusLabels[b.status] || b.status}</span></td>
                                     <td><span className={'status-badge ' + (b.delivery_status === 'complet' ? 'valide' : b.delivery_status === 'partiel' ? 'en-attente' : 'brouillon')} style={{fontSize:10}}>{b.delivery_status === 'complet' ? 'Livré' : b.delivery_status === 'partiel' ? 'Partiel' : 'Non livré'}</span></td>
-                                    <td onClick={e => e.stopPropagation()}>{window.ScanAttachmentButton ? <window.ScanAttachmentButton entityType="purchase_orders" entityId={b.id} scanUrl={b.scan_url} scanPath={b.scan_path} uploadedBy={{ profileId: currentProfile, name: profileData?.name || currentProfile }} onUploaded={() => loadBdc()} compact /> : null}</td>
+                                    <td onClick={e => e.stopPropagation()}>{ScanAttachmentButton ? <ScanAttachmentButton entityType="purchase_orders" entityId={b.id} scanUrl={b.scan_url} scanPath={b.scan_path} uploadedBy={{ profileId: currentProfile, name: profileData?.name || currentProfile }} onUploaded={() => loadBdc()} compact /> : null}</td>
                                     <td onClick={e => e.stopPropagation()} style={{whiteSpace:'nowrap'}}>
                                         <div style={{display:'flex',gap:12,alignItems:'center'}}>
                                         {(b.status === 'brouillon' || b.status === 'rejete') && <button onClick={() => handleSubmit(b.id)} disabled={submittingBdc === b.id} title={b.status === 'rejete' ? 'Resoumettre' : 'Soumettre'} style={{background:'none',border:'none',cursor: submittingBdc === b.id ? 'wait' : 'pointer',color:'var(--blue)',fontSize:13}}><i className={submittingBdc === b.id ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-paper-plane'}></i></button>}
@@ -1081,7 +1082,7 @@ import * as BdcReceptionUtils from '../shared/lib/bdcReceptionUtils.js';
                                                         <span style={{color:'#64748b'}}>{bl.date_reception || '—'}</span>
                                                         {bl.numero_bl_fournisseur && <span style={{color:'#94a3b8'}}>BL fournisseur: {bl.numero_bl_fournisseur}</span>}
                                                         <span style={{color:'#475569'}}>{(bl.items || []).map(it => it.article + ': ' + it.quantite_recue + ' ' + (it.unite||'')).join(', ')}</span>
-                                                        {window.ScanAttachmentButton && <window.ScanAttachmentButton entityType="delivery_notes" entityId={bl.id} scanUrl={bl.scan_url} scanPath={bl.scan_path} uploadedBy={{ profileId: currentProfile }} onUploaded={() => openDetail(selectedBdc)} compact />}
+                                                        {ScanAttachmentButton && <ScanAttachmentButton entityType="delivery_notes" entityId={bl.id} scanUrl={bl.scan_url} scanPath={bl.scan_path} uploadedBy={{ profileId: currentProfile }} onUploaded={() => openDetail(selectedBdc)} compact />}
                                                     </div>
                                                 ))}
                                             </div>

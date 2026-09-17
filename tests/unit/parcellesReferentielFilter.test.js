@@ -2,7 +2,7 @@
 
 // PRT_filterRows — filtre de la barre de recherche de l'écran
 // « Parcelles & Référentiel MO ». Helper PUR, chargé via `vm` depuis l'IIFE
-// public/components/ParcellesReferentielTab.jsx (même technique que
+// src/modules/agronomie/ParcellesReferentielTab.jsx (même technique que
 // tests/unit/parcellesGroupesPanel.test.js : pas de DOM, pas de RTL).
 //
 // Objet du test : la recherche doit aussi porter sur le NOM SMART BERRY
@@ -15,16 +15,11 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { loadComponent } = require('./_esm');
 
 function loadFilterRows() {
   const sandbox = { window: { React: { createElement: function () {}, useState: function () {}, useEffect: function () {}, useMemo: function () {} } } };
-  vm.createContext(sandbox);
-  const src = fs.readFileSync(
-    path.join(__dirname, '../../public/components/ParcellesReferentielTab.jsx'),
-    'utf8'
-  );
-  vm.runInContext(src, sandbox);
-  return sandbox.window.ParcellesReferentielTab.filterRows;
+  return loadComponent('src/modules/agronomie/ParcellesReferentielTab.jsx', sandbox).ParcellesReferentielTab.filterRows;
 }
 
 const filterRows = loadFilterRows();

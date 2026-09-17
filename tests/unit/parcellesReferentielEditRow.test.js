@@ -2,7 +2,7 @@
 
 // PRT_initialHaVal / PRT_buildSavePayload — logique pure de la ligne
 // d'édition « Parcelles & Référentiel MO » (PRT_EditRow), chargée via `vm`
-// depuis l'IIFE public/components/ParcellesReferentielTab.jsx (même
+// depuis src/modules/agronomie/ParcellesReferentielTab.jsx (même
 // technique que tests/unit/parcellesReferentielFilter.test.js : pas de DOM,
 // pas de RTL disponible sur ce monolithe).
 //
@@ -19,16 +19,11 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { loadComponent } = require('./_esm');
 
 function loadModule() {
   const sandbox = { window: { React: { createElement: function () {}, useState: function () {}, useEffect: function () {}, useMemo: function () {} } } };
-  vm.createContext(sandbox);
-  const src = fs.readFileSync(
-    path.join(__dirname, '../../public/components/ParcellesReferentielTab.jsx'),
-    'utf8'
-  );
-  vm.runInContext(src, sandbox);
-  return sandbox.window.ParcellesReferentielTab;
+  return loadComponent('src/modules/agronomie/ParcellesReferentielTab.jsx', sandbox).ParcellesReferentielTab;
 }
 
 const PRT = loadModule();

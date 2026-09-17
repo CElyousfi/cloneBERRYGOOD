@@ -22,6 +22,7 @@ import { QuinzaineCampagneSelect } from '../shared/QuinzaineCampagneSelect.jsx';
 import { QuinzaineRecapCards } from './QuinzaineRecapCards.jsx';
 import { nomOuvrier } from './nomOuvrier.jsx';
 import { sbParcelle } from '../shared/sbParcelleState.js';
+import { RapprochementPaiePopup } from './RapprochementPaiePopup.jsx';
 // ===================== QUINZAINE TAB =====================
         function QuinzaineTab({ data, farmFilter, farmLabel, avoSubFilter, cultureFilter, currentProfile, onNavigateToPrimes }) {
             const [apiData, setApiData] = useState(null);
@@ -1941,8 +1942,8 @@ import { sbParcelle } from '../shared/sbParcelleState.js';
                         à jour — comparer un fichier frais à un instantané de la
                         veille ferait apparaître un écart qui n'est qu'un décalage
                         d'enregistrement. */}
-                    {rapprochementOpen && window.RapprochementPaiePopup && (
-                        <window.RapprochementPaiePopup
+                    {rapprochementOpen && RapprochementPaiePopup && (
+                        <RapprochementPaiePopup
                             periode={currentPeriode}
                             quinzaine={_snapshotRef.current}
                             baremes={quinzPaieBaremes}

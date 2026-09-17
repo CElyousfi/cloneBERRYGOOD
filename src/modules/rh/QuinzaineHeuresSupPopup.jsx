@@ -5,6 +5,7 @@
  */
 import * as PrimesV2 from '../shared/lib/primesV2.js';
 
+import { HsEmargementFooter } from './HsEmargementFooter.jsx';
 function QuinzaineHeuresSupPopup({ _chargesSociales, _hsTotal, _moRows, _nomOuvrierQz, currentPeriode, firebaseAuth, hsAjoutOuvert, hsAjoutQuery, hsAjoutsCourants, hsDraftCourant, hsEmargementsCourants, hsMinutes, hsMontantsCourants, hsSaving, numKey, setHsAjoutOuvert, setHsAjoutQuery, setHsAjouts, setHsDraft, setHsMontants, setHsSaving, setQuinzPopupKey }) {
     // SAISIE des heures sup accordées. Le montant est une
     // DÉCISION (la paie inscrit des sommes rondes), pas une
@@ -203,7 +204,7 @@ function QuinzaineHeuresSupPopup({ _chargesSociales, _hsTotal, _moRows, _nomOuvr
     // Référence RÉSOLUE PAR NOM + garde : une référence nue à
     // un global absent (script non chargé) ferait planter tout
     // l'écran, pas seulement ce pied de pop-up.
-    const _HsEmargementFooter = window.HsEmargementFooter;
+    const _HsEmargementFooter = HsEmargementFooter;
     const _th = {padding:'8px 10px',textAlign:'right',fontSize:11,color:'var(--gray-500)',fontWeight:600,borderBottom:'1px solid var(--gray-200)'};
     const _thL = {..._th, textAlign:'left'};
     const _td = {padding:'6px 10px',textAlign:'right',fontSize:12};
