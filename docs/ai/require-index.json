@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:73277b2c05c64a61",
+    "sourceFingerprint": "sha256:1ae1891fc00a36cd",
     "stats": {
-      "targetFiles": 318,
-      "targetFilesWithDirectTests": 195,
-      "targetFilesWithTransitiveTests": 216,
-      "testFilesScanned": 296
+      "targetFiles": 650,
+      "targetFilesWithDirectTests": 204,
+      "targetFilesWithTransitiveTests": 225,
+      "testFilesScanned": 298
     }
   },
   "index": {
@@ -1937,283 +1937,1499 @@
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/AffectationAnalytiqueTable.js": {
+    "src/modules/achats/AchatsAnalysesFoliairesTab.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/AffectationAnalytiqueTable.jsx": {
+    "src/modules/achats/AchatsBDCTab.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/ArticleConversionFields.js": {
+    "src/modules/achats/AchatsBonApportTab.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/ArticleConversionFields.jsx": {
+    "src/modules/achats/AchatsCatalogueTab.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/BCDoublonDialog.js": {
+    "src/modules/achats/AchatsConsultationTab.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/BCDoublonDialog.jsx": {
+    "src/modules/achats/AchatsDATab.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/BugReportButton.js": {
+    "src/modules/achats/AchatsDashboardTab.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/BugReportButton.jsx": {
+    "src/modules/achats/AchatsFacturesTab.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/BugReportsAdmin.js": {
+    "src/modules/achats/AchatsFournisseursTab.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/BugReportsAdmin.jsx": {
+    "src/modules/achats/AchatsPaiementsTab.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/CaisseDetailPopup.js": {
+    "src/modules/achats/AchatsRapprochementTab.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/CaisseDetailPopup.jsx": {
+    "src/modules/achats/AchatsReceptionsValoriserTab.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/CaisseParametresSub.js": {
+    "src/modules/achats/AchatsScanBLTab.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/CaisseParametresSub.jsx": {
+    "src/modules/achats/AchatsScanFacturesTab.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/CaisseRevueValidation.js": {
+    "src/modules/achats/AchatsVentePlastiqueTab.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/CaisseRevueValidation.jsx": {
+    "src/modules/achats/FactureDetailPopup.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/CaisseSaisieSub.js": {
+    "src/modules/achats/ScanAttachmentButton.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/CaisseSaisieSub.jsx": {
+    "src/modules/achats/index.js": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/CampagneAnalytiqueTab.js": {
+    "src/modules/admin/AdminConsoleTab.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/CampagneAnalytiqueTab.jsx": {
+    "src/modules/admin/BackupManagementPanel.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/CampagneBudgetTab.js": {
+    "src/modules/admin/BaremesPaiePanel.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/CampagneBudgetTab.jsx": {
+    "src/modules/admin/BugReportsAdmin.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/ConsoValoriseeTab.js": {
+    "src/modules/admin/DGAdoptionTab.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/ConsoValoriseeTab.jsx": {
+    "src/modules/admin/DGMeetingCRTab.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/FactureDetailPopup.js": {
+    "src/modules/admin/DGParametresTab.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/FactureDetailPopup.jsx": {
+    "src/modules/admin/DGSignatureTab.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/HsEmargementFooter.js": {
+    "src/modules/admin/DGTasksTab.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/HsEmargementFooter.jsx": {
+    "src/modules/admin/DGValidationsTab.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/InventaireMouvementsPopup.js": {
+    "src/modules/admin/DG_FARMS.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/InventaireMouvementsPopup.jsx": {
+    "src/modules/admin/JoursFeriesConfigPanel.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/MagBCScanModal.js": {
+    "src/modules/admin/PAIE_BAREMES_DEFAULT.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/MagBCScanModal.jsx": {
+    "src/modules/admin/ParametresTab.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/MagBCTab.js": {
+    "src/modules/admin/SousTraitantsConfigPanel.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/MagBCTab.jsx": {
+    "src/modules/admin/TUTORIAL_REGISTRY.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/MagBdcReceptionTab.js": {
+    "src/modules/admin/TemplateSimulator.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/MagBdcReceptionTab.jsx": {
+    "src/modules/admin/TutorialMenu.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/MagBonsCommandeTab.js": {
+    "src/modules/admin/WhatsAppConfigPanel.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/MagBonsCommandeTab.jsx": {
+    "src/modules/admin/getTutorials.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/MagMappingConsoTab.js": {
+    "src/modules/admin/index.js": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/MagMappingConsoTab.jsx": {
+    "src/modules/admin/useTutorialEngine.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/MagStockFilesTab.js": {
+    "src/modules/agronomie/AgroAnalyseFoliairesTab.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/MagStockFilesTab.jsx": {
+    "src/modules/agronomie/AgroAvancementTab.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/ParcellesGroupesPanel.js": {
+    "src/modules/agronomie/AgroCompositionTab.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/ParcellesGroupesPanel.jsx": {
+    "src/modules/agronomie/AgroDashboardTab.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/ParcellesParamsTab.js": {
+    "src/modules/agronomie/AgroFarmroadTab.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/ParcellesParamsTab.jsx": {
+    "src/modules/agronomie/AgroFertilisationTab.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/ParcellesReferentielTab.js": {
+    "src/modules/agronomie/AgroForecastTab.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/ParcellesReferentielTab.jsx": {
+    "src/modules/agronomie/AgroGrowthTab.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/PivotAnalytiqueGrid.js": {
+    "src/modules/agronomie/AgroHarvestPredictionTab.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/PivotAnalytiqueGrid.jsx": {
+    "src/modules/agronomie/AgroIrrigationTab.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/PmpDetailPopup.js": {
+    "src/modules/agronomie/AgroParcellesTab.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/PmpDetailPopup.jsx": {
+    "src/modules/agronomie/AgroPhytoTab.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/PointageValidationPanel.js": {
+    "src/modules/agronomie/AgroSurveillanceTab.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/PointageValidationPanel.jsx": {
+    "src/modules/agronomie/AnalysesFoliairesAlertDashboard.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/PointageValidationView.js": {
+    "src/modules/agronomie/CAMPAGNE_PARCELLE_MAP.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/PointageValidationView.jsx": {
+    "src/modules/agronomie/CampagneSegmentTable.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/PrimesFixesTab.js": {
+    "src/modules/agronomie/CampagneTab.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/PrimesFixesTab.jsx": {
+    "src/modules/agronomie/DESIGNATION_MAP.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/QuinzaineCampagneSelect.js": {
+    "src/modules/agronomie/EvolutionTab.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/QuinzaineCampagneSelect.jsx": {
+    "src/modules/agronomie/PARCELLES_CULTURALES.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/QuinzaineRecapCards.js": {
+    "src/modules/agronomie/ParcellesGroupesPanel.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/QuinzaineRecapCards.jsx": {
+    "src/modules/agronomie/ParcellesParamsTab.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/RapprochementPaiePopup.js": {
+    "src/modules/agronomie/ParcellesReferentielTab.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/RapprochementPaiePopup.jsx": {
+    "src/modules/agronomie/PlanificationTab.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/ScanAttachmentButton.js": {
+    "src/modules/agronomie/ProductivityBoxplotMultiSvg.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/components/ScanAttachmentButton.jsx": {
+    "src/modules/agronomie/ProductivityFarmSummaryBanner.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/lib/analytiqueUtils.js": {
+    "src/modules/agronomie/ProductivityHistogramSvg.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/agronomie/ProductivityReportTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/agronomie/ProductivityTreatmentDetail.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/agronomie/ProductivityTreatmentsTable.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/agronomie/ProductivityTrendSvg.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/agronomie/VARIETE_CYCLE_CONFIG.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/agronomie/computeMomentum.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/agronomie/computeNutrients.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/agronomie/displayCulture.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/agronomie/displayParcelle.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/agronomie/fetchSprayData.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/agronomie/getCycle.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/agronomie/getCycleType.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/agronomie/getHa.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/agronomie/getHaByCycle.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/agronomie/getKgExport.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/agronomie/getParcelleInfo.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/agronomie/getParcelleLabel.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/agronomie/getPlantsByCycle.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/agronomie/index.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/agronomie/isMonoCycle.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/agronomie/matchCulture.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/agronomie/normalizeParcelle.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/agronomie/normesProductiviteAdapter.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/agronomie/parcelleConfig.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/agronomie/sbParcelleHa.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/agronomie/sbParcelleNom.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/agronomie/transformSprayData.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/bootstrap.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/caisse/CAISSE_COLORS.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/caisse/CAISSE_EDIT_CONSTS.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/caisse/CAISSE_EXCEL_FORMATS.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/caisse/CaisseAvancesSub.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/caisse/CaisseComptesClientsSub.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/caisse/CaisseConfigSub.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/caisse/CaisseDashboardSub.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/caisse/CaisseDetailPopup.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/caisse/CaisseDropzone.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/caisse/CaisseFilteredTypeSub.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/caisse/CaisseImportCard.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/caisse/CaisseImportEncaissementsSub.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/caisse/CaisseImportReportView.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/caisse/CaisseImportSub.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/caisse/CaisseImportUnsupportedCard.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/caisse/CaisseParametresSub.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/caisse/CaissePerSheetTable.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/caisse/CaissePreviewSummary.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/caisse/CaisseRapportsSub.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/caisse/CaisseRapprochementSub.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/caisse/CaisseRevueValidation.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/caisse/CaisseSaisieSub.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/caisse/CaisseTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/caisse/CaisseTransactionsSub.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/caisse/CaisseTransfertsSub.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/caisse/CaisseValidationSub.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/caisse/CaisseWarnings.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/caisse/CanevaFinanceQueue.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/caisse/CanevaImportSub.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/caisse/CanevaSummaryView.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/caisse/CanevaUploadCard.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/caisse/ENC_BRUT_VIDE.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/caisse/ENC_FALLBACK_CLIENTS.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/caisse/ENC_REJET_LABELS.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/caisse/TXN_TYPE_LABELS.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/caisse/caisseFileToB64.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/caisse/canevaActor.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/caisse/encBrut.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/caisse/formatModePaiement.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/caisse/getCaisseColor.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/caisse/index.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/caisse/isModeComptant.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/caisse/isModeEspeces.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/caisse/isModeFacilite.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/caisse/isModeVirement.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/AffectationAnalytiqueTable.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/BDC_SOCIETES.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/BDC_SOCIETE_DEFAULT.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/BUDGET_BGF.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/BUDGET_BGF_DEFAULT.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/BudgetVsReelTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/CampagneAnalytiqueTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/CampagneBudgetTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/CampagneConsoView.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/CampagnePivotView.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/CampagneVarieteView.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/FinBDCTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/FinCATab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/FinCarburantTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/FinCodesAnalytiquesTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/FinDashboardTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/FinDeleteArticlesTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/FinFacturesTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/FinLiquidationsTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/FinOjraTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/FinPaiementsTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/FinPlantsTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/FinStockTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/FinTelecomTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/FinTresorerieTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/FinVirementsTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/FinanceMarcheLocalTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/FuelKmChart.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/FuelWeeklyChart.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/PivotAnalytiqueGrid.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/buildFacturesWorkbook.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/buildLiquidationsView.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/campagneAnalytiqueExport.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/campagneAnalytiqueHelpers.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/campagneBudgetRules.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/computeAtterrissage.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/computeBudgetWeekly.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/computeCADetail.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/computeProjection.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/formatMAD.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/getBdcSociete.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/importBudgetExcel.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/index.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/tresoFmtDate.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/tresoFmtMAD.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/finance/tresoParseDMY.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/index.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/magasin/ArticleConversionFields.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/magasin/BCDoublonDialog.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/magasin/ConsoValoriseeTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/magasin/InventaireMouvementsPopup.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/magasin/InventairePrixView.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/magasin/InventaireStockView.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/magasin/MagBCScanModal.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/magasin/MagBCTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/magasin/MagBdcReceptionTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/magasin/MagBonsCommandeTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/magasin/MagDashboardStockTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/magasin/MagFicheStockTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/magasin/MagInventaireTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/magasin/MagMappingConsoTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/magasin/MagMouvementsTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/magasin/MagParcTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/magasin/MagReceptionTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/magasin/MagSortieTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/magasin/MagStockFilesTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/magasin/MagStockIntrantsTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/magasin/MagTransfertTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/magasin/PmpDetailPopup.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/magasin/canonArt.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/magasin/index.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/magasin/useStockLocations.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/qualite/ChefAgronomieTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/qualite/ChefBlocPerformancePanel.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/qualite/ChefDATab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/qualite/ChefHorsRecoltePanel.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/qualite/ChefInspectionsPanel.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/qualite/ChefProductionWidget.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/qualite/ChefTrackingTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/qualite/ChefValidationBonsTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/qualite/ChefValidationsTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/qualite/DQRDailyTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/qualite/PFQEvolutionChart.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/qualite/QualiteBonsApportTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/qualite/QualiteBrixTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/qualite/QualiteDashboardTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/qualite/QualiteEcartsTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/qualite/QualiteExpeditionsTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/qualite/QualiteHistoriqueTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/qualite/QualiteInspectionsTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/qualite/QualiteLiquidationsTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/qualite/QualiteMarcheLocalTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/qualite/QualitePFQInterneTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/qualite/QualiteProductionTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/qualite/QualiteReconciliationTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/qualite/QualiteSuiviCalibreTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/qualite/QualiteValidationBonsTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/qualite/deduplicateExpeditions.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/qualite/index.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/recolte/CaporalHistoriqueTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/recolte/CaporalSaisieTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/recolte/CaporalSuiviTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/recolte/ChargementSub.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/recolte/ConditionnementSub.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/recolte/CoutRecolteTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/recolte/HorsRecolteSuiviTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/recolte/HorsRecolteTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/recolte/PrimesRecapSub.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/recolte/PrimesRecolteTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/recolte/PrimesTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/recolte/RecolteTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/recolte/TraitementSub.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/recolte/computeBoxStats.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/recolte/index.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/rh/DiversQuinzaineSub.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/rh/EquipesTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/rh/FONCTIONS_ENUM.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/rh/HeuresSupSub.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/rh/HsEmargementFooter.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/rh/JourFerieSub.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/rh/PaieTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/rh/PointageDiversTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/rh/PointageTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/rh/PointageValidationPanel.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/rh/PointageValidationView.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/rh/PointageValidationViewWrapper.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/rh/PrimesFixesTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/rh/QuinzaineChargesSocialesPopup.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/rh/QuinzaineDetailParOuvrier.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/rh/QuinzaineEmargementPopup.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/rh/QuinzaineHeuresSupPopup.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/rh/QuinzainePopupGenerique.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/rh/QuinzaineRecapCards.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/rh/QuinzaineSousPopupOuvrier.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/rh/QuinzaineTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/rh/RapprochementPaiePopup.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/rh/SuiviPointageTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/rh/SuiviTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/rh/TransportSub.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/rh/WorkerDetailContext.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/rh/WorkerDetailModal.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/rh/WorkerDetailProvider.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/rh/WorkerLink.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/rh/__PaieDataCache.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/rh/__PaieUtils.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/rh/calculerPaieOuvrier.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/rh/emargementChefsPrintWindow.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/rh/index.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/rh/loadPointageDistinctDays.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/rh/nomOuvrier.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/rh/trouverPalierAnciennete.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/securite/SecurityEnvoisWATab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/securite/SecurityIncidentsTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/securite/SecurityRegistreTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/securite/SecurityScanRegistreTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/securite/SecurityTunnelsTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/securite/index.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/APP_VERSION.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/AVO_SUB_FARMS.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/App.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/AuthenticatedApp.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/BugReportButton.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/CACHED_PROFILE_KEY.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/CACHE_MAX_ENTRIES.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/CACHE_TTL.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/ComingSoonTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/DashboardAssocieTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/DashboardTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/ErrorBoundary.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/FAMILLE_ICONS.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/FARMS.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/FARM_NAMES.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/FarmBanner.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/FarmTodoSection.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/InstallGuide.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/KPICard.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/LoginScreen.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/MOIS_FR.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/MesTachesWidget.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/NAV_ITEMS_ACHATS.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/NAV_ITEMS_AGRO.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/NAV_ITEMS_ASSOCIE.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/NAV_ITEMS_CAPORAL.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/NAV_ITEMS_CHEF_AVO.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/NAV_ITEMS_CHEF_BAHIA.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/NAV_ITEMS_DT.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/NAV_ITEMS_FINANCE.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/NAV_ITEMS_MAGASINIER.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/NAV_ITEMS_OTHER.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/NAV_ITEMS_QUALITE.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/NAV_ITEMS_RH.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/NAV_ITEMS_SECURITE.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/NAV_ITEMS_STATIONNAIRE.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/NewVersionToast.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/PROFILES.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/Panel.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/ProfileLoadErrorScreen.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/QuinzaineCampagneSelect.jsx": {
       "directTests": [
-        "tests/unit/analytiqueUtils.test.js",
-        "tests/unit/campagneExportBackend.test.js",
-        "tests/unit/campagneExportUtils.test.js"
+        "tests/unit/quinzaineCampagneSelect.test.js"
       ],
       "transitiveTests": [
-        "tests/unit/analytiqueUtils.test.js",
-        "tests/unit/campagneExportBackend.test.js",
-        "tests/unit/campagneExportUtils.test.js"
+        "tests/unit/quinzaineCampagneSelect.test.js"
       ]
     },
-    "public/lib/articleCategories.js": {
+    "src/modules/shared/ReconnectingBanner.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/STATUS_LABELS.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/SimpleAreaChart.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/SimpleBarChart.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/SimpleComboChart.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/SimplePieChart.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/TabErrorBoundary.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/ToastContext.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/ToastProvider.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/_apiCache.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/_dedupInflight.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/_meteoblueCache.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/_meteoblueInflight.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/_openMeteoCache.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/_origFetch.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/_purgeLSCache.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/_trimLSCacheIfNeeded.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/cachedFetch.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/callCanevaStock.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/clearCachedProfile.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/deriveSubFerme.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/generateMockData.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/getActiveMarcheLocalClients.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/getCurrentWeekNumber.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/getSatFriWeek.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/getVisibleProfiles.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/index.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/invalidateCache.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/lib/analytiqueUtils.js": {
+      "directTests": [
+        "tests/unit/affectationAnalytiqueTable.test.js",
+        "tests/unit/analytiqueUtils.test.js",
+        "tests/unit/campagneAnalytiqueClasser.test.js",
+        "tests/unit/campagneAnalytiqueVariete.test.js",
+        "tests/unit/campagneBudgetPivot.test.js",
+        "tests/unit/campagneBudgetQuinzaine.test.js",
+        "tests/unit/campagneExportBackend.test.js",
+        "tests/unit/campagneExportUtils.test.js",
+        "tests/unit/campagneRythme.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/affectationAnalytiqueTable.test.js",
+        "tests/unit/analytiqueUtils.test.js",
+        "tests/unit/campagneAnalytiqueClasser.test.js",
+        "tests/unit/campagneAnalytiqueVariete.test.js",
+        "tests/unit/campagneBudgetPivot.test.js",
+        "tests/unit/campagneBudgetQuinzaine.test.js",
+        "tests/unit/campagneExportBackend.test.js",
+        "tests/unit/campagneExportUtils.test.js",
+        "tests/unit/campagneRythme.test.js"
+      ]
+    },
+    "src/modules/shared/lib/articleCategories.js": {
       "directTests": [
         "tests/unit/articleCategorieCanonique.test.js"
       ],
@@ -2221,7 +3437,7 @@
         "tests/unit/articleCategorieCanonique.test.js"
       ]
     },
-    "public/lib/articleSelect.js": {
+    "src/modules/shared/lib/articleSelect.js": {
       "directTests": [
         "tests/unit/articleSelect.test.js",
         "tests/unit/magBCArticleFerme.test.js",
@@ -2233,7 +3449,7 @@
         "tests/unit/magBCUniteConversion.test.js"
       ]
     },
-    "public/lib/authResilience.js": {
+    "src/modules/shared/lib/authResilience.js": {
       "directTests": [
         "tests/unit/authResilience.test.js"
       ],
@@ -2241,7 +3457,7 @@
         "tests/unit/authResilience.test.js"
       ]
     },
-    "public/lib/bcScanMatch.js": {
+    "src/modules/shared/lib/bcScanMatch.js": {
       "directTests": [
         "tests/unit/bcScanMatch.test.js",
         "tests/unit/magBCScanModal.test.js"
@@ -2251,7 +3467,7 @@
         "tests/unit/magBCScanModal.test.js"
       ]
     },
-    "public/lib/bdcReceptionUtils.js": {
+    "src/modules/shared/lib/bdcReceptionUtils.js": {
       "directTests": [
         "tests/unit/bdcReceptionUtils.test.js",
         "tests/unit/receptionCreatedMessage.test.js"
@@ -2261,7 +3477,7 @@
         "tests/unit/receptionCreatedMessage.test.js"
       ]
     },
-    "public/lib/bdcWorkflow.js": {
+    "src/modules/shared/lib/bdcWorkflow.js": {
       "directTests": [
         "tests/unit/bdcWorkflow.test.js"
       ],
@@ -2269,7 +3485,7 @@
         "tests/unit/bdcWorkflow.test.js"
       ]
     },
-    "public/lib/caisseUtils.js": {
+    "src/modules/shared/lib/caisseUtils.js": {
       "directTests": [
         "tests/unit/avances.test.js",
         "tests/unit/caisseUtils.test.js",
@@ -2281,11 +3497,19 @@
         "tests/unit/compteClientMarcheLocal.test.js"
       ]
     },
-    "public/lib/campagneBudgetPivot.js": {
-      "directTests": [],
-      "transitiveTests": []
+    "src/modules/shared/lib/campagneBudgetPivot.js": {
+      "directTests": [
+        "tests/unit/campagneBudgetPivot.test.js",
+        "tests/unit/campagneBudgetQuinzaine.test.js",
+        "tests/unit/campagneRythme.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/campagneBudgetPivot.test.js",
+        "tests/unit/campagneBudgetQuinzaine.test.js",
+        "tests/unit/campagneRythme.test.js"
+      ]
     },
-    "public/lib/campagneBudgetQuinzaine.js": {
+    "src/modules/shared/lib/campagneBudgetQuinzaine.js": {
       "directTests": [
         "tests/unit/campagneBudgetQuinzaine.test.js"
       ],
@@ -2293,36 +3517,66 @@
         "tests/unit/campagneBudgetQuinzaine.test.js"
       ]
     },
-    "public/lib/campagneExportUtils.js": {
+    "src/modules/shared/lib/campagneExportUtils.js": {
       "directTests": [
+        "tests/unit/campagneAnalytiqueExport.test.js",
+        "tests/unit/campagneAnalytiqueVariete.test.js",
         "tests/unit/campagneExportBackend.test.js",
         "tests/unit/campagneExportUtils.test.js"
       ],
       "transitiveTests": [
+        "tests/unit/campagneAnalytiqueExport.test.js",
+        "tests/unit/campagneAnalytiqueVariete.test.js",
         "tests/unit/campagneExportBackend.test.js",
         "tests/unit/campagneExportUtils.test.js"
       ]
     },
-    "public/lib/campagneParcelleQuinzaine.js": {
-      "directTests": [],
-      "transitiveTests": []
+    "src/modules/shared/lib/campagneParcelleQuinzaine.js": {
+      "directTests": [
+        "tests/unit/campagneAnalytiqueClasser.test.js",
+        "tests/unit/campagneParcelleQuinzaine.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/campagneAnalytiqueClasser.test.js",
+        "tests/unit/campagneParcelleQuinzaine.test.js"
+      ]
     },
-    "public/lib/campagneProduction.js": {
-      "directTests": [],
-      "transitiveTests": []
+    "src/modules/shared/lib/campagneProduction.js": {
+      "directTests": [
+        "tests/unit/campagneAnalytiqueClasser.test.js",
+        "tests/unit/campagneProduction.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/campagneAnalytiqueClasser.test.js",
+        "tests/unit/campagneProduction.test.js"
+      ]
     },
-    "public/lib/campagneRapprochement.js": {
-      "directTests": [],
-      "transitiveTests": []
+    "src/modules/shared/lib/campagneRapprochement.js": {
+      "directTests": [
+        "tests/unit/campagneAnalytiqueClasser.test.js",
+        "tests/unit/campagneRapprochement.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/campagneAnalytiqueClasser.test.js",
+        "tests/unit/campagneRapprochement.test.js"
+      ]
     },
-    "public/lib/campagneRythme.js": {
-      "directTests": [],
-      "transitiveTests": []
+    "src/modules/shared/lib/campagneRythme.js": {
+      "directTests": [
+        "tests/unit/campagneBudgetQuinzaine.test.js",
+        "tests/unit/campagneRythme.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/campagneBudgetQuinzaine.test.js",
+        "tests/unit/campagneRythme.test.js"
+      ]
     },
-    "public/lib/campagneUtils.js": {
+    "src/modules/shared/lib/campagneUtils.js": {
       "directTests": [
         "tests/unit/bcDoublonFrontWiring.test.js",
+        "tests/unit/campagneAnalytiqueClasser.test.js",
         "tests/unit/campagnePeriodes.test.js",
+        "tests/unit/campagneRythme.test.js",
         "tests/unit/campagneUtils.test.js",
         "tests/unit/campagneUtilsBackend.test.js",
         "tests/unit/magBCArticleFerme.test.js",
@@ -2333,23 +3587,34 @@
       ],
       "transitiveTests": [
         "tests/unit/bcDoublonFrontWiring.test.js",
+        "tests/unit/campagneAnalytiqueClasser.test.js",
+        "tests/unit/campagneBudgetQuinzaine.test.js",
         "tests/unit/campagnePeriodes.test.js",
+        "tests/unit/campagneRythme.test.js",
         "tests/unit/campagneUtils.test.js",
         "tests/unit/campagneUtilsBackend.test.js",
         "tests/unit/magBCArticleFerme.test.js",
         "tests/unit/magBCSuppressionDoubleConfirm.test.js",
         "tests/unit/magBCTabDateSaisie.test.js",
         "tests/unit/magBCTabEditDate.test.js",
-        "tests/unit/magBCUniteConversion.test.js"
+        "tests/unit/magBCUniteConversion.test.js",
+        "tests/unit/quinzaineCampagneSelect.test.js"
       ]
     },
-    "public/lib/coutMainOeuvre.js": {
-      "directTests": [],
-      "transitiveTests": []
+    "src/modules/shared/lib/coutMainOeuvre.js": {
+      "directTests": [
+        "tests/unit/coutMainOeuvre.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/coutMainOeuvre.test.js"
+      ]
     },
-    "public/lib/cultureUtils.js": {
+    "src/modules/shared/lib/cultureUtils.js": {
       "directTests": [
         "tests/unit/bcScanMatch.test.js",
+        "tests/unit/campagneAnalytiqueClasser.test.js",
+        "tests/unit/campagneAnalytiqueExport.test.js",
+        "tests/unit/campagneAnalytiqueVariete.test.js",
         "tests/unit/campagneBudgetQuinzaine.test.js",
         "tests/unit/campagneBudgetTab.test.js",
         "tests/unit/campagneExportBackend.test.js",
@@ -2358,6 +3623,9 @@
       ],
       "transitiveTests": [
         "tests/unit/bcScanMatch.test.js",
+        "tests/unit/campagneAnalytiqueClasser.test.js",
+        "tests/unit/campagneAnalytiqueExport.test.js",
+        "tests/unit/campagneAnalytiqueVariete.test.js",
         "tests/unit/campagneBudgetQuinzaine.test.js",
         "tests/unit/campagneBudgetTab.test.js",
         "tests/unit/campagneExportBackend.test.js",
@@ -2365,15 +3633,15 @@
         "tests/unit/magBCScanModal.test.js"
       ]
     },
-    "public/lib/emargementExcel.js": {
+    "src/modules/shared/lib/emargementExcel.js": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/lib/emargementPdf.js": {
+    "src/modules/shared/lib/emargementPdf.js": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/lib/encaissementsCanevas.js": {
+    "src/modules/shared/lib/encaissementsCanevas.js": {
       "directTests": [
         "tests/unit/encaissementsCanevas.test.js"
       ],
@@ -2381,7 +3649,7 @@
         "tests/unit/encaissementsCanevas.test.js"
       ]
     },
-    "public/lib/factureExportUtils.js": {
+    "src/modules/shared/lib/factureExportUtils.js": {
       "directTests": [
         "tests/unit/factureExportUtils.test.js"
       ],
@@ -2389,15 +3657,7 @@
         "tests/unit/factureExportUtils.test.js"
       ]
     },
-    "public/lib/featureFlags.js": {
-      "directTests": [
-        "tests/unit/featureFlags.test.js"
-      ],
-      "transitiveTests": [
-        "tests/unit/featureFlags.test.js"
-      ]
-    },
-    "public/lib/fusionMasse.js": {
+    "src/modules/shared/lib/fusionMasse.js": {
       "directTests": [
         "tests/unit/articleMergeLot.test.js",
         "tests/unit/articleMergePopupChoix.test.js",
@@ -2409,7 +3669,7 @@
         "tests/unit/fusionMasse.test.js"
       ]
     },
-    "public/lib/growthUtils.js": {
+    "src/modules/shared/lib/growthUtils.js": {
       "directTests": [
         "tests/unit/growthUtils.test.js"
       ],
@@ -2417,7 +3677,7 @@
         "tests/unit/growthUtils.test.js"
       ]
     },
-    "public/lib/imageDownscale.js": {
+    "src/modules/shared/lib/imageDownscale.js": {
       "directTests": [
         "tests/unit/imageDownscale.test.js"
       ],
@@ -2425,7 +3685,7 @@
         "tests/unit/imageDownscale.test.js"
       ]
     },
-    "public/lib/inflightDedup.js": {
+    "src/modules/shared/lib/inflightDedup.js": {
       "directTests": [
         "tests/unit/inflightDedup.test.js"
       ],
@@ -2433,7 +3693,7 @@
         "tests/unit/inflightDedup.test.js"
       ]
     },
-    "public/lib/inventaireUtils.js": {
+    "src/modules/shared/lib/inventaireUtils.js": {
       "directTests": [
         "tests/unit/inventaireUtils.test.js"
       ],
@@ -2441,15 +3701,19 @@
         "tests/unit/inventaireUtils.test.js"
       ]
     },
-    "public/lib/lecturePaieExcel.js": {
+    "src/modules/shared/lib/lecturePaieExcel.js": {
+      "directTests": [
+        "tests/unit/lecturePaieExcel.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/lecturePaieExcel.test.js"
+      ]
+    },
+    "src/modules/shared/lib/localTestBypass.js": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/lib/local-test-bypass.js": {
-      "directTests": [],
-      "transitiveTests": []
-    },
-    "public/lib/meteoCalc.js": {
+    "src/modules/shared/lib/meteoCalc.js": {
       "directTests": [
         "tests/unit/meteoCalc.test.js"
       ],
@@ -2457,7 +3721,7 @@
         "tests/unit/meteoCalc.test.js"
       ]
     },
-    "public/lib/paieDataCache.js": {
+    "src/modules/shared/lib/paieDataCache.js": {
       "directTests": [
         "tests/unit/paieDataCache.test.js"
       ],
@@ -2465,15 +3729,17 @@
         "tests/unit/paieDataCache.test.js"
       ]
     },
-    "public/lib/paieUtils.js": {
+    "src/modules/shared/lib/paieUtils.js": {
       "directTests": [
+        "tests/unit/coutMainOeuvre.test.js",
         "tests/unit/paieUtils.test.js"
       ],
       "transitiveTests": [
+        "tests/unit/coutMainOeuvre.test.js",
         "tests/unit/paieUtils.test.js"
       ]
     },
-    "public/lib/parcelleGroupUtils.js": {
+    "src/modules/shared/lib/parcelleGroupUtils.js": {
       "directTests": [
         "tests/unit/parcelleGroupUtils.test.js"
       ],
@@ -2481,11 +3747,15 @@
         "tests/unit/parcelleGroupUtils.test.js"
       ]
     },
-    "public/lib/plafondDeclaration.js": {
-      "directTests": [],
-      "transitiveTests": []
+    "src/modules/shared/lib/plafondDeclaration.js": {
+      "directTests": [
+        "tests/unit/plafondDeclaration.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/plafondDeclaration.test.js"
+      ]
     },
-    "public/lib/primesImportParse.js": {
+    "src/modules/shared/lib/primesImportParse.js": {
       "directTests": [
         "tests/unit/primesImportParse.test.js"
       ],
@@ -2493,7 +3763,7 @@
         "tests/unit/primesImportParse.test.js"
       ]
     },
-    "public/lib/primesV2.js": {
+    "src/modules/shared/lib/primesV2.js": {
       "directTests": [
         "tests/unit/primesV2.test.js"
       ],
@@ -2501,7 +3771,7 @@
         "tests/unit/primesV2.test.js"
       ]
     },
-    "public/lib/quinzaineUtils.js": {
+    "src/modules/shared/lib/quinzaineUtils.js": {
       "directTests": [
         "tests/unit/quinzaineUtils.test.js"
       ],
@@ -2509,11 +3779,15 @@
         "tests/unit/quinzaineUtils.test.js"
       ]
     },
-    "public/lib/rapprochementPaie.js": {
-      "directTests": [],
-      "transitiveTests": []
+    "src/modules/shared/lib/rapprochementPaie.js": {
+      "directTests": [
+        "tests/unit/rapprochementPaie.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/rapprochementPaie.test.js"
+      ]
     },
-    "public/lib/recolteKpiUtils.js": {
+    "src/modules/shared/lib/recolteKpiUtils.js": {
       "directTests": [
         "tests/unit/recolteKpiUtils.test.js"
       ],
@@ -2521,7 +3795,7 @@
         "tests/unit/recolteKpiUtils.test.js"
       ]
     },
-    "public/lib/scanAttachmentUtils.js": {
+    "src/modules/shared/lib/scanAttachmentUtils.js": {
       "directTests": [
         "tests/unit/scanAttachmentUtils.test.js"
       ],
@@ -2529,11 +3803,11 @@
         "tests/unit/scanAttachmentUtils.test.js"
       ]
     },
-    "public/lib/scanClientUpload.js": {
+    "src/modules/shared/lib/scanClientUpload.js": {
       "directTests": [],
       "transitiveTests": []
     },
-    "public/lib/scanHistoryDisplay.js": {
+    "src/modules/shared/lib/scanHistoryDisplay.js": {
       "directTests": [
         "tests/unit/scanHistoryDisplay.test.js"
       ],
@@ -2541,7 +3815,7 @@
         "tests/unit/scanHistoryDisplay.test.js"
       ]
     },
-    "public/lib/stockDestinations.js": {
+    "src/modules/shared/lib/stockDestinations.js": {
       "directTests": [
         "tests/unit/stockDestinations.test.js",
         "tests/unit/stockMagasinsCoverage.test.js"
@@ -2551,7 +3825,7 @@
         "tests/unit/stockMagasinsCoverage.test.js"
       ]
     },
-    "public/lib/stockMovementGuard.js": {
+    "src/modules/shared/lib/stockMovementGuard.js": {
       "directTests": [
         "tests/unit/stockMovementGuard.test.js"
       ],
@@ -2559,7 +3833,7 @@
         "tests/unit/stockMovementGuard.test.js"
       ]
     },
-    "public/lib/uniteConsoUtils.js": {
+    "src/modules/shared/lib/uniteConsoUtils.js": {
       "directTests": [
         "tests/unit/magBCArticleFerme.test.js",
         "tests/unit/magBCUniteConversion.test.js",
@@ -2571,13 +3845,145 @@
         "tests/unit/uniteConsoUtils.test.js"
       ]
     },
-    "public/lib/useStockLocations.js": {
+    "src/modules/shared/lib/useStockLocations.js": {
       "directTests": [
         "tests/unit/useStockLocations.test.js"
       ],
       "transitiveTests": [
         "tests/unit/useStockLocations.test.js"
       ]
+    },
+    "src/modules/shared/loadBonsFromFirestore.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/loadCachedProfile.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/reactHooks.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/remapLegacyTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/saveCachedProfile.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/sbLoad.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/sbParcelleState.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/shared/useToast.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/technique/ClimatProductionTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/technique/DrainageCurve.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/technique/GDDTrackingTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/technique/IrrigationIntelligenceTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/technique/IrrigationRecoTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/technique/METEO_CACHE_TTL.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/technique/METEO_DEFAULT_FARM_BY_PROFILE.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/technique/MapRenderer.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/technique/MeteoAlertsDashboard.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/technique/MeteoHistory7d.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/technique/MeteoPrevisionExterieure.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/technique/MeteoTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/technique/OPEN_METEO_CACHE_TTL.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/technique/StationnaireAnalyseTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/technique/StationnaireHistoriqueTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/technique/StationnaireImportScanTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/technique/StationnaireIrrigationTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/technique/fetchMeteoblueData.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/technique/fetchOpenMeteoHourly.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/technique/index.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/technique/meteoFermes.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/technique/parsePictocode.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/technique/parseWindDir.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/technique/transformMeteoblueData.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "src/modules/technique/useGeolocation.jsx": {
+      "directTests": [],
+      "transitiveTests": []
     }
   }
 }

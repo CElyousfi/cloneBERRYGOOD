@@ -66,25 +66,25 @@ grep/rg/cat/find/ls/head/tail/wc/sed-n/cd-chain/pipes vers grep-head-tail. Péri
 
 ---
 
-## Règles de compatibilité Vite (A1 — Pipeline IA Phase 1)
+## Conventions modules ES (frontend)
 
-> S'appliquent à TOUT nouveau code et TOUTE extraction depuis `public/app.jsx`.
-> **Aucune extraction du monolithe n'est faite en Phase 1** (contrainte de
-> périmètre explicite) — ces règles posent la convention à l'avance pour ne
-> pas diverger le jour où l'extraction démarre. `src/` n'existe pas encore.
+> S'appliquent à TOUT le code de `src/modules`.
 
 - **ESM uniquement** : `import`/`export` explicites, jamais `require`, jamais
-  de globale implicite (`window.X = ...`) sauf couche de compatibilité UMD
-  documentée (comme `public/lib/caisseUtils.js` aujourd'hui).
+  de globale implicite (`window.X = ...`). Seules les bibliothèques CDN
+  (`React`, `XLSX`, `firebase`…) sont des globales, déclarées dans
+  `types/globals.d.ts`.
 - **Aucun import à effet de bord** : un import ne doit rien exécuter, seulement
-  exposer.
-- **Un point d'entrée `index.js` par feature**, exportant l'API publique du
-  module.
-- **Alias de chemins** déclarés dès maintenant dans `jsconfig.json` :
-  `@features/*`, `@shared/*`, `@app/*` — identiques à la future config Vite.
-- **Structure cible** pour toute extraction future :
-  `src/features/<domaine>/{components,api,hooks,tests,index.js}` et
-  `src/shared/{components,hooks,api,utils}`.
+  exposer. Les deux exceptions sont `bootstrap.jsx` (point d'entrée) et
+  `shared/lib/localTestBypass.js` (contournement local, importé en premier).
+- **Un fichier par déclaration**, dans le module métier qui la possède
+  (`src/modules/<module>/<Nom>.jsx`) ; helpers purs dans
+  `src/modules/shared/lib/*.js` (exports nommés, `// @ts-check`).
+- **Un barrel `index.js` par module**, exportant l'API publique du module.
+- **Aucun fichier au-dessus de 2 000 lignes** : découper par déplacement de
+  code (`npm run verify:refs` rattrape les références non résolues).
+- Les onglets sont chargés par `React.lazy(() => import(...))` dans
+  `shared/AuthenticatedApp.jsx`, sous `TabErrorBoundary` — un chunk chacun.
 
 ---
 
@@ -104,7 +104,7 @@ explicite d'Omar. Correspond exactement aux deux catégories ci-dessous.
 **Développement courant** :
 - Écrire / éditer du code, créer des fichiers
 - Création de branche/worktree dédiée à un ticket
-- `npm run build:frontend`, `npm run test:unit`, `npm run qa`, lint (à venir Chantier D)
+- `npm run build`, `npm run test:unit`, `npm run qa`, `npm run lint`
 - Commits, push sur feature branch
 - Deploy functions (backend) — changement non-régressif
 - Deploy hosting sur **preview channel** (pas prod)
@@ -145,7 +145,7 @@ explicite d'Omar. Correspond exactement aux deux catégories ci-dessous.
   (coordination via Omar / un seul ticket actif à la fois sur les ressources
   exclusives ci-dessous).
 - **Ressources exclusives** (un seul ticket à la fois, quel que soit le diff) :
-  `public/app.jsx`, `package.json`, `firebase.json`, `firestore.rules`,
+  `src/modules/shared/AuthenticatedApp.jsx`, `package.json`, `firebase.json`, `firestore.rules`,
   `CLAUDE.md`, `.claude/**`.
 - **Limites par ticket** : max 2 tentatives d'implémentation, max 2
   corrections post-QA, max 8 fichiers modifiés. Dépassement d'une limite →
@@ -155,46 +155,45 @@ explicite d'Omar. Correspond exactement aux deux catégories ci-dessous.
 
 ## Scope actif
 
-**Sprint 3 — Rapprochement & Avances 🚧** sur l'écran Gestion de Caisse. Sprint 2 livré et déployé en prod le 2026-05-18 (PR #17, merge commit `6e00e4d`). Voir [ROADMAP.md](ROADMAP.md) pour l'historique et la suite.
+Dépôt entièrement modulaire depuis le 2026-09-17 (chantier « monolithe supprimé », voir [HANDOVER.md](HANDOVER.md)). Voir [ROADMAP.md](ROADMAP.md) pour la suite et [TODO_REFACTO.md](TODO_REFACTO.md) pour la dette restante.
 
 ---
 
 ## Architecture en bref
 
 ### Frontend
-- **Monolithe `public/app.jsx`** (~53 k lignes), React via CDN dans `public/index.html` (pas d'imports ES, pas de bundler).
-- Build : `@babel/preset-react` direct → `public/app.js`. Script : `npm run build:frontend` (scripts/build-frontend.js — vérifie des sentinelles + cache-bust HTML).
-- **Pas de TypeScript.** JSDoc strict (`// @ts-check`) attendu pour les modules dans `public/lib/`.
-- État global : aucun framework (Redux/Zustand/Context formel). `useState` locaux + props héritées du root.
-- Helpers caisse purs : `public/lib/caisseUtils.js` — exposé en `window.CaisseUtils` ET `module.exports` (UMD bricolé). Source de vérité pour la détection d'anomalies, recherche, totaux, filtres rapides.
+- **Modules ES** dans `src/modules/` (12 modules métier + `shared`), construits par **Vite** (`npm run build` → `public/app.modular.js` + `public/chunks/`, gitignorés). React, Firebase, XLSX… par CDN dans `public/index.html`.
+- **Pas de TypeScript.** JSDoc strict (`// @ts-check`) attendu pour les helpers de `src/modules/shared/lib/`.
+- État global : aucun framework (Redux/Zustand/Context formel). `useState` locaux + props héritées du root ; état partagé ponctuel dans un module (ex. `shared/sbParcelleState.js`).
+- Helpers caisse purs : `src/modules/shared/lib/caisseUtils.js` — exports nommés, source de vérité pour la détection d'anomalies, recherche, totaux, filtres rapides.
 
 ### Backend
-- **Cloud Functions** dans `functions/index.js` (monolithe ~12 k lignes) — voir [TODO_REFACTO.md](TODO_REFACTO.md) §2.
+- **Cloud Functions** : `functions/index.js` est un barrel (105 exports figés, `tests/unit/backendExportSurface.test.js`) ; handlers et services dans `functions/src/modules/<domaine>/`, socle dans `functions/src/shared/`.
 - Firebase project : `berrygood-farms-dashboard`. Région : `europe-west1`. Runtime Node 20 CommonJS.
 - Firestore : règles `firestore.rules` — la plupart des collections sont read-only client, writes via Cloud Functions uniquement (cf. `caisse_transactions`, `caisse_definitions`, `stock_movements`, …).
 - API : routes `/api/<service>` mappées dans `firebase.json` vers des `exports.<serviceName>`.
-- Module propre = `functions/lib/irrigation/` (pure functions + DI + `node:test`). Pattern à dupliquer pour les futurs domaines.
+- Domaines purs = `functions/lib/<domaine>/` (pure functions + DI + `node:test`), 47 domaines. Pattern à dupliquer pour les futurs domaines. Scripts ponctuels : `scripts/backend-oneoff/`.
 
 ### Tests
 - **`node:test` natif** (Node 20+). Pas de Jest, pas de Vitest.
-- Tests unitaires : `tests/unit/*.test.js` — script `npm run test:unit`.
+- Tests unitaires : `tests/unit/*.test.js` — script `npm run test:unit`. Les modules ES se chargent via `tests/unit/_esm.js` (`loadEsm`, `loadComponent`).
 - Tests d'intégration HTTP : `tests/test-workflows.js`, `tests/test-chef-bdc-bot.js`.
 - Smokes Playwright : `tests/smoke-test.js` (prod), `tests/smoke-sprint-1.js` (local public/ sans auth).
 - Tests fonctionnels de modules backend : `functions/lib/irrigation/__tests__/*.test.js` (Node natif).
-- **Pas de RTL** : impossibles sans bundler. Limitation documentée, à lever dans le Sprint 0 de refonte.
+- **Pas de RTL** : les tests de composants évaluent le module dans `node:vm` avec un `createElement` factice. Limitation documentée (TODO_REFACTO.md §3).
 
 ---
 
 ## Conventions de code
 
 ### JavaScript
-- CommonJS partout (`require` / `module.exports`). Pas d'ESM.
+- CommonJS côté backend (`require` / `module.exports`) ; modules ES dans `src/`.
 - Strings : `'simple quotes'`. Templates uniquement pour interpolation.
 - Pas de point-virgule final sur la ligne d'export (cf. style backend existant) — mais `'use strict'` en tête des fichiers `lib/`.
 - Pas d'optional chaining inutile (`a && a.b` reste OK).
 - Pour les nouveaux modules dans `lib/` : JSDoc strict + `// @ts-check`.
 
-### React (dans `app.jsx`)
+### React (dans `src/modules`)
 - Composants fonctionnels uniquement (pas de class).
 - Hooks via `React.useState` ou destructuration en tête de fichier (`const { useState, useEffect, useMemo } = React`).
 - Inline CSS via `style={{…}}`. Variables CSS via `var(--berry)` etc. (définies dans `index.html`).
@@ -206,7 +205,7 @@ Snake_case ASCII partout :
 - `saisie_by`, `soumis_par`, `valide_par`, `rejete_par` — **objets `{uid, profileId, name, email}`**, pas des string userId
 - `created_at`, `updated_at`, `soumis_at`, `valide_at` — `serverTimestamp()`
 - `history: Array<{action, by, at, …}>`
-- Statuts : `brouillon | soumis | a_revoir | valide | rejete` — libellés UI capitalisés (`Brouillon | Saisi | À revoir | Validé | Rejeté`) via `STATUS_LABELS` dans `app.jsx`
+- Statuts : `brouillon | soumis | a_revoir | valide | rejete` — libellés UI capitalisés (`Brouillon | Saisi | À revoir | Validé | Rejeté`) via `STATUS_LABELS` (`src/modules/shared/STATUS_LABELS.jsx`)
 
 ### Cloud Function caisse — actions
 Pattern d'action sur `/api/caisse?action=<name>` (POST/GET selon) :
@@ -250,7 +249,7 @@ Supprimer le worktree après merge.
      nom du ticket qui existe déjà signale du travail en cours ou terminé ailleurs. Si le lot
      existe : ne rien réécrire, reprendre la PR (rebase → QA → merge).
    - Lire ce fichier
-   - Lire docs/ai/code-map-actions.md (backend) ou docs/ai/code-map-components.md (frontend) avant toute recherche dans app.jsx ou functions/index.js
+   - Lire docs/ai/code-map-actions.md (backend) ou docs/ai/code-map-components.md (frontend) avant toute recherche dans src/modules ou functions/src
    - Lire le `Scope actif`
    - Vérifier la branche : pas de commit direct sur `main`, toujours feature branch
    - Annoncer un plan en début de session (mode "plan" si tâche non triviale)
@@ -266,12 +265,12 @@ Supprimer le worktree après merge.
    - **Rebase obligatoire avant merge** : avant tout merge, vérifier
      `git log HEAD..main --oneline`. Si main a avancé depuis la création de
      la branche, rebaser sur main et relancer npm run qa avant de merger.
-     public/app.jsx étant un monolithe, deux branches frontend touchent
-     presque toujours le même fichier — merger sans rebase écrase
-     silencieusement le travail de l'autre.
-   - **Gate unique : `npm run qa`** — enchaîne `test:unit` (frontend), `test:all` (tous les modules `functions/lib/*/__tests__`) et `build:frontend` (sentinelles). Doit être 100 % vert. L'étape build laisse un diff cache-bust `?v=…` sur `index.html` — normal.
+     Deux branches frontend qui touchent le même fichier (ex.
+     AuthenticatedApp.jsx) — merger sans rebase écrase silencieusement le
+     travail de l'autre.
+   - **Gate unique : `npm run qa`** — enchaîne `test:unit` (frontend), `test:all` (tous les modules `functions/lib/*/__tests__`) et `build` (Vite). Doit être 100 % vert.
    - `npm run typecheck` : informatif, NON bloquant (erreurs historiques dans les fichiers `@ts-check`, ≈271 au 2026-07-12) — la règle est de ne pas en introduire de NOUVELLES.
-   - **Definition of done** : si le ticket touche `functions/` ou `public/app.jsx`, lancer `npm run code-index` puis committer les `docs/ai/*` régénérés — sinon `npm run qa` échoue sur la gate d'obsolescence. Ces fichiers générés ne comptent pas dans la limite de fichiers du périmètre.
+   - **Definition of done** : si le ticket touche `functions/` ou `src/modules/`, lancer `npm run code-index` puis committer les `docs/ai/*` régénérés — sinon `npm run qa` échoue sur la gate d'obsolescence. Ces fichiers générés ne comptent pas dans la limite de fichiers du périmètre.
    - PR draft via `gh pr create --draft` avec body structuré (résumé, features, critères, limitations, commits)
 
 4. **Pilotage auto jusqu'au preview** :
@@ -301,9 +300,8 @@ Supprimer le worktree après merge.
 
 > Leçons durement apprises, consolidées depuis la mémoire projet. Détail complet dans `~/.claude/projects/…/memory/` (fichier indiqué entre parenthèses).
 
-- **Collisions UMD scope global** : les scripts classiques de `public/lib/` partagent le scope global du navigateur — un nom top-level dupliqué crashe le boot React (erreur #200). Toujours faire un smoke-load navigateur réel avant de déclarer un preview prêt. (`umd-global-collision-smoke-load`)
-- **Backend jamais `require('../public/…')`** : Firebase ne déploie QUE `functions/` → `Cannot find module` → TOUTES les CF crashent au load, et les tests locaux ne le voient pas. Utiliser une copie backend dans `functions/lib/`. (`backend-jamais-require-public`)
-- **Tab bare global ref** : `renderTab(tabId, <ComponentGlobal>, …)` avec une référence nue crashe GLOBALEMENT si `window.X` n'est pas posé. Fix = `window.X` + garde `!Component`. (`tab-bare-global-ref-crash`)
+- **Smoke-load navigateur avant tout preview** : un bundle qui échoue au boot ne se voit dans aucun test node — charger la page dans un vrai navigateur (`?testui=1` en local) avant de déclarer un preview prêt. (`umd-global-collision-smoke-load`)
+- **Backend jamais `require('../src/…')`** : Firebase ne déploie QUE `functions/` → `Cannot find module` → TOUTES les CF crashent au load, et les tests locaux ne le voient pas. Utiliser une copie backend dans `functions/lib/` (tests de parité). (`backend-jamais-require-public`)
 - **Specs/docs jamais untracked** : un fichier untracked est emporté quand une session parallèle change de branche dans le working dir partagé. Committer immédiatement. (`commit-specs-jamais-untracked`)
 - **WhatsApp proactif = template only** : toute notification proactive passe par `sendTemplateMessage` (ex. `general_alert`) — un message free-form est droppé silencieusement par Meta hors fenêtre de 24 h. (`whatsapp-proactif-doit-etre-template`)
 - **GO frais à chaque gate** : aucun write/deploy prod sans un GO explicite et récent à LA gate concernée — une autorisation large antérieure ne vaut pas GO permanent. (`gate-fresh-go-each-write`)
@@ -315,16 +313,16 @@ Supprimer le worktree après merge.
 - Politique de permissions : [docs/ai/PERMISSIONS.md](docs/ai/PERMISSIONS.md) — audit : `/permission-audit` ([scripts/permission-audit.js](scripts/permission-audit.js))
 - Routes API : [firebase.json](firebase.json) (`rewrites`)
 - Règles : [firestore.rules](firestore.rules)
-- Build front : [scripts/build-frontend.js](scripts/build-frontend.js)
+- Build front : [vite.config.js](vite.config.js) (`npm run build`)
 - Gate QA locale : [scripts/qa.sh](scripts/qa.sh) (`npm run qa`) — tests front + back + build
-- Typecheck opt-in : [jsconfig.json](jsconfig.json) (`npm run typecheck`, non bloquant) — seuls les fichiers `// @ts-check` sont vérifiés ; monolithes exclus
+- Typecheck : [jsconfig.json](jsconfig.json) (`npm run typecheck`) — seuls les fichiers `// @ts-check` sont vérifiés
 - Pre-commit (opt-in) : [scripts/git-hooks/pre-commit](scripts/git-hooks/pre-commit) — activation : `git config core.hooksPath scripts/git-hooks` (config locale, partagée par tous les worktrees ; à refaire après clone)
 - CI de test : [.github/workflows/test.yml](.github/workflows/test.yml) (push + PR)
 - `.claude/settings.json.bak` : backup historique de la config Claude — ne pas charger, ne pas supprimer sans accord Omar
 - Dette technique : [TODO_REFACTO.md](TODO_REFACTO.md)
 - Roadmap sprints : [ROADMAP.md](ROADMAP.md)
-- Composant caisse principal : `public/app.jsx` — chercher `function CaisseTransactionsSub` (≈ ligne 50 800).
-- Cloud Function caisse : `functions/index.js` — chercher `exports.caisseManagement` (≈ ligne 11 100).
+- Composant caisse principal : `src/modules/caisse/CaisseTransactionsSub.jsx`.
+- Cloud Function caisse : `functions/src/modules/caisse/caisse.js` (`exports.caisseManagement`).
 
 
 ## Contrat d'orchestration multi-couches
@@ -413,15 +411,13 @@ Chaque deploy suit cette séquence en 2 temps :
 6. NETTOYAGE POST-DEPLOY (immédiatement après, avant de passer à l'item
    suivant — ne pas laisser traîner) :
    → `git checkout main` + `git pull` : confirmer que main == remote.
-   → `git status` : le working tree doit être strictement propre. Si un
-     diff résiduel de cache-bust traîne sur `public/index.html`/`public/app.js`
-     (artefact non fonctionnel d'un `npm run qa`/build), le discard
-     (`git checkout -- <fichier>`) — ne jamais le committer.
+   → `git status` : le working tree doit être strictement propre (la sortie
+     du build, `public/app.modular.js` et `public/chunks/`, est gitignorée).
    → Supprimer la branche feature locale déjà mergée du chantier qui vient
      d'être déployé (`git branch -d <branche>`) ; la branche remote est déjà
      supprimée par `gh pr merge --delete-branch`.
    → Si `git status` révèle un fichier modifié qui n'a AUCUN rapport avec le
-     chantier en cours (ex. `public/app.jsx` avec un diff qui ne correspond à
+     chantier en cours (ex. `AuthenticatedApp.jsx` avec un diff qui ne correspond à
      rien de ce qu'on vient de faire) : ne JAMAIS le stash/discard
      silencieusement en supposant que c'est un résidu — c'est probablement le
      WIP d'une session parallèle sur le même dossier partagé. Le signaler à
@@ -519,64 +515,23 @@ n'est pas en place, le prompt firebase reste actif.
 Résumé : l'architecte est autonome pour corriger les bugs détectés
 automatiquement. Omar ne voit que le résultat final propre.
 
-## Modularisation progressive (règle permanente)
+## Modularité (règle permanente)
 
-Objectif : supprimer progressivement le risque lié au monolithe public/app.jsx,
-afin qu'un bug dans un module/tab ne bloque plus toute l'application.
+Objectif : qu'un bug dans un module/onglet ne bloque jamais toute l'application.
 
-### Règles permanentes
-
-1. Tout nouveau code doit aller dans un fichier séparé.
-   Ne plus ajouter de nouveau composant, popup, tab, helper ou logique métier
-   directement dans public/app.jsx.
-   Exemples : public/components/MagSortieTab.jsx, PaiePopup.jsx, PointageTab.jsx
-
-2. À chaque item du backlog, si un bloc existant de app.jsx est touché, il doit
-   être extrait dans son propre fichier en même temps.
-
-3. L'extraction doit d'abord être faite à comportement identique.
-   Ne pas mélanger refactor profond et changement fonctionnel.
-   Étapes : déplacer → vérifier l'import → vérifier l'UI identique → puis
-   seulement appliquer la modification demandée.
-
-4. Implémenter progressivement le code splitting (après migration Vite).
-   Chaque module/tab important sera chargé séparément avec React.lazy() + Suspense.
-
-5. Chaque module/tab lazy-loaded doit être protégé par un TabErrorBoundary.
-   Si un module crashe → message d'erreur localisé sur ce tab, sans bloquer
-   le reste de l'application.
-
-6. public/app.jsx doit devenir progressivement un routeur/layout contenant
-   uniquement : layout général, navigation, imports lazy, routes/tabs,
-   Error Boundaries, logique minimale de coordination globale.
-
-### Pattern cible (après migration Vite)
-
-const MagSortieTab = React.lazy(() => import('./components/MagSortieTab.jsx'));
-<TabErrorBoundary tabName="Sortie magasin">
-  <Suspense fallback={<div>Chargement du module...</div>}>
-    <MagSortieTab />
-  </Suspense>
-</TabErrorBoundary>
-
-### Interdiction
-
-Ne plus ajouter de gros blocs de code directement dans public/app.jsx.
-Toute exception doit être justifiée explicitement.
-
-### Note importante sur le code splitting
-
-Le build actuel (node scripts/build-frontend.js + Babel) produit un seul fichier
-app.js. L'extraction des composants en fichiers séparés est possible immédiatement,
-mais le vrai code splitting avec chunks séparés ne sera disponible qu'après migration
-vers Vite.
-
-- Phase 1 : extraction des composants en fichiers séparés (build Babel actuel).
-- Phase 2 : migration du build vers Vite.
-- Phase 3 : activation de React.lazy() + Suspense + TabErrorBoundary.
-
-Ne PAS implémenter React.lazy() tant que Vite n'est pas en place — le build
-actuel ne sait pas produire les chunks nécessaires.
+1. Tout nouveau code va dans son propre fichier, dans le module métier qui le
+   possède (`src/modules/<module>/`). Jamais de gros bloc ajouté à un fichier
+   existant.
+2. Une modification d'un bloc existant se fait d'abord à comportement
+   identique (déplacer → vérifier l'import → vérifier l'UI identique), puis
+   seulement la modification demandée. Ne pas mélanger refactor profond et
+   changement fonctionnel.
+3. Chaque onglet est chargé par `React.lazy()` + `Suspense` et protégé par un
+   `TabErrorBoundary` : un module qui crashe → message localisé sur cet onglet,
+   sans bloquer le reste.
+4. `shared/AuthenticatedApp.jsx` reste un routeur/layout : navigation, imports
+   lazy, `renderTab`, Error Boundaries, coordination minimale.
+5. Aucun fichier au-dessus de 2 000 lignes.
 
   ## Notifications WhatsApp
 

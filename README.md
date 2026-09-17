@@ -5,7 +5,7 @@ Application de gestion d'exploitation agricole pour **Berry Good Farms**
 ouvriers, paie à la quinzaine, récolte et primes, qualité et expéditions,
 achats et magasin, trésorerie, agronomie et irrigation.
 
-**132 écrans, 20 profils utilisateurs, 105 Cloud Functions, 63 collections
+**126 écrans, 20 profils utilisateurs, 105 Cloud Functions, 63 collections
 Firestore.**
 
 ---
@@ -26,7 +26,7 @@ Firestore.**
 12. [Déploiement](#12-déploiement)
 13. [Notifications WhatsApp](#13-notifications-whatsapp)
 14. [Conventions de code](#14-conventions-de-code)
-15. [État de la migration](#15-état-de-la-migration)
+15. [Historique de la migration](#15-historique-de-la-migration)
 16. [Pièges connus](#16-pièges-connus)
 17. [Où trouver quoi](#17-où-trouver-quoi)
 
@@ -34,21 +34,17 @@ Firestore.**
 
 ## 1. Ce qu'il faut comprendre en premier
 
-**Ce dépôt contient deux frontends qui affichent exactement la même interface.**
-Ce n'est ni une erreur ni un doublon : c'est le mécanisme de bascule d'une
-migration en cours, du monolithe vers une architecture modulaire.
+**Le frontend est une application React modulaire** : 446 modules ES dans
+`src/modules/` (12 modules métier + `shared`), construits par Vite en un bundle
+d'entrée + un chunk par onglet, publiés par Firebase Hosting depuis `public/`.
+Le backend est un ensemble de 105 Cloud Functions (`functions/`) dont
+`index.js` n'est qu'un barrel : la logique vit dans `functions/src/modules/`
+(handlers et services par domaine) et `functions/lib/` (47 domaines purs,
+testés sans émulateur).
 
-| | Fichier servi | Nature | Statut |
-|---|---|---|---|
-| **Modulaire** | `public/app.modular.js` + `public/chunks/*` | 357 modules ES construits par Vite depuis `src/modules/` | **défaut** |
-| **Monolithe** | `public/app.js` | build Babel de `public/app.jsx` (69 800 lignes) | filet de repli |
-
-`public/index.html` choisit lequel charger **au démarrage**, avant tout rendu.
-Si quelque chose se passe mal en production, `?modular=0` ramène instantanément
-au monolithe.
-
-Les deux sont vérifiés équivalents écran par écran par `npm run migrate:parity`
-(20 profils × 350 rendus, dans un vrai navigateur).
+La sortie du build (`public/app.modular.js`, `public/chunks/`) n'est **pas**
+commitée : `npm run build` la produit, et les scripts de deploy la
+reconstruisent depuis un checkout propre de `main`.
 
 > Si vous ne lisez qu'une section de ce README, lisez celle-ci et
 > [§6 Architecture frontend](#6-architecture-frontend).
@@ -62,7 +58,7 @@ Les deux sont vérifiés équivalents écran par écran par `npm run migrate:par
 - **Node 20** (`functions/package.json` → `engines`). Node 22+ marche pour le
   développement, mais les Cloud Functions tournent sur Node 20 en production —
   les tests doivent passer sur cette version.
-- Un navigateur Chromium pour les smokes et la comparaison de parité.
+- Un navigateur Chromium pour les smokes Playwright.
 
 ### Installation
 
@@ -74,7 +70,7 @@ npm ci --prefix functions
 ### Construire
 
 ```bash
-npm run build      # les deux frontends : Babel + Vite + publication des chunks
+npm run build      # Vite → public/app.modular.js + public/chunks/
 ```
 
 ### Lancer en local, sans backend ni compte
@@ -84,9 +80,9 @@ npx http-server public -p 8088
 # → http://localhost:8088/?testui=1
 ```
 
-`?testui=1` active `public/lib/local-test-bypass.js` : authentification simulée
+`?testui=1` active `src/modules/shared/lib/localTestBypass.js` : authentification simulée
 et routes `/api/*` interceptées par des réponses factices. **Le garde-fou est en
-première instruction du fichier** — actif uniquement sur `localhost`,
+première instruction du module** — actif uniquement sur `localhost`,
 `127.0.0.1` et `0.0.0.0`. Aucun effet en production, aucune écriture dans la
 base réelle.
 
@@ -220,69 +216,36 @@ détermine quels `renderTab(...)` sont évalués dans
 
 ## 6. Architecture frontend
 
-### Trois emplacements de code — et pourquoi
+### Un fichier par déclaration
 
-C'est le point le plus contre-intuitif du dépôt.
+`src/modules/` est l'application : 446 fichiers, 106 900 lignes, aucun
+au-dessus de 2 000 lignes.
 
-| Emplacement | Fichiers | Lignes | Forme | Chargement |
-|---|---|---|---|---|
-| `src/modules/` | 357 | 73 139 | modules ES (`import`/`export`) | bundle Vite + chunks |
-| `public/components/` | 33 | 21 109 | scripts classiques, `window.X` | 19 au boot, 14 à la demande |
-| `public/lib/` | 47 | 14 240 | UMD (`window.X` + `module.exports`) | au boot |
-| `public/app.jsx` | 1 | 69 800 | monolithe | seulement en mode repli |
+| Module | Fichiers | Module | Fichiers |
+|---|---|---|---|
+| shared | 123 (dont 46 helpers purs dans `shared/lib/`) | rh | 37 |
+| agronomie | 54 | qualite | 27 |
+| finance | 46 | magasin | 25 |
+| caisse | 45 | technique | 25 |
+| admin | 22 | achats | 18 |
+| recolte | 15 | securite | 6 |
 
-`src/modules/` **est** l'application. `public/lib` et `public/components` sont
-un héritage : des scripts classiques qui partagent le scope global du
-navigateur. 80 fichiers de `src/modules` les lisent encore via
-`window.PaieUtils`, `window.CaisseUtils`, `window.SB`… Les convertir en modules
-ES est le dernier gros chantier (voir §15).
+Chaque composant, hook, helper ou constante vit dans son propre fichier avec
+des `import` explicites ; chaque module a un barrel `index.js`.
+`src/modules/bootstrap.jsx` est le point d'entrée : les effets de bord du
+démarrage, dans l'ordre, jusqu'au `ReactDOM.render(<App/>)`.
 
-`public/lib` est doublement publié (`window.X` **et** `module.exports`) : c'est
-ce qui permet aux tests `node:test` de les charger sans navigateur.
-
-### Le sélecteur d'entrée
-
-`public/index.html` contient, en bas de page, un script qui **écrit** la balise
-d'entrée selon le drapeau `MODULAR_FRONTEND` (`public/lib/featureFlags.js`).
-Ordre de décision :
-
-1. `?modular=1` / `?modular=0` dans l'URL — l'échappatoire manuelle, gagne toujours ;
-2. un boot modulaire précédent qui n'a jamais abouti → repli automatique ;
-3. la dernière valeur lue depuis Firestore `app_settings/feature_flags` ;
-4. défaut : **le modulaire**.
-
-**`document.write` est ici le bon outil, et le seul.** Une balise insérée
-dynamiquement (`createElement` + `append`) s'exécute **hors** de la file `defer`
-et peut donc partir avant les 66 scripts `lib/` et `components/` dont l'entrée
-dépend entièrement. Écrite pendant l'analyse du document, elle garde sa place
-dans l'ordre.
-
-### Le garde-fou de boot
-
-Un drapeau distant ne protège de rien si le bundle plante **avant** d'avoir pu
-le relire : l'utilisateur boucle alors sur une application morte, hors
-d'atteinte de toute bascule serveur.
-
-Le boot est donc marqué « en cours » dans `localStorage`
-(`sb_modular_boot_pending`) **avant** d'être tenté, et effacé seulement quand
-l'interface s'est rendue — détecté par la disparition de `#splash-screen`. Un
-marqueur encore présent au chargement suivant vaut constat d'échec → repli sur
-le monolithe, sans réseau et sans intervention.
-
-Ce repli **persiste** (`sb_flag_modular_frontend = '0'`) : sans cela le défaut
-modulaire reprendrait la main au rechargement et l'utilisateur alternerait
-indéfiniment entre une application morte et le monolithe.
+Les helpers purs de `src/modules/shared/lib/` (paie, caisse, campagne, stock,
+scans…) sont des modules ES à exports nommés, consommés en
+`import * as PaieUtils from '../shared/lib/paieUtils.js'`. Trois d'entre eux
+(`paieUtils`, `coutMainOeuvre`, `lecturePaieExcel`) ont une copie CommonJS
+dans `functions/lib/` — Firebase ne déploie que `functions/` — et des tests de
+parité comparent le code de chaque fonction exportée.
 
 ### Chargement différé des onglets
 
-Les 132 onglets (121 dans `src/modules`, 11 dans `public/components`) sont
-chargés au premier affichage, pas au démarrage :
-
-- **onglets modulaires** → `React.lazy` + `Suspense`, un chunk Vite chacun ;
-- **onglets legacy** → `lazyGlobalComponent`
-  (`src/modules/shared/lazyGlobalComponent.jsx`) injecte la balise `<script>` au
-  premier rendu, dépendances d'abord et **en série** (certains se lisent entre
-  eux à l'exécution).
+Les 126 onglets sont chargés au premier affichage, pas au démarrage :
+`React.lazy(() => import('../<module>/<Tab>.jsx'))`, un chunk Vite chacun.
 
 Dans `renderTab` (`src/modules/shared/AuthenticatedApp.jsx`), la frontière
 d'erreur **enveloppe** le `Suspense`, pas l'inverse : un chunk qui échoue à se
@@ -292,20 +255,26 @@ indéfiniment.
 
 ### Poids
 
-| | Avant découpage | Aujourd'hui |
-|---|---|---|
-| Entrée | 2 880 Ko | **270 Ko** |
-| Charge initiale totale | 4 718 Ko | **1 273 Ko** |
-| Chargé à la demande | 0 | 2 692 Ko en 133 chunks |
-
-Les 1 004 Ko restants au démarrage sont la couche legacy (`public/lib` +
-`public/components` chargés d'emblée).
+| | |
+|---|---|
+| Entrée (`app.modular.js`) | **≈ 240 Ko** |
+| Chargé à la demande | 166 chunks |
 
 ### Pas de bundler pour React
 
-React, ReactDOM, Firebase (compat), XLSX, jsPDF, Leaflet et pdf.js sont chargés
-**par CDN** dans `index.html`. Le bundle Vite ne contient que le code
-applicatif. C'est pourquoi `React` est une globale et non un import.
+React, ReactDOM, Firebase (compat), XLSX, jsPDF, pdf-lib, pdf.js, Leaflet et
+driver.js sont chargés **par CDN** dans `index.html`. Le bundle Vite ne
+contient que le code applicatif. C'est pourquoi `React` et `XLSX` sont des
+globales et non des imports (déclarées dans `types/globals.d.ts`).
+
+### Build
+
+`npm run build` = `vite build` ([vite.config.js](vite.config.js)) : entrée
+`src/modules/bootstrap.jsx`, sortie **directement dans `public/`**
+(`app.modular.js` + `chunks/`, noms stables — `firebase.json` sert le JS en
+`no-cache`). `public/chunks/` est vidé avant chaque build. La sortie est
+gitignorée : `scripts/deploy.sh hosting`, `scripts/preview.sh` (via
+`npm run qa`) et le CI la reconstruisent avant tout deploy ou smoke.
 
 ---
 
@@ -320,14 +289,18 @@ leurs exports — aucune logique métier :
 functions/
 ├── index.js              34 lignes, 105 exports
 ├── src/modules/          9 modules métier (admin, agronomie, caisse, finance,
-│                         magasin, recolte, rh, securite, technique)
-├── src/shared/           socle commun backend
+│                         magasin, recolte, rh, securite, technique) : handlers
+│                         des routes + services du domaine (pointageService,
+│                         emailService, whatsappService, dgBot, bdc*Service…)
+├── src/shared/           socle commun backend (core, firestoreDataService)
 ├── lib/                  44 domaines purs et testables
 ├── middleware/           cors, cache, requireAuth
 └── config/               firebase, sqlConfig
 ```
 
-**310 fichiers, 84 284 lignes, aucun au-dessus de 2 000 lignes.**
+**Aucun fichier au-dessus de 2 000 lignes ; `functions/` ne contient à sa
+racine que `index.js`.** Les scripts d'exploitation ponctuels vivent dans
+`scripts/backend-oneoff/`.
 
 > ⚠️ **Une Cloud Function est adressée PAR SON NOM D'EXPORT.** Le renommer
 > supprime l'ancienne fonction et en crée une neuve : URL HTTP changée,
@@ -485,27 +458,20 @@ connu.
 
 | Commande | Effet |
 |---|---|
-| `npm run build` | les deux frontends (Babel + Vite + publication des chunks) |
-| `npm run build:frontend` | `public/app.jsx` → `public/app.js`, sentinelles, cache-bust |
-| `npm run migrate:build` | `src/modules/` → `dist-migrated/` (Vite) |
-| `npm run migrate:publish` | copie le bundle et les 133 chunks dans `public/` |
-| `npm run build:vercel` | assemble `dist-vercel/` (site statique déployable) |
-
-> Le build réécrit le cache-bust `?v=…` de `public/index.html`. **Un diff
-> `?v=…` seul après un build est un artefact — ne pas le committer.**
+| `npm run build` | `vite build` → `public/app.modular.js` + `public/chunks/` (gitignorés) |
+| `npm run build:vercel` | build puis assemblage de `dist-vercel/` (site statique déployable) |
+| `npm run build:vercel:demo` | idem, sans authentification (define `__SB_DEMO_NO_AUTH__`) |
 
 ### Vérifier
 
 | Commande | Effet |
 |---|---|
 | **`npm run qa`** | **la gate — à lancer avant tout commit** |
-| `npm run test:unit` | 187 fichiers de test frontend |
+| `npm run test:unit` | 189 fichiers de test frontend |
 | `npm run test:all --prefix functions` | 109 fichiers de test backend |
 | `npm run lint` | analyse syntaxique de tous les fichiers suivis |
 | `npm run typecheck` | `tsc` sur les fichiers annotés `// @ts-check` |
-| `npm run migrate:verify` | toute référence libre de `src/modules` se résout |
-| `npm run smoke:boot` | sélecteur d'entrée, dans un vrai navigateur |
-| `npm run migrate:parity` | **compare les deux frontends écran par écran** |
+| `npm run verify:refs` | toute référence libre de `src/modules` se résout |
 | `npm run code-index` | régénère `docs/ai/*` |
 
 ### Déployer
@@ -526,39 +492,29 @@ Huit étapes, échec à la première anomalie :
 
 1. tests unitaires frontend (`tests/unit`)
 2. tests backend (`functions/{lib,middleware}/*/__tests__`)
-3. build frontend (Babel + sentinelles)
+3. build frontend (Vite)
 4-8. fraîcheur des cinq artefacts générés (`docs/ai/module-graph.json`,
    `code-map-actions`, `code-map-components`, `code-map-modules`,
    `require-index`)
 
-> **Definition of done :** si un ticket touche `functions/` ou `public/app.jsx`,
+> **Definition of done :** si un ticket touche `functions/` ou `src/modules/`,
 > lancer `npm run code-index` et committer les `docs/ai/*` régénérés — sinon la
 > gate échoue sur l'obsolescence des empreintes.
-
-### La preuve de non-régression : `npm run migrate:parity`
-
-Pilote les **deux** frontends dans Chromium, parcourt 20 profils × 350 rendus
-d'onglet de chaque côté, compare population d'onglets, plantages et volume de
-rendu. Durée ~35 min.
-
-C'est ce qui a remplacé la comparaison octet-pour-octet avec le monolithe, trop
-rigide pour laisser le tree modulaire évoluer. **À lancer après tout changement
-structurel.** Les écrans où le monolithe plante et le modulaire rend sont
-listés à part comme améliorations, pas comme écarts.
 
 ### Outillage
 
 - **`node:test` natif** — pas de Jest, pas de Vitest, pas de React Testing
-  Library. Les tests « composant » extraient la source et l'évaluent dans
-  `node:vm` avec un `createElement` factice : ils inspectent l'arbre rendu sans
-  DOM. C'est une limitation documentée, pas un oubli.
+  Library. Les modules ES sont chargés depuis CommonJS par
+  `tests/unit/_esm.js` (`loadEsm`) ; les tests « composant » les évaluent
+  dans `node:vm` avec un `createElement` factice (`loadComponent`) et
+  inspectent l'arbre rendu sans DOM. C'est une limitation documentée, pas un
+  oubli.
 - **Playwright** pour les smokes navigateur (`tests/smoke-*.js`) et
   `tests/e2e-visual.js`, qui se connecte avec un vrai compte
   (`QA_TEST_EMAIL` / `QA_TEST_PASSWORD`) et parcourt douze écrans réels sur
   Chromium et WebKit. **Non câblé en CI faute de compte de test.**
 - **CI** (`.github/workflows/test.yml`) sur chaque push et PR : lint →
-  typecheck → tests front → tests back → build → build modulaire →
-  `migrate:verify`, plus un job navigateur pour le sélecteur d'entrée.
+  typecheck → tests front → tests back → build → `verify:refs`.
 
 ---
 
@@ -641,12 +597,12 @@ rejeté, `132012`/`132018` paramètres non conformes, `131008` paramètre invali
 
 ## 14. Conventions de code
 
-- **CommonJS** côté backend et `public/lib`. **Modules ES** dans `src/modules`.
+- **CommonJS** côté backend (`functions/`). **Modules ES** dans `src/` (`src/package.json` : `"type": "module"`).
 - Composants React **fonctionnels** uniquement. CSS inline via `style={{…}}`,
   variables CSS `var(--berry)` définies dans `index.html`. **Pas de Tailwind**,
   pas de librairie de composants.
 - Tests en **`node:test`** natif.
-- `public/lib/*.js` : JSDoc strict avec `// @ts-check`.
+- `src/modules/shared/lib/*.js` et `functions/lib/**` : JSDoc strict avec `// @ts-check`.
 - Champs Firestore en `snake_case` ASCII. **Ne jamais renommer un champ
   existant** (`caisse_id`, `status`…) : toute la stack les consomme.
 - Statuts caisse : `brouillon | soumis | a_revoir | valide | rejete`. Les
@@ -655,46 +611,43 @@ rejeté, `132012`/`132018` paramètres non conformes, `131008` paramètre invali
 - Dates : toujours passer par `functions/lib/dates/isoDateInTz.js`. **Jamais**
   un motif de locale (voir §16).
 
-### Scripts classiques et scope global
+### Globales
 
-Les fichiers de `public/lib` et `public/components` s'exécutent dans le scope
-global du navigateur. **Tout est enveloppé dans une IIFE, aucun identifiant
-top-level ne fuit** : un nom dupliqué entre deux fichiers casse le boot React
-(erreur #200, incidents #75/#77). Un seul global exposé par fichier.
+Seules les bibliothèques CDN (`React`, `XLSX`, `firebase`…) sont des globales.
+Tout ce qui vient du dépôt s'importe : **aucun `window.X` applicatif**, ni en
+écriture ni en lecture (les handles du shell — `window.fetch` enveloppé,
+`window.firebaseAuth`, `window.showToast` — sont l'exception assumée).
 
 ---
 
-## 15. État de la migration
+## 15. Historique de la migration
+
+Le frontend et le backend étaient deux monolithes d'environ 70 000 et 12 000
+lignes. La migration s'est faite en trois temps, chacun vérifié à
+comportement identique : extraction mécanique du frontend vers `src/modules/`
+(353/355 instructions octet-pour-octet, détail dans
+[MIGRATION_REPORT.md](MIGRATION_REPORT.md)), découpage du backend en
+`functions/src/modules/` + `functions/lib/` derrière un barrel, puis
+suppression du legacy en septembre 2026 (monolithe, ancien build, couche de
+scripts globaux convertie en modules ES importés, services backend rangés par
+domaine — parcours navigateur de 20 profils × 350 rendus identique
+avant/après). L'état antérieur est conservé sur le tag `legacy-final` et la
+branche `legacy`.
 
 | Objectif du plan client v1.1 | Cible | État |
 |---|---|---|
 | Nombre de modules | 11+ | ✅ 12 |
 | Non-régression des écrans | 100 % | ✅ 0 écart |
-| Dual mode, repli < 1 min | oui | ✅ |
-| Code splitting | par module | ✅ 133 chunks |
-| Lignes max par fichier | < 2 000 | ✅ (`src/modules` et `functions/`) |
+| Code splitting | par module | ✅ 166 chunks |
+| Lignes max par fichier | < 2 000 | ✅ (`src/` et `functions/`) |
+| Ancien code supprimé | oui | ✅ |
 | CI lint → typage → tests → build | complète | ✅ |
 | TypeScript | JSDoc → `.tsx` → strict | ⚠️ étape 1/3 (`typecheck` à 0 erreur) |
 | Tests E2E, parcours métier | 5–10 | ⚠️ écrits, non câblés en CI |
-| Taille du fichier principal | < 200 Ko | ❌ 270 Ko |
-| Chargement initial | < 500 Ko | ❌ 1 273 Ko |
-| Structure `pages/`/`components/`/`hooks/` | par taille | ❌ 0 / 12 |
+| Taille du fichier principal | < 200 Ko | ❌ ≈ 240 Ko |
 | Couverture de composants | > 60 % | ❌ ni Vitest ni RTL |
 | Lighthouse | > 90 | ❌ non mesuré |
 | Monitoring Sentry | actif | ❌ absent |
-| Ancien code supprimé | oui | ❌ volontaire (filet de repli) |
-
-**Le chantier suivant, et le plus lourd :** convertir `public/lib` (47 fichiers)
-et `public/components` (33 fichiers) en modules ES, et recâbler les 80 fichiers
-de `src/modules` qui les lisent via `window.*`. C'est le préalable aux deux
-cibles de poids restantes. L'interopérabilité CommonJS de Vite a été vérifiée
-sur ces fichiers — elle fonctionne — mais seules 18 bibliothèques peuvent partir
-avant que les composants ne soient convertis, les 24 autres étant lues par ces
-mêmes composants.
-
-**`public/app.jsx` ne sera supprimé qu'en dernier**, après validation en
-production : il est à la fois le filet de repli du sélecteur et la référence de
-`migrate:parity`.
 
 ---
 
@@ -702,18 +655,15 @@ production : il est à la fois le filet de repli du sélecteur et la référence
 
 Leçons durement apprises. Les ignorer coûte cher.
 
-**Collisions UMD dans le scope global.** Un nom top-level dupliqué entre deux
-scripts de `public/lib` crashe le boot React (erreur #200). Toujours faire un
-smoke-load navigateur réel avant de déclarer une préversion prête.
+**Smoke-load navigateur avant toute préversion.** Un bundle qui échoue au
+boot ne se voit dans aucun test node ; charger la page dans un vrai navigateur
+(`?testui=1` en local) avant de déclarer une préversion prête.
 
-**Le backend ne peut pas `require('../public/…')`.** Firebase ne déploie que
+**Le backend ne peut pas `require('../src/…')`.** Firebase ne déploie que
 `functions/` : un tel require donne `Cannot find module` et **toutes** les
 Cloud Functions crashent au chargement. Les tests locaux ne le voient pas.
-Dupliquer le helper dans `functions/lib/`.
-
-**Référence globale nue dans un onglet.** `renderTab(tabId, ComposantGlobal, …)`
-avec une référence nue crashe **globalement** si `window.X` n'est pas encore
-posé. Utiliser `window.X` avec une garde `!Component`.
+Dupliquer le helper dans `functions/lib/` (les tests de parité surveillent les
+copies existantes).
 
 **Dates et locales.** `new Intl.DateTimeFormat('en-CA', …).format(d)` ne rend
 **pas** `YYYY-MM-DD` de façon fiable : le motif de date courte vient du CLDR et
@@ -723,7 +673,7 @@ assembler les champs via `formatToParts` — c'est ce que fait
 
 **Le référentiel Smart BERRY est chargé après connexion.**
 `sb-referentiel-list` exige un jeton. Chargé trop tôt (avant session), il
-renvoie 401 et `window.SB_PARCELLE_REF` reste vide : les parcelles s'affichent
+renvoie 401 et `sbParcelle.REF` (`shared/sbParcelleState.js`) reste vide : les parcelles s'affichent
 alors sous leur libellé BEE ONE brut, et une parcelle dont `culture_sb` diverge
 devient invisible sous un filtre Culture. `sbLoad()` est rejoué dans
 `onAuthStateChanged`.
@@ -736,8 +686,8 @@ l'onglet entier disparaît derrière « Erreur d'affichage ».
 **WhatsApp proactif = template uniquement.** Un message free-form est droppé
 silencieusement par Meta hors de la fenêtre de 24 h.
 
-**Ne jamais committer un diff de cache-bust seul.** `npm run qa` régénère
-`public/app.js` et le `?v=…` de `index.html` — c'est un artefact de build.
+**Ne jamais committer la sortie du build.** `public/app.modular.js` et
+`public/chunks/` sont gitignorés : ils se reconstruisent au deploy.
 
 ---
 
@@ -747,13 +697,12 @@ silencieusement par Meta hors de la fenêtre de 24 h.
 |---|---|
 | Guide agent, conventions détaillées, règles de gouvernance | [`CLAUDE.md`](CLAUDE.md) |
 | Rapport de migration (livrable client) | [`MIGRATION_REPORT.md`](MIGRATION_REPORT.md) |
-| Architecture cible | [`ARCHITECTURE_v2.md`](ARCHITECTURE_v2.md), [`ARCHITECTURE_BACKEND.md`](ARCHITECTURE_BACKEND.md) |
+| Architecture | [`ARCHITECTURE.md`](ARCHITECTURE.md), [`ARCHITECTURE_BACKEND.md`](ARCHITECTURE_BACKEND.md) |
 | Runbook déploiement WIF | [`docs/deploy-wif-prod.md`](docs/deploy-wif-prod.md) |
 | Backlog et décisions en attente | [`docs/backlog.md`](docs/backlog.md) |
 | Spécifications fonctionnelles | `docs/spec-*.md` (24 documents) |
 | Index de code généré | `docs/ai/code-map-actions.md` (backend), `docs/ai/code-map-components.md` (frontend), `docs/ai/module-graph.json` |
 | Règles de sécurité | `firestore.rules`, `storage.rules` |
-| Rapports de parité upstream | `sync-report/` |
 | Tables métier de référence | `kpi-tables.md`, `phenology-tables.md`, `phyto-taxonomy.md` |
 
 > **Avant de chercher dans le code**, lire `docs/ai/code-map-actions.md`

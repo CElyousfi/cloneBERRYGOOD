@@ -1,5 +1,10 @@
 # SYNC_NOTES — synchro upstream du 2026-09-03
 
+> Note historique. L'outillage de synchro amont qu'il décrit (`route_hunks.py`,
+> `parity_check.py`, `module_map.json`, `sync-report/`) a été retiré avec le
+> monolithe le 2026-09-17 ; le portage d'un delta amont se fait désormais
+> directement dans `src/modules/` et `functions/src/`.
+
 Delta porté : `5cd084e..5f9a586` (5 commits, 24 fichiers, +3 260/−543).
 Branche : `sync/upstream-2026-09-03`. Base précédente : `3a6576d..5cd084e` (2026-09-02).
 

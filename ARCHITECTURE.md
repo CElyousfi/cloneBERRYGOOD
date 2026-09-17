@@ -1,95 +1,160 @@
-# Berry Good Farms Dashboard - Architecture Technique
+# Smart BERRY — Architecture
 
-## Structure du Projet
+Application de gestion agricole de Berry Good Farms (RH / pointage, récolte,
+qualité, magasin, achats, caisse, finance, agronomie, sécurité, direction).
+Frontend React modulaire servi par Firebase Hosting, backend en Cloud
+Functions (Node 20, CommonJS), données dans Firestore + miroir SQL Server
+(BEE ONE). Voir [README.md](README.md) pour le fonctionnel, [CLAUDE.md](CLAUDE.md)
+pour les règles de travail.
+
+## Structure du dépôt
 
 ```
-berrygood-dashboard/
-├── public/
-│   └── index.html          # Application React SPA complète
-├── firebase.json            # Configuration Firebase Hosting
-├── .firebaserc              # Projet Firebase par défaut
-├── deploy.sh                # Script de déploiement
-└── ARCHITECTURE.md          # Ce fichier
+src/modules/                 frontend — 12 modules ES (Vite), 446 fichiers
+├── bootstrap.jsx            point d'entrée : effets de bord d'origine, dans l'ordre,
+│                            jusqu'à ReactDOM.render(<App/>)
+├── index.js                 barrel racine (re-exporte les 12 barrels de module)
+├── shared/                  socle : App, AuthenticatedApp (shell + renderTab),
+│   │                        ErrorBoundary, PROFILES, hooks, état partagé…
+│   └── lib/                 46 helpers PURS (paie, caisse, campagne, stock, scans…)
+├── achats/ admin/ agronomie/ caisse/ finance/ magasin/
+├── qualite/ recolte/ rh/ securite/ technique/
+└── package.json             { "type": "module" } — src/ est ESM
+public/                      ce que Firebase Hosting publie
+├── index.html               charge les bibliothèques CDN puis <script type="module" src="/app.modular.js">
+├── app.modular.js, chunks/  SORTIE DU BUILD (gitignorée, produite par `npm run build`)
+├── sw.js, manifest.json, 404.html, app-version.txt, assets/
+└── *.json                   données statiques (budget_bgf, catalogue_articles, …)
+functions/                   backend Cloud Functions
+├── index.js                 BARREL : union des exports des modules — 105 noms figés
+├── src/modules/<domaine>/   9 modules métier (admin, agronomie, caisse, finance,
+│                            magasin, recolte, rh, securite, technique) : handlers
+│                            HTTP / crons / triggers + services du domaine
+├── src/shared/              socle backend (core.js, firestoreDataService.js)
+├── lib/<domaine>/           47 domaines PURS, injectés (DI), testés avec node:test
+├── middleware/              cors, cache, requireAuth
+└── config/                  firebase, sqlConfig
+tests/unit/                  189 fichiers node:test (frontend + contrats de source)
+tests/helpers/, tests/*.js   helpers, smokes Playwright, tests d'intégration HTTP
+scripts/                     outillage (build/deploy/QA, code-index, imports) ;
+                             scripts/backend-oneoff/ = scripts ponctuels ex-functions/
+docs/                        specs, runbooks ; docs/ai/* = index générés (npm run code-index)
+types/globals.d.ts           globales CDN pour `npm run typecheck`
 ```
 
-## Profils Utilisateurs
+## Frontend
 
-| Profil | Utilisateur | Accès |
-|--------|-------------|-------|
-| Resp. RH | Responsable RH | Toutes les fermes (F1, F5, Avocatier) |
-| Chef de Ferme F1 | Hamid AGOURAM | Ferme F1 uniquement |
-| Chef de Ferme F1 | Tarik MAAOUNI | Ferme F1 uniquement |
-| Chef de Ferme F5 | Bouchra HABCHANE | Ferme F5 uniquement |
-| Chef Avocatier | Azzeddine | Avocatier uniquement |
-| Resp. Achats | Achraf EL INAK | À définir |
-| Resp. Qualité | FatimZahra | À définir |
-| Finance | Resp. Finance | À définir |
-| DG | Direction Générale | À définir |
+### Modules ES, un fichier par déclaration
 
-## Onglets Profil RH & Chef de Ferme
+Chaque composant, hook, helper ou constante vit dans son propre fichier
+(`src/modules/<module>/<Nom>.jsx`), avec des `import` explicites. Aucun
+fichier ne dépasse 2 000 lignes. Les 12 barrels `index.js` re-exportent leur
+module ; `src/modules/index.js` les agrège.
 
-1. **Dashboard** - KPIs effectifs par ferme avec split Récolte/Hors Récolte/Postes Fixes, Top 5 opérations, tendance semaine
-2. **Pointage du jour** - Effectifs du jour vs veille avec %, cumul quinzaine
-3. **Récolte** - Rendement par ouvrier (kg + prime), filtres ferme/parcelle/équipe, heures de relevé (10h-18h)
-4. **Hors Récolte** - Détail opérations, avancement, statuts, performance journalière
-5. **Quinzaine** - Estimation quinzaine (journées, coûts, répartition par ferme)
+Les helpers purs de `src/modules/shared/lib/` sont des modules ES à exports
+nommés (`export { a, b }`), consommés en `import * as PaieUtils from
+'../shared/lib/paieUtils.js'` puis `PaieUtils.computeWorkerPaie(...)`. Trois
+d'entre eux (paieUtils, coutMainOeuvre, lecturePaieExcel) ont une **copie
+CommonJS** dans `functions/lib/` — Firebase ne déploie que `functions/`, un
+`require('../src/…')` y ferait crasher toutes les Cloud Functions au
+chargement. Des tests de parité (`functions/lib/paie/__tests__/*.parite.test.js`)
+comparent le code de chaque fonction exportée.
 
-## Connexions Backend (À configurer)
+### Ce qui reste global
 
-### 1. SQL Server - BEE ONE
-- **Type** : SQL Server (base de données de reporting)
-- **Rafraîchissement** : Toutes les 2 heures
-- **Données** : À partir du 1er Juillet 2025
-- **Configuration requise** :
-  - Adresse IP du serveur
-  - Nom du serveur/instance
-  - Identifiants de connexion
-  - Noms des tables/vues de reporting
-- **Implémentation** : Cloud Function Firebase ou backend Node.js avec `mssql` package
+React, ReactDOM, Firebase (compat), XLSX, jsPDF, pdf-lib, pdf.js, Leaflet et
+driver.js sont chargés par CDN dans `public/index.html` et lus comme globales
+(`React`, `XLSX`, `typeof PDFLib !== 'undefined'`…). Le bundle ne contient que
+le code applicatif. `types/globals.d.ts` les déclare pour le typecheck.
 
-### 2. Make.com
-- **Scénarios actifs à connecter** :
-  - Pointage du jour avec affectations
-  - Recap Tâches 10h00
-  - Rendement Ouvriers (LIVE) - 10h, 12h, 14h, 16h, 18h
-  - Estimation Quinzaine (email HTML)
-  - Vitesse de Récolte (Récolteuse Quinzaine)
-- **Configuration** : Webhooks Make.com → Firebase Firestore
+Quelques handles d'exécution de l'application restent sur `window`
+(`window.fetch` enveloppé pour injecter le token, `window.firebaseAuth`,
+`window.showToast`, `window._refreshNotifications`, `window.__APP_VERSION`) :
+ce sont des points de coordination du shell, pas une couche de scripts.
 
-### 3. Hiérarchie Fermes/Parcelles
-- Sera configurée après consultation des données BEE ONE
-- Certains noms de parcelles seront modifiés
-- Agrégation par ferme
+### Rendu des onglets
 
-## NDD Suggérés
-- `berrygood-dashboard.web.app` (Firebase gratuit)
-- `dashboard.berrygood.ma` (domaine personnalisé)
-- `app.berrygood.ma` (domaine personnalisé)
+`AuthenticatedApp.jsx` (shared) porte la navigation : 20 profils, 126 onglets.
+Chaque onglet est un `React.lazy(() => import('../<module>/<Tab>.jsx'))` rendu
+par `renderTab(id, Component, props, label)` sous un `TabErrorBoundary` qui
+enveloppe le `Suspense` : un chunk qui échoue ou un onglet qui plante reste
+localisé à cet onglet.
 
-## Charte Graphique
-- **Couleur primaire** : #8B2252 (Berry/Bordeaux)
-- **Secondaire** : #2D8B4E (Vert agriculture)
-- **Accent** : #D4A847 (Or)
-- **Background** : #FFFDF8 (Crème chaud)
-- **Police** : Inter
+### Build
+
+`npm run build` = `vite build` (config : [vite.config.js](vite.config.js)).
+Entrée `src/modules/bootstrap.jsx`, sortie **directement dans `public/`** :
+`app.modular.js` (≈240 Ko) + `chunks/*.js` (166 chunks, noms stables sans
+empreinte — `firebase.json` sert le JS en `no-cache`). `public/chunks/` est
+vidé avant chaque build. La sortie est gitignorée : `scripts/deploy.sh hosting`,
+`scripts/preview.sh` (via `npm run qa`) et le CI la reconstruisent avant tout
+deploy ou smoke.
+
+Le contournement local `?testui=1` (`src/modules/shared/lib/localTestBypass.js`,
+importé en premier par `bootstrap.jsx`) mocke l'auth et `/api/*` sur
+localhost ; `DEMO_NO_AUTH=1 npm run build:vercel` neutralise ses gardes à la
+compilation (define `__SB_DEMO_NO_AUTH__`) pour la préversion Vercel.
+
+## Backend
+
+### Le barrel et les 105 noms
+
+`functions/index.js` itère sur les modules de `functions/src/modules/` et
+fusionne leurs exports. **Une Cloud Function est adressée par son nom
+d'export** : le renommer supprime l'ancienne et en crée une neuve (URL HTTP,
+déclencheur, cron). Les 105 noms sont verrouillés par
+`tests/unit/backendExportSurface.test.js`.
+
+| Type | Nombre | Rôle |
+|---|---|---|
+| `onRequest` (HTTP) | 57 | routes `/api/*` (rewrites dans `firebase.json`) |
+| Crons (`pubsub.schedule`) | 17 | synchronisations BEE ONE, digests, rappels |
+| Déclencheurs Firestore | 9 | `onWrite` / `onCreate` / `onUpdate` |
+
+### Modules et services
+
+`functions/src/modules/<domaine>/` contient les handlers (actions
+`?action=…` d'une route) et les services du domaine (par ex.
+`rh/pointageService*.js`, `finance/emailService*.js`,
+`admin/whatsappService.js`, `magasin/bdc*Service.js`,
+`recolte/dailyProductionReport.js`). `functions/src/shared/core.js` est le
+socle commun (auth, cache, dispatch de notifications).
+
+`functions/lib/<domaine>/` regroupe 47 domaines **purs et injectés** : ils ne
+touchent ni Firestore ni le réseau, ce qui les rend testables sans émulateur
+(`__tests__/` dans chaque dossier, `npm run test:all --prefix functions`).
+C'est le pattern à dupliquer pour tout nouveau domaine.
+
+### Données
+
+- Firestore (projet `berrygood-farms-dashboard`, région `europe-west1`) :
+  la plupart des collections sont en lecture seule côté client, les écritures
+  passent par les Cloud Functions (`firestore.rules`).
+- SQL Server BEE ONE : miroir tiré par crons (`rh/sqlSyncService.js`,
+  `rh/pointageBdpSync.js`, `recolte/prodSyncService.js`).
+- WhatsApp Business (Meta) : `admin/whatsappService.js`, bots
+  `admin/dgBot.js`, `magasin/chefBdcBot.js`, `magasin/magasinierBot.js`,
+  `securite/securityBot.js`, entrée `whatsappProcessor.js`.
+
+## Tests et gates
+
+- `npm run test:unit` — `tests/unit/*.test.js` (node:test). Les modules ES
+  sont chargés depuis CommonJS via `tests/unit/_esm.js` (`loadEsm`, et
+  `loadComponent` pour un composant dans un contexte vm avec React factice).
+  `tests/unit/_sources.js` sert le source concaténé de `src/modules` aux
+  tests de contrat.
+- `npm run test:all --prefix functions` — tests des domaines purs backend.
+- `npm run lint` (syntaxe de tous les fichiers suivis), `npm run typecheck`
+  (fichiers `// @ts-check`), `npm run verify:refs` (toute référence libre de
+  `src/modules` se résout), `npm run build`.
+- `npm run qa` enchaîne tests, build et la fraîcheur des index `docs/ai/*`.
+- CI : [.github/workflows/test.yml](.github/workflows/test.yml).
 
 ## Déploiement
-```bash
-# Installer Firebase CLI
-npm install -g firebase-tools
 
-# Se connecter
-firebase login
-
-# Créer le projet (console Firebase)
-# Puis dans le dossier du projet :
-firebase use berrygood-dashboard
-firebase deploy --only hosting
-```
-
-## Phase Suivante
-1. Remplacer les données mock par les données réelles SQL Server
-2. Configurer les webhooks Make.com
-3. Définir les tableaux de bord des profils restants (Achats, Qualité, Finance, DG)
-4. Configurer la hiérarchie Fermes/Parcelles
-5. Activer l'authentification Firebase (fin phase test)
+`scripts/deploy.sh functions` déclenche le workflow GitHub `deploy-prod.yml`
+(Workload Identity Federation, asynchrone) ; `scripts/deploy.sh hosting`
+reconstruit le bundle puis publie `public/` (token, synchrone) ;
+`scripts/preview.sh` publie un canal de préversion après `npm run qa`.
+Séquence, garde-fous et runbook : [CLAUDE.md](CLAUDE.md) et
+[docs/deploy-wif-prod.md](docs/deploy-wif-prod.md).
