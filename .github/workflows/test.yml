@@ -52,4 +52,4 @@ jobs:
       # rattrape un import oublié après un découpage ou un déplacement de
       # fichier — le risque principal maintenant que le tree modulaire évolue.
       - name: Références du tree modulaire
-        run: npm run migrate:verify
+        run: npm run verify:refs

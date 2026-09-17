@@ -1,5 +1,0 @@
-upstream_repo=https://github.com/BERRY-GOOD-FARMS/BERRYGOOD.git
-upstream_sha=5f9a586b16d537e1190e0376909972e2019cc634
-base_sha=5cd084e59eff3f7ec9dbab359cfecf8495529601
-sync_date=2026-09-03
-method=portage modulaire (route_hunks.py + copie verbatim des fichiers non divergents)

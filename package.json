@@ -18,10 +18,10 @@
     "deploy:hosting": "bash scripts/deploy.sh hosting",
     "test:finance": "find functions/lib/finance/__tests__ -name '*.test.js' -print0 | xargs -0 -r node --test",
     "test:all": "find tests/unit functions/lib/finance/__tests__ -name '*.test.js' -print0 | xargs -0 -r node --test",
-    "build:vercel": "npm run build && node scripts/migrate/assemble-vercel.cjs",
-    "vercel:config": "node scripts/migrate/gen-vercel-config.cjs",
+    "build:vercel": "npm run build && node scripts/assemble-vercel.cjs",
+    "vercel:config": "node scripts/gen-vercel-config.cjs",
     "build:vercel:demo": "DEMO_NO_AUTH=1 npm run build:vercel",
-    "migrate:verify": "node scripts/migrate/verify-references.cjs"
+    "verify:refs": "node scripts/verify-references.cjs"
   },
   "keywords": [],
   "author": "",

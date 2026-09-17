@@ -3,7 +3,7 @@
    Pré-requis : `npm run build` (Vite écrit app.modular.js et chunks/ dans public/).
 */
 const fs=require('fs'),p=require('path');
-const ROOT=p.resolve(__dirname,'../..');
+const ROOT=p.resolve(__dirname,'..');
 const OUT=p.join(ROOT,'dist-vercel');
 const PUB=p.join(ROOT,'public');
 const BUNDLE=p.join(PUB,'app.modular.js');

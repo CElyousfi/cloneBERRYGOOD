@@ -2,7 +2,7 @@
    - les 55 rewrites /api/* sont proxifiés vers les Cloud Functions Firebase
      (même backend que la prod — Vercel n'héberge que le frontend statique). */
 const fs=require('fs'),p=require('path');
-const ROOT=p.resolve(__dirname,'../..');
+const ROOT=p.resolve(__dirname,'..');
 const PROJECT='berrygood-farms-dashboard';
 const fb=JSON.parse(fs.readFileSync(p.join(ROOT,'firebase.json'),'utf8'));
 let h=fb.hosting; if(Array.isArray(h)) h=h[0];
